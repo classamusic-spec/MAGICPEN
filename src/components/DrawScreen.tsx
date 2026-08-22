@@ -204,6 +204,8 @@ function CrayonArt({ color, short, seed, lifted }: {
 
 /* ── the cardboard box the crayons live in ───────────────────────────────── */
 
+const BOX_FONT = '"Baloo 2", "Nunito", ui-rounded, system-ui, sans-serif';
+
 function BoxFront({ w, h, axis }: { w: number; h: number; axis: "x" | "y" }) {
   const uid = useId().replace(/:/g, "");
   const tile = waxTile("#c07d35");
@@ -259,6 +261,24 @@ function BoxFront({ w, h, axis }: { w: number; h: number; axis: "x" | "y" }) {
         d={geo.edge} fill="none" stroke="var(--ink)" strokeOpacity="0.45" strokeWidth="1.3"
         strokeLinecap="round" transform={axis === "x" ? "translate(0.7 1.1)" : "translate(-1.1 0.7)"}
       />
+      {/* printed on the box, the way a crayon box is printed */}
+      {axis === "x" && w > 210 && (
+        <text
+          x={16} y={h - 8} fill="#fff2dc" opacity="0.62"
+          style={{ fontFamily: BOX_FONT, fontWeight: 800, fontSize: 11, letterSpacing: 2.6 }}
+        >
+          CRAYONS
+        </text>
+      )}
+      {axis === "y" && h > 210 && (
+        <text
+          x={0} y={0} fill="#fff2dc" opacity="0.62"
+          transform={`translate(${w - 7} ${h - 16}) rotate(-90)`}
+          style={{ fontFamily: BOX_FONT, fontWeight: 800, fontSize: 11, letterSpacing: 2.6 }}
+        >
+          CRAYONS
+        </text>
+      )}
     </svg>
   );
 }
@@ -930,18 +950,18 @@ const DW_CSS = `
 }
 .dw-rail-scroll > * { scroll-snap-align: center; }
 .dw-box-front {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 30px;
+  position: absolute; left: 0; right: 0; bottom: 0; height: 34px;
   pointer-events: none; z-index: 4; overflow: hidden;
 }
 /* the crayons descend into the box, so the box throws a shadow up onto them */
 .dw-rail::before {
-  content: ""; position: absolute; left: 0; right: 0; bottom: 28px; height: 9px;
+  content: ""; position: absolute; left: 0; right: 0; bottom: 32px; height: 9px;
   background: linear-gradient(to bottom, rgba(58,38,16,0), rgba(58,38,16,0.18));
   pointer-events: none; z-index: 3;
 }
 /* there are more crayons than fit: fade the open end of the box */
 .dw-rail::after {
-  content: ""; position: absolute; right: 0; top: 14px; bottom: 26px; width: 18px;
+  content: ""; position: absolute; right: 0; top: 14px; bottom: 30px; width: 18px;
   background: linear-gradient(to right, rgba(253,243,227,0), rgba(253,243,227,0.92));
   pointer-events: none; z-index: 3;
 }
@@ -959,9 +979,12 @@ const DW_CSS = `
 }
 .dw-crayon:active { transition-duration: var(--dur-1); }
 
-.dw-toolrow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* Wraps rather than truncates: the size buttons and eraser are fixed 48px
+   targets, so on a 320px screen there is no room left for the colour name on
+   the same line — it takes its own line instead of collapsing to "O..". */
+.dw-toolrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .dw-current {
-  flex: 1 1 auto; min-width: 0;
+  flex: 1 1 6rem; min-width: 6rem;
   font-size: var(--fs-2xs); line-height: 1.15;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding-left: 2px;
@@ -1008,12 +1031,12 @@ const DW_CSS = `
 .dw-land .dw-rail-scroll {
   flex-direction: column; align-items: flex-start; height: 100%;
   overflow-x: hidden; overflow-y: auto;
-  padding: 4px 0 4px 16px;
+  padding: 4px 0 4px 20px;
   scroll-snap-type: y proximity;
 }
-.dw-land .dw-box-front { left: 0; right: auto; top: 0; bottom: 0; width: 24px; height: auto; }
+.dw-land .dw-box-front { left: 0; right: auto; top: 0; bottom: 0; width: 28px; height: auto; }
 .dw-land .dw-rail::before {
-  left: 22px; right: auto; top: 0; bottom: 0; width: 9px; height: auto;
+  left: 26px; right: auto; top: 0; bottom: 0; width: 9px; height: auto;
   background: linear-gradient(to right, rgba(58,38,16,0.2), rgba(58,38,16,0));
 }
 .dw-land .dw-rail::after { display: none; }

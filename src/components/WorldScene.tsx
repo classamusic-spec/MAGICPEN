@@ -128,10 +128,12 @@ function useBox<T extends HTMLElement>() {
 
 interface HudBtnProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   icon: IconName;
-  /** Always-visible label. Omit for an icon-only 48×48 control. */
+  /** The control's label. Omit for an icon-only 48×48 control. */
   label?: string;
   /** Tail of the label that only appears once the row has room for it. */
   labelWide?: string;
+  /** Stand the whole label down on a narrow row, leaving the icon alone. */
+  labelOnlyWide?: boolean;
   tone?: Tone;
   iconFill?: string;
   seed?: number;
@@ -139,18 +141,21 @@ interface HudBtnProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 function HudBtn({
-  icon, label, labelWide, tone = TONE.manila, iconFill,
+  icon, label, labelWide, labelOnlyWide, tone = TONE.manila, iconFill,
   seed, round = false, className = "", style, ...rest
 }: HudBtnProps) {
   const [ref, box] = useBox<HTMLButtonElement>();
   const s = seed ?? seedOf(icon + (label ?? ""));
   const onWax = tone.on !== "#2d2926";
+  // a label that comes and goes has to take its padding with it, so that case
+  // is driven by a class instead of an inline style
+  const fluid = !!label && !!labelOnlyWide;
   return (
     <button
       ref={ref}
-      className={`ink-btn hud-btn hud-drawn hud-focus-light pointer-events-auto relative isolate ${className}`}
+      className={`ink-btn hud-btn hud-drawn hud-focus-light pointer-events-auto relative isolate ${fluid ? "hud-btn-fluid" : ""} ${className}`}
       style={{
-        padding: label ? "0 15px 0 13px" : 0,
+        padding: fluid ? undefined : label ? "0 15px 0 13px" : 0,
         width: round ? 48 : undefined,
         minWidth: 48,
         height: 48,
@@ -172,7 +177,7 @@ function HudBtn({
         <Icon name={icon} size={round ? 25 : 22} color={tone.on} fill={iconFill} weight={2.3} />
         {label && (
           <span
-            className={`font-display font-extrabold whitespace-nowrap ${onWax ? "ink-on-wax" : ""}`}
+            className={`font-display font-extrabold whitespace-nowrap ${labelOnlyWide ? "hidden sm:inline" : ""} ${onWax ? "ink-on-wax" : ""}`}
             style={{ color: tone.on, fontSize: "var(--fs-sm)" }}
           >
             {label}
@@ -1068,7 +1073,8 @@ export default function WorldScene({
               icon="gamepad"
               tone={TONE.play}
               seed={205}
-              labelWide="Play"
+              label="Play"
+              labelOnlyWide
               aria-label="Play mini-games"
               onClick={() => { sfxHappy(); onPlayGame(); }}
             />
@@ -1330,7 +1336,7 @@ export default function WorldScene({
               {sheet.mode === "roster" && (
                 <div
                   className="overflow-y-auto hud-scroll hud-fade-edge pt-2 pb-2 px-1 grid gap-3.5 content-start"
-                  style={{ gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", maxHeight: "min(46vh, 400px)" }}
+                  style={{ gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", maxHeight: "min(58vh, 400px)" }}
                 >
                   {view.map((c, i) => {
                     const k = kindById(c.kindId);
@@ -1368,9 +1374,11 @@ export default function WorldScene({
               )}
 
               {sheet.mode === "detail" && detail && (
-                <div className="overflow-y-auto hud-scroll px-1 pt-3 pb-1" style={{ maxHeight: "min(50vh, 430px)" }}>
+                <div className="overflow-y-auto hud-scroll hud-fade-edge px-1 pt-3 pb-2" style={{ maxHeight: "min(62vh, 430px)" }}>
+                 <div className="hud-detail">
                   {/* their artwork, taped into the book */}
-                  <div className="grid place-items-center">
+                  <div className="hud-detail-art">
+                   <div className="grid place-items-center">
                     <div style={{ transform: "rotate(-1.6deg)" }}>
                       <InkCard className="p-3" seed={(seedOf(detail.id) + 17) % 900} weight={3}>
                         <Tape seed={2} style={{ width: 82, height: 26, top: -13, left: -16, transform: "rotate(-26deg)" }} />
@@ -1381,11 +1389,13 @@ export default function WorldScene({
                         </div>
                       </InkCard>
                     </div>
+                   </div>
+                    <p className="ink-hand text-center mt-4" style={{ fontSize: "var(--fs-sm)" }}>
+                      {kindById(detail.kindId).label} · joined {new Date(detail.createdAt).toLocaleDateString()}
+                    </p>
                   </div>
-                  <p className="ink-hand text-center mt-4" style={{ fontSize: "var(--fs-sm)" }}>
-                    {kindById(detail.kindId).label} · joined {new Date(detail.createdAt).toLocaleDateString()}
-                  </p>
 
+                  <div className="hud-detail-form">
                   <label className="block mt-3 ink-title" style={{ fontSize: "var(--fs-sm)" }} htmlFor="creature-name">
                     Name
                   </label>
@@ -1461,6 +1471,8 @@ export default function WorldScene({
                       onRelease={() => releaseCreature(detail)}
                     />
                   )}
+                  </div>
+                 </div>
                 </div>
               )}
             </div>

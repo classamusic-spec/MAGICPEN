@@ -56,6 +56,13 @@
   .hud-roomy { display: inline-flex; }
 }
 
+/* a control whose label stands down on a narrow row: the padding has to go
+   with it, so both live here rather than in an inline style */
+.hud-btn-fluid { padding: 0; }
+@media (min-width: 640px) {
+  .hud-btn-fluid { padding: 0 15px 0 13px; }
+}
+
 /* a menu row on paper — a wash of ink, not a grey block */
 .hud-menu-item {
   border-radius: 14px;
@@ -109,6 +116,19 @@
    the empty state stands down so the invitation itself still fits */
 @media (max-height: 470px) {
   .hud-short-hide { display: none; }
+}
+
+/* A landscape phone is wide and short. Stood side by side, the drawing and
+   the controls are both on screen at once instead of one scrolling under the
+   other. Keyed on height, so a tall tablet keeps the vertical card. */
+@media (min-width: 600px) and (max-height: 560px) {
+  .hud-detail {
+    display: grid;
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+  }
+  .hud-detail-form { padding-top: 2px; }
 }
 
 /* a drawing pinned into the book: it hangs crooked and lifts when touched */

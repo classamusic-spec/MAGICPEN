@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Stroke, RecognitionResult, CreatureKind } from "@/lib/types";
 import { drawStrokeFull, strokesBounds } from "@/lib/crayon";
 import { CREATURE_KINDS, kindById } from "@/lib/creatures";
@@ -208,17 +208,19 @@ function useBox<T extends HTMLElement>() {
 }
 
 /** The app lays out landscape phones as a split; the panel gets tight there. */
+const SHORT_LANDSCAPE = "(orientation: landscape) and (max-height: 560px)";
+
 function useShortLandscape(): boolean {
-  const [short, setShort] = useState(false);
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const mq = window.matchMedia("(orientation: landscape) and (max-height: 560px)");
-    setShort(mq.matches);
-    const on = () => setShort(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
-  return short;
+  return useSyncExternalStore(
+    (onChange) => {
+      if (typeof window.matchMedia !== "function") return () => {};
+      const mq = window.matchMedia(SHORT_LANDSCAPE);
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    },
+    () => (typeof window.matchMedia === "function" ? window.matchMedia(SHORT_LANDSCAPE).matches : false),
+    () => false,
+  );
 }
 
 /* ── the scan: a line being inked across the page ────────────────────────── */
@@ -284,7 +286,7 @@ function ScanRule({ progress, reduced }: { progress: number; reduced: boolean })
 
 /* ── the reveal badge: a drawn medal with the creature on it ─────────────── */
 
-function KindBadge({ kindId, reduced }: { kindId: string; reduced: boolean }) {
+function KindBadge({ kindId, reduced, compact }: { kindId: string; reduced: boolean; compact?: boolean }) {
   const uid = useId().replace(/:/g, "");
   const tone = toneOf(kindId);
   const waxUrl = waxTile(tone);
@@ -307,7 +309,10 @@ function KindBadge({ kindId, reduced }: { kindId: string; reduced: boolean }) {
   const K = (S * 0.52) / 24;
 
   return (
-    <div className="relative mx-auto" style={{ width: "clamp(6rem, 30vmin, 10.5rem)", aspectRatio: "1 / 1" }}>
+    <div
+      className="relative mx-auto shrink-0"
+      style={{ width: compact ? "clamp(4.75rem, 25vmin, 7rem)" : "clamp(6rem, 30vmin, 10.5rem)", aspectRatio: "1 / 1" }}
+    >
       <svg viewBox={`0 0 ${S} ${S}`} width="100%" height="100%" aria-hidden="true" style={{ display: "block", overflow: "visible" }}>
         <defs>
           {waxUrl && (
@@ -607,7 +612,7 @@ export default function MagicReveal({ strokes, result, name, photo, onShuffleNam
     sfxTap();
   };
 
-  const title = `It's a ${kind.id === "mystery" ? "MYSTERY!" : kind.label.toUpperCase() + "!"}`;
+  const title = kind.id === "mystery" ? "MYSTERY!" : `${kind.label.toUpperCase()}!`;
 
   return (
     <div className="screen ink-paper relative overflow-hidden">
@@ -624,170 +629,173 @@ export default function MagicReveal({ strokes, result, name, photo, onShuffleNam
 
         {/* ── the drawing, taped into the book, wiggling to life ── */}
         <div className="reveal-stage grid place-items-center">
-        <div
-          ref={stageRef}
-          className="relative"
-          style={{
-            width: "100%",
-            height: "100%",
-            maxWidth: "min(100%, 28rem)",
-            // the sheet shrinks right down while you are choosing, so the
-            // choices get the room they need
-            maxHeight: phase === "pick" ? "min(100%, 11rem)" : phase === "guess" ? "min(100%, 21rem)" : "min(100%, 34rem)",
-          }}
-        >
-          {awake && (
-            <svg
-              aria-hidden="true"
-              className="absolute inset-0 pointer-events-none anim-pop-in"
-              width={stageBox.w}
-              height={stageBox.h}
-              style={{ overflow: "visible" }}
-            >
-              {burst.map((b, i) => {
-                const m = Math.min(stageBox.w, stageBox.h);
-                const cx = stageBox.w / 2;
-                const cy = stageBox.h / 2;
-                return (
-                  <line
-                    key={i}
-                    x1={cx + Math.cos(b.a) * m * b.r1}
-                    y1={cy + Math.sin(b.a) * m * b.r1}
-                    x2={cx + Math.cos(b.a) * m * b.r2}
-                    y2={cy + Math.sin(b.a) * m * b.r2}
-                    stroke={C.sun}
-                    strokeWidth={b.w}
-                    strokeLinecap="round"
-                    opacity={0.5}
-                  />
-                );
-              })}
-            </svg>
-          )}
-
-          <div className="absolute inset-0" style={{ filter: glow }}>
-            <InkShape w={stageBox.w} h={stageBox.h} seed={64} weight={3.2} wobble={3.6} radius={16} />
-          </div>
-
           <div
-            ref={wrapRef}
-            className="absolute overflow-hidden"
-            style={{ inset: 9, borderRadius: 12, backgroundImage: fibre ? `url("${fibre}")` : undefined }}
+            ref={stageRef}
+            className="relative"
+            style={{
+              width: "100%",
+              height: "100%",
+              maxWidth: "min(100%, 28rem)",
+              // the sheet shrinks right down while you are choosing, so the
+              // choices get the room they need
+              maxHeight: phase === "pick" ? "min(100%, 11rem)" : phase === "guess" ? "min(100%, 21rem)" : "min(100%, 34rem)",
+            }}
           >
-            <canvas ref={canvasRef} className="absolute inset-0" />
-
-            {phase === "scan" && (
-              <>
-                {/* the light passing over the page */}
-                <div
-                  aria-hidden="true"
-                  className="absolute pointer-events-none"
-                  style={{
-                    top: "-8%",
-                    bottom: "-8%",
-                    width: "26%",
-                    left: `calc(${scanX * 100}% - 13%)`,
-                    transform: "rotate(3deg)",
-                    background:
-                      "linear-gradient(90deg, rgba(255,199,44,0) 0%, rgba(255,199,44,0.3) 50%, rgba(251,102,229,0.12) 74%, rgba(255,199,44,0) 100%)",
-                    filter: "blur(6px)",
-                  }}
-                />
-                {/* its inked leading edge */}
-                <svg
-                  aria-hidden="true"
-                  className="absolute pointer-events-none"
-                  style={{ left: `calc(${scanX * 100}% - 7px)`, top: 0, width: 14, height: "100%" }}
-                  viewBox="0 0 14 100"
-                  preserveAspectRatio="none"
-                >
-                  <path
-                    d="M7 0 Q2.5 12 7.5 25 Q12 38 6.5 50 Q1.5 62 7.5 74 Q12.5 86 6.5 100"
-                    fill="none"
-                    stroke="rgba(255,199,44,0.6)"
-                    strokeWidth={2.5}
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </>
+            {awake && (
+              <svg
+                aria-hidden="true"
+                className="absolute inset-0 pointer-events-none anim-pop-in"
+                width={stageBox.w}
+                height={stageBox.h}
+                style={{ overflow: "visible" }}
+              >
+                {burst.map((b, i) => {
+                  const m = Math.min(stageBox.w, stageBox.h);
+                  const cx = stageBox.w / 2;
+                  const cy = stageBox.h / 2;
+                  return (
+                    <line
+                      key={i}
+                      x1={cx + Math.cos(b.a) * m * b.r1}
+                      y1={cy + Math.sin(b.a) * m * b.r1}
+                      x2={cx + Math.cos(b.a) * m * b.r2}
+                      y2={cy + Math.sin(b.a) * m * b.r2}
+                      stroke={C.sun}
+                      strokeWidth={b.w}
+                      strokeLinecap="round"
+                      opacity={0.5}
+                    />
+                  );
+                })}
+              </svg>
             )}
 
-            {awake && !reduced && (
-              <div aria-hidden="true" className="absolute inset-0 pointer-events-none grid place-items-center">
-                {confetti.map((c, i) => (
-                  <span
-                    key={i}
-                    className="confetti-p"
+            <div className="absolute inset-0" style={{ filter: glow }}>
+              <InkShape w={stageBox.w} h={stageBox.h} seed={64} weight={3.2} wobble={3.6} radius={16} />
+            </div>
+
+            <div
+              ref={wrapRef}
+              className="absolute overflow-hidden"
+              style={{ inset: 9, borderRadius: 12, backgroundImage: fibre ? `url("${fibre}")` : undefined }}
+            >
+              <canvas ref={canvasRef} className="absolute inset-0" />
+
+              {phase === "scan" && (
+                <>
+                  {/* the light passing over the page */}
+                  <div
+                    aria-hidden="true"
+                    className="absolute pointer-events-none"
                     style={{
-                      width: c.w,
-                      height: c.h,
-                      background: c.color,
-                      borderRadius: c.round ? "999px" : "2px",
-                      boxShadow: "0 1px 0 rgba(45,41,38,0.35)",
-                      animationDelay: c.delay,
-                      "--dx": c.dx,
-                      "--dy": c.dy,
-                      "--rot": c.rot,
-                    } as React.CSSProperties}
+                      top: "-8%",
+                      bottom: "-8%",
+                      width: "26%",
+                      left: `calc(${scanX * 100}% - 13%)`,
+                      transform: "rotate(3deg)",
+                      background:
+                        "linear-gradient(90deg, rgba(255,199,44,0) 0%, rgba(255,199,44,0.3) 50%, rgba(251,102,229,0.12) 74%, rgba(255,199,44,0) 100%)",
+                      filter: "blur(6px)",
+                    }}
                   />
-                ))}
-              </div>
-            )}
-          </div>
+                  {/* its inked leading edge */}
+                  <svg
+                    aria-hidden="true"
+                    className="absolute pointer-events-none"
+                    style={{ left: `calc(${scanX * 100}% - 7px)`, top: 0, width: 14, height: "100%" }}
+                    viewBox="0 0 14 100"
+                    preserveAspectRatio="none"
+                  >
+                    <path
+                      d="M7 0 Q2.5 12 7.5 25 Q12 38 6.5 50 Q1.5 62 7.5 74 Q12.5 86 6.5 100"
+                      fill="none"
+                      stroke="rgba(255,199,44,0.6)"
+                      strokeWidth={2.5}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </>
+              )}
 
-          <Tape seed={2} style={{ width: 62, height: 22, top: -9, left: 16, transform: "rotate(-8deg)" }} />
-          <Tape seed={0} style={{ width: 62, height: 22, top: -9, right: 16, transform: "rotate(7deg)" }} />
-        </div>
+              {awake && !reduced && (
+                <div aria-hidden="true" className="absolute inset-0 pointer-events-none grid place-items-center">
+                  {confetti.map((c, i) => (
+                    <span
+                      key={i}
+                      className="confetti-p"
+                      style={{
+                        width: c.w,
+                        height: c.h,
+                        background: c.color,
+                        borderRadius: c.round ? "999px" : "2px",
+                        boxShadow: "0 1px 0 rgba(45,41,38,0.35)",
+                        animationDelay: c.delay,
+                        "--dx": c.dx,
+                        "--dy": c.dy,
+                        "--rot": c.rot,
+                      } as React.CSSProperties}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <Tape seed={2} style={{ width: 62, height: 22, top: -9, left: 16, transform: "rotate(-8deg)" }} />
+            <Tape seed={0} style={{ width: 62, height: 22, top: -9, right: 16, transform: "rotate(7deg)" }} />
+          </div>
         </div>
 
         {/* ── decision panel ── */}
         <div className="reveal-panel">
           {phase === "guess" && (
             <InkCard seed={12} className="anim-rise-in max-w-md mx-auto text-center px-3 pt-3 pb-3">
-              <div className={short ? "flex items-center gap-3 text-left" : ""}>
-              <KindBadge kindId={kindId} reduced={reduced} />
+              <div className={short ? "flex items-center gap-4 text-left" : ""}>
+                <KindBadge kindId={kindId} reduced={reduced} compact={short} />
 
-              <div className={short ? "flex-1 min-w-0" : ""}>
-              <h2 className={`ink-title mt-2 ${short ? "type-h2" : "type-title"}`} style={{ color: C.ink }}>
-                {title.split("").map((ch, i) => (
-                  <span key={i} className="anim-letter-drop" style={{ "--i": i } as React.CSSProperties}>
-                    {ch === " " ? " " : ch}
+                <div className={short ? "flex-1 min-w-0" : ""}>
+                  <h2 className={`ink-title mt-2 ${short ? "type-h2" : "type-title"}`} style={{ color: C.ink }}>
+                    <span className="whitespace-nowrap">It's a</span>{" "}
+                    <span className="inline-block whitespace-nowrap">
+                      {title.split("").map((ch, i) => (
+                        <span key={i} className="anim-letter-drop" style={{ "--i": i + 6 } as React.CSSProperties}>
+                          {ch}
+                        </span>
+                      ))}
+                    </span>
+                  </h2>
+                  <span className="block mx-auto" style={{ width: short ? "88%" : "62%" }}>
+                    <Scribble color={tone} height={11} seed={6} />
                   </span>
-                ))}
-              </h2>
-              <span className="block mx-auto" style={{ width: short ? "88%" : "62%" }}>
-                <Scribble color={tone} height={11} seed={6} />
-              </span>
 
-              {/* the name tag — tap it for another one */}
-              <div className={`mt-2 flex flex-col gap-0.5 ${short ? "items-start" : "items-center"}`}>
-                <InkButton
-                  tone={C.sun}
-                  labelColor={C.ink}
-                  seed={17}
-                  onClick={rollName}
-                  aria-label={`Its name is ${creatureName} the ${kind.label}. Tap for a different name.`}
-                  className="max-w-full"
-                  style={{ padding: "0.45rem 1rem" }}
-                >
-                  <span
-                    key={rollTick}
-                    className="grid place-items-center shrink-0"
-                    style={{ animation: reduced ? undefined : "wiggle 560ms var(--ease-spring)" }}
-                  >
-                    <Icon name="dice" size={22} color={C.ink} weight={2.3} />
-                  </span>
-                  <span
-                    key={`${creatureName}-${rollTick}`}
-                    className="anim-pop-in font-display font-extrabold leading-tight"
-                    style={{ fontSize: "var(--fs-lg)" }}
-                  >
-                    {creatureName} the {kind.label}
-                  </span>
-                </InkButton>
-                <span className="type-fine">tap for a new name</span>
-              </div>
-              </div>
+                  {/* the name tag — tap it for another one */}
+                  <div className={`mt-2 flex flex-col gap-0.5 ${short ? "items-start" : "items-center"}`}>
+                    <InkButton
+                      tone={C.sun}
+                      labelColor={C.ink}
+                      seed={17}
+                      onClick={rollName}
+                      aria-label={`Its name is ${creatureName} the ${kind.label}. Tap for a different name.`}
+                      className="max-w-full"
+                      style={{ padding: "0.45rem 1rem" }}
+                    >
+                      <span
+                        key={rollTick}
+                        className="grid place-items-center shrink-0"
+                        style={{ animation: reduced ? undefined : "wiggle 560ms var(--ease-spring)" }}
+                      >
+                        <Icon name="dice" size={22} color={C.ink} weight={2.3} />
+                      </span>
+                      <span
+                        key={`${creatureName}-${rollTick}`}
+                        className="anim-pop-in font-display font-extrabold leading-tight"
+                        style={{ fontSize: "var(--fs-lg)" }}
+                      >
+                        {creatureName} the {kind.label}
+                      </span>
+                    </InkButton>
+                    <span className="type-fine">tap for a new name</span>
+                  </div>
+                </div>
               </div>
 
               <div className="flex gap-2 mt-3">
