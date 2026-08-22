@@ -5,6 +5,9 @@ import './index.css'
 import './hud.css'
 import { TRPCProvider } from "@/providers/trpc"
 import App from './App.tsx'
+import { installPaper } from '@/lib/ink'
+
+installPaper()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

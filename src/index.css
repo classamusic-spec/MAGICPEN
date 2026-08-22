@@ -756,3 +756,81 @@
   .swatch[aria-checked="true"] { transform: scale(1.06); }
   * { scroll-behavior: auto !important; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   8. INK — the hand-drawn material layer
+   ---------------------------------------------------------------------------
+   Surfaces and controls are drawn by src/components/ink/*, which paints the
+   outline and the wax fill into an SVG behind the content. What lives here is
+   only what CSS must own: the press feel, the paper ground, and the ink
+   typography that sits on top of the drawn shapes.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Paper compresses under a finger — it does not slide a hard shadow sideways.
+   The whole control settles and the drawn edge tightens very slightly. */
+.ink-btn {
+  position: relative;
+  border: 0;
+  background: none;
+  padding: 0.55rem 1.1rem;
+  min-height: var(--tap);
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-spring), filter var(--dur-1) ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.ink-btn:active:not(:disabled) {
+  transform: translateY(2px) scale(0.985);
+  filter: brightness(0.96);
+}
+.ink-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@media (hover: hover) {
+  .ink-btn:not(:disabled):hover { transform: translateY(-1.5px); }
+}
+
+/* A sheet of real stock: warm ground, light from above, fibre on top. The
+   fibre tile is injected as a CSS variable by the ink kit at boot. */
+.ink-paper {
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(120% 75% at 50% -12%, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0) 62%),
+    radial-gradient(110% 65% at 50% 112%, rgba(226, 205, 172, 0.55), rgba(226, 205, 172, 0) 70%),
+    var(--paper-fibre, none);
+  background-repeat: no-repeat, no-repeat, repeat;
+}
+
+/* Text written on the page rather than set in a box. */
+.ink-title {
+  font-family: "Baloo 2", "Nunito", ui-rounded, system-ui, sans-serif;
+  font-weight: 800;
+  color: var(--plum);
+  letter-spacing: -0.015em;
+  line-height: 1.05;
+}
+.ink-hand {
+  font-family: "Baloo 2", "Nunito", ui-rounded, system-ui, sans-serif;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+/* Letters that sit on a coloured wax fill need a little separation from it. */
+.ink-on-wax {
+  color: #fffaf0;
+  text-shadow: 0 2px 0 rgba(45, 41, 38, 0.32);
+}
+
+/* A drawing pinned into the book: it hangs slightly crooked and lifts when
+   touched, the way a taped-in photo would. */
+.ink-pinned {
+  transition: transform var(--dur-2) var(--ease-spring);
+}
+@media (hover: hover) {
+  .ink-pinned:hover { transform: rotate(0deg) translateY(-4px) scale(1.02); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ink-btn, .ink-pinned { transition: none; }
+  .ink-btn:active:not(:disabled) { transform: none; }
+}
