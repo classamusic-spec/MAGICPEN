@@ -15,6 +15,112 @@
   box-shadow: 0 0 0 7px rgba(255, 199, 44, 0.75);
 }
 
+/* ═══ world overlay: drawn controls over four very different skies ═════════
+   The HUD floats over a bright farm sky, two blues, a near-black galaxy and a
+   dusk jungle. A white pill would dissolve into the farm's clouds; a dark one
+   would sink into space. So every control is a mid-tone wax inside an inked
+   edge, and the rim treatment below carries the silhouette on both extremes:
+   a tight cream halo lifts it off dark ground, a soft dark shadow separates it
+   from bright ground. Both are always on — one of them is always doing work. */
+.hud-drawn {
+  filter:
+    drop-shadow(0 0 1.5px rgba(255, 250, 236, 0.95))
+    drop-shadow(0 0 6px rgba(255, 246, 224, 0.55))
+    drop-shadow(0 4px 7px rgba(26, 17, 8, 0.45));
+}
+/* `.ink-btn:active` sets `filter`, which would replace the rim outright — so
+   the pressed state has to restate it. */
+.ink-btn.hud-drawn:active:not(:disabled) {
+  filter:
+    drop-shadow(0 0 1.5px rgba(255, 250, 236, 0.95))
+    drop-shadow(0 0 6px rgba(255, 246, 224, 0.55))
+    drop-shadow(0 2px 4px rgba(26, 17, 8, 0.5))
+    brightness(0.95);
+}
+/* paper surfaces (banner, menu, empty state) need the dark side only — they
+   are already bright enough to hold against space. */
+.hud-drop {
+  filter: drop-shadow(0 6px 12px rgba(22, 15, 8, 0.42));
+}
+
+.hud-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+/* the second rank of HUD controls, shown only once the row has room for them;
+   they always remain reachable in the overflow menu */
+.hud-roomy { display: none; }
+@media (min-width: 480px) {
+  .hud-roomy { display: inline-flex; }
+}
+
+/* a menu row on paper — a wash of ink, not a grey block */
+.hud-menu-item {
+  border-radius: 14px;
+  width: 100%;
+}
+@media (hover: hover) {
+  .hud-menu-item:hover:not(:disabled) { background: rgba(86, 62, 121, 0.09); }
+}
+.hud-menu-item:active:not(:disabled) { background: rgba(86, 62, 121, 0.15); }
+
+/* a paper slip: warm stock with torn short edges. Prompt tags and the touch
+   hint are written on these rather than set in pills. */
+.hud-slip {
+  display: inline-block;
+  padding: 5px 12px;
+  font-family: "Baloo 2", "Nunito", ui-rounded, system-ui, sans-serif;
+  font-weight: 800;
+  font-size: var(--fs-2xs);
+  line-height: 1.25;
+  color: #4a3a28;
+  background: linear-gradient(170deg, #fbeecd, #f0dcb0);
+  transform: rotate(var(--tilt, 0deg));
+  clip-path: polygon(
+    0% 7%, 6% 0%, 18% 6%, 31% 1%, 44% 7%, 57% 1%, 70% 7%, 83% 1%, 94% 6%, 100% 2%,
+    100% 93%, 94% 99%, 83% 93%, 70% 99%, 57% 93%, 44% 99%, 31% 93%, 18% 99%, 6% 94%, 0% 98%
+  );
+}
+.hud-slip-note {
+  padding: 7px 16px;
+  max-width: 100%;
+  filter: drop-shadow(0 3px 5px rgba(24, 16, 8, 0.5));
+}
+
+/* the count beside a heading — a little wax dot with the number written on it.
+   (Named `tally`, not `count`: `.hud-count` is the mini-game's 3·2·1 punch.) */
+.hud-tally {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 60% 40% 55% 45% / 50% 55% 45% 50%;
+  background: var(--sun);
+  border: 2.5px solid var(--ink);
+  font-size: var(--fs-2xs);
+  color: var(--ink);
+}
+
+/* a landscape phone has no vertical room to spare — the decorative half of
+   the empty state stands down so the invitation itself still fits */
+@media (max-height: 470px) {
+  .hud-short-hide { display: none; }
+}
+
+/* a drawing pinned into the book: it hangs crooked and lifts when touched */
+.hud-tilt {
+  transform: rotate(var(--tilt, 0deg));
+  transition: transform var(--dur-2) var(--ease-spring);
+}
+@media (hover: hover) {
+  .hud-tilt:hover { transform: rotate(0deg) translateY(-5px) scale(1.03); }
+}
+.hud-tilt:active { transform: rotate(var(--tilt, 0deg)) scale(0.96); }
+
 /* ── scroll containers: momentum, contained, slim crayon scrollbar ───────── */
 .hud-scroll {
   -webkit-overflow-scrolling: touch;
@@ -160,6 +266,8 @@
   .hud-scrim {
     animation: none !important;
   }
+  .hud-tilt { transition: none; }
+  .hud-tilt:hover { transform: rotate(var(--tilt, 0deg)); }
   .hud-hint { opacity: 1; }
   .hud-count { opacity: 1; }
   .hud-star { opacity: 1; }

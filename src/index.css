@@ -625,13 +625,25 @@
   0% { transform: scale(0.2); opacity: 0.9; }
   100% { transform: scale(2.4); opacity: 0; }
 }
+/* A page turning in the book, hinged on its left edge — used going deeper
+   into the app (home → draw → reveal). */
 @keyframes screen-rise {
-  from { transform: translateY(3.5%) scale(0.985); opacity: 0; }
-  to { transform: translateY(0) scale(1); opacity: 1; }
+  from {
+    opacity: 0;
+    transform: perspective(1400px) rotateY(-14deg) translateX(7%) scale(0.985);
+    box-shadow: -26px 0 40px -18px rgba(74, 58, 40, 0.45);
+  }
+  60% { opacity: 1; }
+  to {
+    opacity: 1;
+    transform: perspective(1400px) rotateY(0deg) translateX(0) scale(1);
+    box-shadow: 0 0 0 0 rgba(74, 58, 40, 0);
+  }
 }
+/* The page settling back down — used coming back out to home. */
 @keyframes screen-fade {
-  from { opacity: 0; transform: scale(0.995); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: perspective(1400px) rotateY(5deg) translateX(-3%); }
+  to { opacity: 1; transform: perspective(1400px) rotateY(0deg) translateX(0); }
 }
 @keyframes screen-dive {
   0% { opacity: 0; transform: scale(1.07); }
@@ -696,8 +708,15 @@
 }
 
 /* screen transitions (class chosen by App.tsx state machine) */
-.screen-enter-rise { animation: screen-rise var(--dur-4) var(--ease-out) both; }
-.screen-enter-fade { animation: screen-fade var(--dur-3) var(--ease-out) both; }
+.screen-enter-rise {
+  animation: screen-rise var(--dur-4) var(--ease-out) both;
+  transform-origin: left center;
+  will-change: transform, opacity;
+}
+.screen-enter-fade {
+  animation: screen-fade var(--dur-3) var(--ease-out) both;
+  transform-origin: left center;
+}
 .screen-enter-dive { animation: screen-dive 0.65s var(--ease-out) both; }
 
 /* confetti particle */

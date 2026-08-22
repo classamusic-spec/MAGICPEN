@@ -5,7 +5,8 @@
 import { useEffect, useRef, useState } from "react";
 import { drawCrayonStroke } from "@/lib/crayon";
 import { sfxMagic, sfxTap } from "@/lib/audio";
-import { InkButton, usePrefersReducedMotion } from "@/components/ink/Ink";
+import { InkButton } from "@/components/ink/Ink";
+import { usePrefersReducedMotion } from "@/components/ink/motion";
 import { Icon } from "@/components/ink/Icons";
 import { Wordmark } from "@/components/ink/Wordmark";
 import { hand } from "@/lib/ink";
@@ -121,16 +122,18 @@ const MARGIN = [
 const BEATS = [700, 1900, 3100];
 
 export default function Splash({ onStart }: { onStart: () => void }) {
-  const [beat, setBeat] = useState(0);
+  const [told, setTold] = useState(0);
   const reduced = usePrefersReducedMotion();
+  // reduced motion skips straight to the end of the story
+  const beat = reduced ? 3 : told;
 
   useEffect(() => {
-    if (reduced) { setBeat(3); return; }
-    const timers = BEATS.map((ms, i) => window.setTimeout(() => setBeat(i + 1), ms));
+    if (reduced) return;
+    const timers = BEATS.map((ms, i) => window.setTimeout(() => setTold(i + 1), ms));
     return () => timers.forEach(clearTimeout);
   }, [reduced]);
 
-  const skip = () => { sfxTap(); setBeat(3); };
+  const skip = () => { sfxTap(); setTold(3); };
   const start = () => { sfxMagic(); onStart(); };
   const r = hand(19);
 

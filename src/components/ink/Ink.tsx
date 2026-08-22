@@ -3,16 +3,20 @@
 // a wax fill. These primitives replace the rounded-rect-with-a-3px-border that
 // every other kids' app ships.
 
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { roughEllipse, roughRect, roughUnderline, seedOf, waxTile, type RoughOpts } from "@/lib/ink";
 
 /* ── measure: the drawn path has to match the real pixel box ─────────────── */
 
 function useMeasure<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
-  useLayoutEffect(() => {
-    const el = ref.current;
+  const roRef = useRef<ResizeObserver | null>(null);
+
+  // A callback ref rather than an object ref, so callers can compose their own
+  // ref onto the same element without anyone mutating anyone else's.
+  const measureRef = useCallback((el: T | null) => {
+    roRef.current?.disconnect();
+    roRef.current = null;
     if (!el) return;
     const read = () => {
       // offsetWidth/Height, not getBoundingClientRect: the rect is warped by
@@ -25,9 +29,10 @@ function useMeasure<T extends HTMLElement>() {
     read();
     const ro = new ResizeObserver(read);
     ro.observe(el);
-    return () => ro.disconnect();
+    roRef.current = ro;
   }, []);
-  return [ref, box] as const;
+
+  return [measureRef, box] as const;
 }
 
 /* ── the drawn shape behind any control or card ──────────────────────────── */
@@ -145,14 +150,14 @@ export function InkButton({
   tone, shape = "rect", labelColor, weight = 3.2, seed, radius,
   ref: forwarded, className = "", style, children, ...rest
 }: InkButtonProps) {
-  const [ref, box] = useMeasure<HTMLButtonElement>();
+  const [measureRef, box] = useMeasure<HTMLButtonElement>();
   const label = typeof children === "string" ? children : "";
   const s = seed ?? (label ? seedOf(label) : 7);
   // the shape needs the element to measure it; callers may want it too
   const attach = (el: HTMLButtonElement | null) => {
-    (ref as React.MutableRefObject<HTMLButtonElement | null>).current = el;
+    measureRef(el);
     if (typeof forwarded === "function") forwarded(el);
-    else if (forwarded) (forwarded as React.MutableRefObject<HTMLButtonElement | null>).current = el;
+    else if (forwarded) forwarded.current = el;
   };
   return (
     <button
@@ -191,9 +196,9 @@ export function InkCard({
   tone, shape = "rect", weight = 3, seed = 21, radius, lifted = true,
   className = "", children, ...rest
 }: InkCardProps) {
-  const [ref, box] = useMeasure<HTMLDivElement>();
+  const [measureRef, box] = useMeasure<HTMLDivElement>();
   return (
-    <div ref={ref} className={`relative isolate ${className}`} {...rest}>
+    <div ref={measureRef} className={`relative isolate ${className}`} {...rest}>
       <InkShape
         w={box.w}
         h={box.h}
@@ -241,9 +246,9 @@ export function Tape({
 export function Scribble({
   color = "var(--sun)", height = 12, seed = 3, className = "",
 }: { color?: string; height?: number; seed?: number; className?: string }) {
-  const [ref, box] = useMeasure<HTMLSpanElement>();
+  const [measureRef, box] = useMeasure<HTMLSpanElement>();
   return (
-    <span ref={ref} aria-hidden="true" className={`block w-full ${className}`} style={{ height }}>
+    <span ref={measureRef} aria-hidden="true" className={`block w-full ${className}`} style={{ height }}>
       {box.w > 2 && (
         <svg width={box.w} height={height} viewBox={`0 0 ${box.w} ${height}`} style={{ overflow: "visible" }}>
           <path
@@ -271,17 +276,3 @@ function roughUnderlineMemo(w: number, h: number, seed: number): string {
   return hit;
 }
 
-/* ── reduced motion ──────────────────────────────────────────────────────── */
-
-export function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
-    const on = () => setReduced(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
-  return reduced;
-}

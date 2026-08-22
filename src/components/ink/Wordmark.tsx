@@ -4,9 +4,10 @@
 // skeleton of polylines laid down in wax, so the mark has real grain, real
 // pressure variation and a hand that wobbles.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { drawCrayonStroke } from "@/lib/crayon";
 import { hand } from "@/lib/ink";
+import { usePrefersReducedMotion } from "./motion";
 import type { Pt } from "@/lib/types";
 
 /* Letters live on a 100 × 140 grid, baseline at y=130, cap height at y=15. */
@@ -95,13 +96,7 @@ export interface WordmarkProps {
  */
 export function Wordmark({ width = 280, drawIn = 0, className = "" }: WordmarkProps) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    if (typeof window.matchMedia === "function") {
-      setReduced(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-    }
-  }, []);
+  const reduced = usePrefersReducedMotion();
 
   useEffect(() => {
     const cv = ref.current;
