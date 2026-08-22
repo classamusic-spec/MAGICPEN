@@ -1,0 +1,168 @@
+/* ── In-game HUD & world overlay styles ─────────────────────────────────────
+   Owned by the game-shell layer (WorldScene + MiniGame). Brand tokens and the
+   shared animation library live in index.css; add game-only keyframes here. */
+
+/* ── focus: always visible, always on-brand ──────────────────────────────── */
+.hud-focus:focus-visible {
+  outline: 3px solid var(--plum);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 7px rgba(255, 199, 44, 0.6);
+}
+/* dark canvas backdrops need the inverse treatment */
+.hud-focus-light:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 7px rgba(255, 199, 44, 0.75);
+}
+
+/* ── scroll containers: momentum, contained, slim crayon scrollbar ───────── */
+.hud-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(86, 62, 121, 0.35) transparent;
+}
+.hud-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.hud-scroll::-webkit-scrollbar-thumb {
+  background: rgba(86, 62, 121, 0.32);
+  border-radius: 99px;
+}
+.hud-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* fade the bottom edge of a scroll area so kids see there is more below */
+.hud-fade-edge {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 22px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 22px), transparent 100%);
+}
+
+/* ── overlays ────────────────────────────────────────────────────────────── */
+.hud-scrim {
+  background: radial-gradient(circle at 50% 45%, rgba(45, 41, 38, 0.42), rgba(45, 41, 38, 0.72));
+  backdrop-filter: blur(2px);
+  animation: hud-fade-in 0.18s ease-out both;
+}
+@keyframes hud-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.hud-fade-in { animation: hud-fade-in 0.25s ease-out both; }
+
+@keyframes hud-sheet-up {
+  from { transform: translateY(18px) scale(0.98); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+.hud-sheet { animation: hud-sheet-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ── countdown 3 · 2 · 1 · GO! ───────────────────────────────────────────── */
+@keyframes hud-count-punch {
+  0% { transform: scale(0.35) rotate(-10deg); opacity: 0; }
+  45% { transform: scale(1.14) rotate(3deg); opacity: 1; }
+  70% { transform: scale(1) rotate(0deg); opacity: 1; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.hud-count { animation: hud-count-punch 0.85s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+/* ── coaching hint: read it, then it gets out of the way ─────────────────── */
+@keyframes hud-hint-life {
+  0% { transform: translateY(10px) scale(0.94); opacity: 0; }
+  10%, 78% { transform: translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateY(-8px) scale(0.98); opacity: 0; }
+}
+.hud-hint { animation: hud-hint-life 5s ease-in-out both; }
+
+/* ── taking a hit ────────────────────────────────────────────────────────── */
+@keyframes hud-heart-break {
+  0% { transform: scale(1.5) rotate(0deg); filter: brightness(1.6); }
+  25% { transform: scale(1.25) rotate(-14deg); }
+  55% { transform: scale(0.86) rotate(12deg); }
+  100% { transform: scale(1) rotate(0deg); filter: brightness(1); }
+}
+.hud-heart-lost { animation: hud-heart-break 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+@keyframes hud-heart-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px) rotate(-3deg); }
+  45% { transform: translateX(5px) rotate(3deg); }
+  70% { transform: translateX(-3px); }
+}
+.hud-heart-row { animation: hud-heart-shake 0.4s ease-in-out both; }
+
+@keyframes hud-hurt-wash {
+  0% { opacity: 0; }
+  18% { opacity: 1; }
+  100% { opacity: 0; }
+}
+.hud-hurt-flash {
+  background: radial-gradient(circle at 50% 55%, rgba(255, 107, 107, 0) 42%, rgba(255, 107, 107, 0.62) 100%);
+  animation: hud-hurt-wash 0.5s ease-out both;
+}
+
+/* ── results: stars land one at a time ───────────────────────────────────── */
+@keyframes hud-star-in {
+  0% { transform: scale(0) rotate(-140deg); opacity: 0; }
+  65% { transform: scale(1.3) rotate(12deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+.hud-star { animation: hud-star-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+@keyframes hud-ribbon-in {
+  0% { transform: scale(0.2) rotate(-18deg); opacity: 0; }
+  60% { transform: scale(1.12) rotate(4deg); opacity: 1; }
+  100% { transform: scale(1) rotate(-2deg); opacity: 1; }
+}
+.hud-ribbon { animation: hud-ribbon-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+/* staggered entry for card grids */
+@keyframes hud-tile-in {
+  from { transform: translateY(14px) scale(0.96); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+.hud-tile { animation: hud-tile-in 0.36s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ── empty world: an invitation that breathes ────────────────────────────── */
+@keyframes hud-invite-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.045); }
+}
+.hud-invite { animation: hud-invite-pulse 2.4s ease-in-out infinite; }
+
+@keyframes hud-arrow-nudge {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(7px); }
+}
+.hud-arrow { animation: hud-arrow-nudge 1.4s ease-in-out infinite; }
+
+/* ── layout helpers ──────────────────────────────────────────────────────── */
+/* every interactive control in the shells clears the 48px touch minimum */
+.hud-tap { min-width: 48px; min-height: 48px; }
+.hud-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ── reduced motion: kill every looping/decorative animation ─────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .hud-motion,
+  .hud-motion::after,
+  .hud-invite,
+  .hud-arrow,
+  .hud-count,
+  .hud-star,
+  .hud-ribbon,
+  .hud-tile,
+  .hud-sheet,
+  .hud-heart-lost,
+  .hud-heart-row,
+  .hud-hint,
+  .hud-fade-in,
+  .hud-scrim {
+    animation: none !important;
+  }
+  .hud-hint { opacity: 1; }
+  .hud-count { opacity: 1; }
+  .hud-star { opacity: 1; }
+  .hud-hurt-flash { animation-duration: 0.25s; }
+  html { scroll-behavior: auto; }
+}

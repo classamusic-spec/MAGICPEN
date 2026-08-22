@@ -5,22 +5,22 @@ import { sfxTap, sfxPop, sfxMagic } from "@/lib/audio";
 import { extractDrawingFromPhoto } from "@/lib/photo";
 
 const CRAYONS = [
-  { c: "#e63b2e", name: "Cherry" },
+  { c: "#e63b2e", name: "Cherry red" },
   { c: "#ff7a1a", name: "Orange" },
-  { c: "#ffc72c", name: "Sunshine" },
-  { c: "#3aae3a", name: "Leaf" },
+  { c: "#ffc72c", name: "Sunshine yellow" },
+  { c: "#3aae3a", name: "Leaf green" },
   { c: "#00c2b9", name: "Lagoon" },
-  { c: "#2f6fe4", name: "Ocean" },
+  { c: "#2f6fe4", name: "Ocean blue" },
   { c: "#8b46c7", name: "Grape" },
-  { c: "#fb66e5", name: "Candy" },
-  { c: "#7a4a21", name: "Cocoa" },
-  { c: "#2d2926", name: "Licorice" },
+  { c: "#fb66e5", name: "Candy pink" },
+  { c: "#7a4a21", name: "Cocoa brown" },
+  { c: "#2d2926", name: "Licorice black" },
 ];
 
 const SIZES = [
-  { px: 5, label: "S" },
-  { px: 10, label: "M" },
-  { px: 17, label: "L" },
+  { px: 5, label: "Thin" },
+  { px: 10, label: "Medium" },
+  { px: 17, label: "Thick" },
 ];
 
 interface Props {
@@ -34,6 +34,7 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [undone, setUndone] = useState<Stroke[]>([]);
   const [color, setColor] = useState(CRAYONS[5].c);
   const [size, setSize] = useState(SIZES[1].px);
   const [erasing, setErasing] = useState(false);
@@ -118,6 +119,7 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
   const onDown = (e: React.PointerEvent) => {
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     const p = toLocal(e);
+    setUndone([]); // a fresh mark ends the redo trail
     if (erasing) {
       liveRef.current = { color: "", size: 0, pts: [p] };
       eraseAt([p]);
@@ -149,137 +151,215 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
   };
 
   const empty = strokes.length === 0;
+  const canUndo = strokes.length > 0;
+  const canRedo = undone.length > 0;
+
+  const undo = () => {
+    if (!canUndo) return;
+    setUndone((u) => [...u, strokes[strokes.length - 1]]);
+    setStrokes(strokes.slice(0, -1));
+    sfxPop();
+  };
+
+  const redo = () => {
+    if (!canRedo) return;
+    setStrokes([...strokes, undone[undone.length - 1]]);
+    setUndone(undone.slice(0, -1));
+    sfxTap();
+  };
+
+  const pickCrayon = (c: string) => { setColor(c); setErasing(false); sfxTap(); };
+  const pickSize = (px: number) => { setSize(px); setErasing(false); sfxTap(); };
 
   return (
-    <div className="h-full flex flex-col paper-grain">
-      {/* top bar */}
-      <div className="flex items-center gap-3 px-4 pt-4 pb-2">
-        <button
-          onClick={() => { sfxTap(); onBack(); }}
-          className="sticker-btn bg-white rounded-full w-11 h-11 grid place-items-center text-xl font-black"
-          aria-label="Back"
-        >
-          ←
-        </button>
-        <div className="flex-1 text-center">
-          <div key={prompt} className="inline-block sticker-btn anim-spring-pop bg-[var(--sun)] rounded-full px-5 py-1.5 font-display font-bold text-lg text-[var(--ink)]">
-            Draw {prompt}! <span className="anim-wiggle inline-block">✏️</span>
+    <div className="screen paper-grain">
+      <div className="stage-grid pad-x pad-t pad-b">
+        {/* ── top bar: leave · history · photo ─────────────────────────── */}
+        <div className="stage-top topbar">
+          <div className="topbar-nav">
+            <button
+              onClick={() => { sfxTap(); onBack(); }}
+              className="sticker-btn btn-icon bg-white text-ink font-black"
+              aria-label="Back to home"
+            >
+              <span aria-hidden="true">←</span>
+            </button>
+            <button
+              onClick={undo}
+              disabled={!canUndo}
+              className="sticker-btn btn-icon bg-white text-ink font-black"
+              aria-label="Undo the last line"
+            >
+              <span aria-hidden="true">↩</span>
+            </button>
+            <button
+              onClick={redo}
+              disabled={!canRedo}
+              className="sticker-btn btn-icon bg-white text-ink font-black"
+              aria-label="Redo the line you undid"
+            >
+              <span aria-hidden="true">↪</span>
+            </button>
+          </div>
+
+          <div className="topbar-actions">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={onPickPhoto}
+            />
+            <button
+              onClick={() => { sfxTap(); fileRef.current?.click(); }}
+              disabled={photoBusy}
+              className="sticker-btn btn-icon bg-white"
+              aria-label="Grown-ups: photograph a drawing on paper"
+              title="Photograph a drawing on paper"
+            >
+              <span aria-hidden="true">{photoBusy ? "⏳" : "📷"}</span>
+            </button>
+          </div>
+
+          <div className="topbar-prompt text-center">
+            <h1
+              key={prompt}
+              className="sticker-btn anim-spring-pop chip chip-sun mx-auto max-w-full text-fs-md sm:text-fs-lg font-display font-extrabold px-4 py-1.5"
+              style={{ cursor: "default" }}
+            >
+              <span className="truncate min-w-0">Draw {prompt}!</span>
+              <span aria-hidden="true" className="anim-wiggle inline-block shrink-0">✏️</span>
+            </h1>
           </div>
         </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={onPickPhoto}
-        />
-        <button
-          onClick={() => { sfxTap(); fileRef.current?.click(); }}
-          disabled={photoBusy}
-          className="sticker-btn bg-white rounded-full w-11 h-11 grid place-items-center text-xl"
-          aria-label="Photo of a paper drawing"
-          title="Use a photo of a paper drawing"
+
+        {/* ── the sheet ────────────────────────────────────────────────── */}
+        <div
+          ref={wrapRef}
+          className="stage-canvas relative overflow-hidden sticker-card paper-sheet bg-paper-card"
         >
-          {photoBusy ? "⏳" : "📷"}
-        </button>
-      </div>
+          <canvas
+            ref={canvasRef}
+            className="canvas-touch absolute inset-0 cursor-crosshair"
+            onPointerDown={onDown}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
+            onPointerCancel={onUp}
+            onPointerLeave={onUp}
+          />
 
-      {/* canvas */}
-      <div ref={wrapRef} className="flex-1 relative mx-3 mb-2 rounded-3xl overflow-hidden sticker-card">
-        <canvas
-          ref={canvasRef}
-          className="canvas-touch absolute inset-0 cursor-crosshair bg-[#fffdf7]"
-          onPointerDown={onDown}
-          onPointerMove={onMove}
-          onPointerUp={onUp}
-          onPointerCancel={onUp}
-          onPointerLeave={onUp}
-        />
-        {empty && (
-          <div className="absolute inset-0 grid place-items-center pointer-events-none">
-            <div className="text-center opacity-40 font-display text-2xl font-bold text-[var(--plum)]">
-              <div className="text-5xl mb-2">🖍️</div>
-              scribble anything…
+          {/* eraser mode is impossible to miss: dashed coral frame + banner */}
+          {erasing && (
+            <>
+              <div
+                aria-hidden="true"
+                className="absolute inset-1 pointer-events-none"
+                style={{ border: "4px dashed var(--coral)", borderRadius: "calc(var(--r-lg) - 4px)" }}
+              />
+              <div className="absolute inset-x-0 top-2 flex justify-center pointer-events-none px-2">
+                <span className="chip chip-coral anim-pop-in shadow-ink-1">🧽 Rubbing out — tap a crayon to draw</span>
+              </div>
+            </>
+          )}
+
+          {empty && !erasing && (
+            <div className="absolute inset-0 grid place-items-center pointer-events-none px-4">
+              <div className="text-center opacity-45">
+                <div aria-hidden="true" className="text-5xl mb-2 anim-bob-tilt">🖍️</div>
+                <p className="type-h3 text-plum">Draw right here</p>
+                <p className="type-fine">anything you like!</p>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
 
-      {/* tool tray */}
-      <div className="px-4 pb-4 pt-1">
-        <div className="flex items-end justify-between gap-3">
-          {/* crayons */}
-          <div className="flex flex-wrap gap-2 max-w-[46%] items-center">
+        {/* ── tools ────────────────────────────────────────────────────── */}
+        <div className="stage-tools toolbar">
+          <div
+            className="crayon-rail no-scrollbar"
+            role="radiogroup"
+            aria-label="Pick a crayon colour"
+          >
             {CRAYONS.map((k) => {
               const active = !erasing && color === k.c;
               return (
                 <button
                   key={k.c}
+                  role="radio"
+                  aria-checked={active}
                   aria-label={k.name}
                   title={k.name}
-                  onClick={() => { setColor(k.c); setErasing(false); sfxTap(); }}
-                  className="sticker-btn w-9 h-9 rounded-full"
-                  style={{
-                    background: k.c,
-                    transition: "transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.12s",
-                    transform: active ? "scale(1.3) rotate(-8deg)" : undefined,
-                    boxShadow: active ? "0 5px 0 var(--ink), 0 0 0 3px #fff inset" : undefined,
-                  }}
+                  onClick={() => pickCrayon(k.c)}
+                  className="sticker-btn swatch"
+                  style={{ backgroundColor: k.c }}
                 />
               );
             })}
           </div>
 
-          {/* sizes + eraser + undo */}
-          <div className="flex items-center gap-2">
-            {SIZES.map((s) => (
-              <button
-                key={s.px}
-                onClick={() => { setSize(s.px); setErasing(false); sfxTap(); }}
-                className={`sticker-btn rounded-full grid place-items-center bg-white ${
-                  size === s.px && !erasing ? "!bg-[var(--teal)] text-white" : ""
-                }`}
-                style={{ width: 36 + s.px, height: 36 + s.px }}
-              >
-                <span className="rounded-full bg-current" style={{ width: s.px, height: s.px, display: "block", color: size === s.px && !erasing ? "#fff" : "#2d2926", background: "currentColor" }} />
-              </button>
-            ))}
+          <div className="tool-cluster">
+            <div className="flex items-center gap-2" role="radiogroup" aria-label="Crayon thickness">
+              {SIZES.map((s) => {
+                const active = size === s.px && !erasing;
+                return (
+                  <button
+                    key={s.px}
+                    role="radio"
+                    aria-checked={active}
+                    aria-label={`${s.label} line`}
+                    title={`${s.label} line`}
+                    onClick={() => pickSize(s.px)}
+                    className={`sticker-btn btn-icon ${active ? "grad-sea text-white" : "bg-white text-ink"}`}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="rounded-full bg-current block"
+                      style={{ width: s.px, height: s.px }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+
             <button
               onClick={() => { setErasing(!erasing); sfxTap(); }}
-              className={`sticker-btn w-11 h-11 rounded-full grid place-items-center text-xl bg-white ${erasing ? "!bg-[var(--coral)]" : ""}`}
-              aria-label="Eraser"
+              aria-pressed={erasing}
+              aria-label={erasing ? "Eraser is on. Turn it off." : "Turn on the eraser"}
+              className={`sticker-btn btn-icon ${erasing ? "bg-coral text-white is-on" : "bg-white"}`}
             >
-              🧽
-            </button>
-            <button
-              onClick={() => { setStrokes((p) => p.slice(0, -1)); sfxPop(); }}
-              disabled={empty}
-              className="sticker-btn w-11 h-11 rounded-full grid place-items-center text-xl bg-white"
-              aria-label="Undo"
-            >
-              ↩️
+              <span aria-hidden="true">🧽</span>
             </button>
           </div>
+
+          <p aria-live="polite" className="visually-hidden">
+            {erasing ? "Eraser on" : "Crayon on"}
+          </p>
         </div>
 
-        {/* magic button */}
-        <button
-          onClick={() => {
-            if (!empty) {
+        {/* ── the event ────────────────────────────────────────────────── */}
+        <div className="stage-go">
+          <button
+            onClick={() => {
+              if (empty) return;
               sfxPop();
               if ("vibrate" in navigator) navigator.vibrate(12);
               onDone(strokes);
-            }
-          }}
-          disabled={empty}
-          className={`sticker-btn mt-3 w-full rounded-full py-4 font-display font-extrabold text-2xl text-white tracking-wide ${
-            empty ? "" : "btn-sheen anim-glow-pulse"
-          }`}
-          style={{ background: "linear-gradient(120deg,#8b46c7,#fb66e5 60%,#ffc72c 130%)" }}
-        >
-          ✨ MAKE IT ALIVE! ✨
-        </button>
+            }}
+            disabled={empty}
+            className={`sticker-btn btn-pill btn-hero grad-magic w-full ${empty ? "" : "btn-sheen anim-breathe"}`}
+          >
+            {empty ? (
+              <span className="text-fs-lg">Draw something first ✏️</span>
+            ) : (
+              <>
+                <span aria-hidden="true" className="anim-sparkle">✨</span>
+                MAKE IT ALIVE!
+                <span aria-hidden="true" className="anim-sparkle" style={{ animationDelay: "0.5s" }}>✨</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

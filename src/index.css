@@ -2,8 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   MAGIC PEN — design system
+   ---------------------------------------------------------------------------
+   Everything visual is a token first and a class second. Screens should reach
+   for `.btn-*`, `.card-*`, `.type-*` and `.grad-*` rather than inventing new
+   gradients, radii or shadows inline.
+
+   1. Tokens        colour · type scale · space · radius · elevation · motion
+   2. Base          document, safe areas, focus
+   3. Surfaces      paper, sticker cards, chips
+   4. Controls      buttons, swatches, toggles
+   5. Type          the display/body scale
+   6. Layout        screens, rails, stage grids (portrait ⇄ landscape)
+   7. Motion        keyframes, entrance helpers, reduced-motion policy
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── 1. TOKENS ─────────────────────────────────────────────────────────── */
 @layer base {
   :root {
+    /* shadcn/ui semantic tokens (used by src/components/ui/*) */
     --background: 38 64% 94%;
     --foreground: 276 24% 32%;
     --card: 0 0% 100%;
@@ -25,10 +43,12 @@
     --ring: 268 60% 55%;
     --radius: 1.25rem;
 
-    /* MAGIC PEN brand tokens */
-    --ink: #2d2926;
+    /* ── brand colour ─────────────────────────────────────────────── */
+    --ink: #2d2926;          /* every outline in the app */
+    --ink-soft: #6f645c;     /* secondary text on paper */
     --paper: #fdf3e3;
-    --paper-deep: #f7ede2;
+    --paper-deep: #f4e7d2;
+    --paper-card: #fffdf7;   /* the "sheet" you draw on */
     --plum: #563e79;
     --coral: #ff6b6b;
     --sun: #ffc72c;
@@ -36,9 +56,90 @@
     --sky: #6595f9;
     --pink: #fb66e5;
     --leaf: #84cc16;
+    --focus: #2f6fe4;
+
+    /* the crayon box — one source of truth for the ten drawing colours */
+    --crayon-cherry: #e63b2e;
+    --crayon-orange: #ff7a1a;
+    --crayon-sun: #ffc72c;
+    --crayon-leaf: #3aae3a;
+    --crayon-lagoon: #00c2b9;
+    --crayon-ocean: #2f6fe4;
+    --crayon-grape: #8b46c7;
+    --crayon-candy: #fb66e5;
+    --crayon-cocoa: #7a4a21;
+    --crayon-licorice: #2d2926;
+
+    /* ── brand gradients (named, never re-typed inline) ───────────── */
+    --grad-magic: linear-gradient(122deg, #8b46c7 0%, #fb66e5 55%, #ffc72c 128%);
+    --grad-sea: linear-gradient(130deg, #0f8fd0 0%, #00c2b9 110%);
+    --grad-go: linear-gradient(122deg, #00c2b9 0%, #3aae3a 118%);
+    --grad-sun: linear-gradient(122deg, #ffc72c 0%, #ff7a1a 118%);
+    --grad-berry: linear-gradient(122deg, #fb66e5 0%, #8b46c7 118%);
+    --grad-sky: linear-gradient(160deg, #cfe6ff 0%, #fdf3e3 70%);
+
+    /* ── fluid type scale (vmin-based so landscape phones stay sane) ─ */
+    --fs-2xs: clamp(0.66rem, 1.4vmin + 0.36rem, 0.78rem);
+    --fs-xs:  clamp(0.75rem, 1.6vmin + 0.42rem, 0.88rem);
+    --fs-sm:  clamp(0.84rem, 1.9vmin + 0.46rem, 1rem);
+    --fs-md:  clamp(0.95rem, 2.2vmin + 0.5rem, 1.15rem);
+    --fs-lg:  clamp(1.05rem, 2.6vmin + 0.55rem, 1.35rem);
+    --fs-xl:  clamp(1.18rem, 3.1vmin + 0.6rem, 1.6rem);
+    --fs-2xl: clamp(1.35rem, 3.9vmin + 0.64rem, 2rem);
+    --fs-3xl: clamp(1.65rem, 5vmin + 0.7rem, 2.6rem);
+    --fs-4xl: clamp(2rem, 6.8vmin + 0.74rem, 3.4rem);
+
+    /* ── space scale ──────────────────────────────────────────────── */
+    --sp-1: 0.25rem;
+    --sp-2: 0.5rem;
+    --sp-3: 0.75rem;
+    --sp-4: 1rem;
+    --sp-5: 1.5rem;
+    --sp-6: 2rem;
+    --sp-7: 3rem;
+    --gutter: clamp(0.85rem, 3.6vw, 1.5rem);
+
+    /* ── touch ergonomics ─────────────────────────────────────────── */
+    --tap: 48px;             /* absolute floor for any interactive target */
+    --tap-lg: 56px;
+    --tap-hero: 64px;
+
+    /* ── safe areas ───────────────────────────────────────────────── */
+    --safe-t: env(safe-area-inset-top, 0px);
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-l: env(safe-area-inset-left, 0px);
+    --safe-r: env(safe-area-inset-right, 0px);
+
+    /* ── radius scale ─────────────────────────────────────────────── */
+    --r-sm: 0.75rem;
+    --r-md: 1.125rem;
+    --r-lg: 1.625rem;
+    --r-xl: 2.125rem;
+    --r-pill: 999px;
+
+    /* ── elevation: hard "sticker" lift + soft ambient ────────────── */
+    --el-0: 0 1px 0 var(--ink);
+    --el-1: 0 3px 0 var(--ink);
+    --el-2: 0 5px 0 var(--ink);
+    --el-3: 0 7px 0 var(--ink);
+    --soft-1: 0 3px 8px rgba(45, 41, 38, 0.10);
+    --soft-2: 0 10px 24px rgba(45, 41, 38, 0.18);
+    --soft-3: 0 18px 44px rgba(45, 41, 38, 0.26);
+    --ring-white: 0 0 0 4px #fff, 0 0 0 7px var(--ink);
+
+    /* ── motion ───────────────────────────────────────────────────── */
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --dur-1: 120ms;   /* press feedback */
+    --dur-2: 240ms;   /* control state change */
+    --dur-3: 420ms;   /* element entrance */
+    --dur-4: 640ms;   /* screen entrance */
+    --stagger: 70ms;
   }
 }
 
+/* ─── 2. BASE ───────────────────────────────────────────────────────────── */
 @layer base {
   * {
     @apply border-border;
@@ -49,6 +150,7 @@
   }
   body {
     font-family: "Nunito", ui-rounded, system-ui, sans-serif;
+    font-size: var(--fs-md);
     background: var(--paper);
     color: var(--plum);
     -webkit-font-smoothing: antialiased;
@@ -58,49 +160,401 @@
   }
   .font-display {
     font-family: "Baloo 2", "Nunito", ui-rounded, system-ui, sans-serif;
+    letter-spacing: -0.01em;
+  }
+
+  /* A focus ring that survives the sticker treatment: white gap + blue ring,
+     drawn with box-shadow so it follows any border-radius. */
+  :where(button, [role="button"], a, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 3px solid var(--focus);
+    outline-offset: 3px;
   }
 }
 
-/* ── paper grain texture ─────────────────────────────────────────────── */
-.paper-grain {
-  background-color: var(--paper);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+@layer components {
+  /* Declared in the `components` layer on purpose: Tailwind utilities are
+     emitted after it, so `text-white`, `text-fs-md` etc. can still win. */
+
+  /* ─── 3. SURFACES ───────────────────────────────────────────────────────── */
+
+  /* warm paper with grain + a soft light from above */
+  .paper-grain {
+    background-color: var(--paper);
+    background-image:
+      radial-gradient(120% 70% at 50% -10%, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0) 60%),
+      radial-gradient(100% 60% at 50% 110%, rgba(244, 231, 210, 0.9), rgba(244, 231, 210, 0) 70%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+  }
+
+  /* faint ruled dots — the "sheet" behind the drawing canvas */
+  .paper-sheet {
+    background-color: var(--paper-card);
+    background-image: radial-gradient(rgba(86, 62, 121, 0.13) 1.4px, transparent 1.5px);
+    background-size: 26px 26px;
+    background-position: 13px 13px;
+  }
+
+  /* sticker card: white outline + ink border (double-stroke depth) */
+  .sticker-card {
+    border: 3px solid var(--ink);
+    box-shadow: var(--ring-white), var(--soft-2);
+    border-radius: var(--r-lg);
+    background-color: #fff;
+  }
+  /* quieter sibling for dense lists — one stroke, no halo */
+  .card-plain {
+    border: 3px solid var(--ink);
+    border-radius: var(--r-md);
+    background-color: #fff;
+    box-shadow: var(--el-1);
+  }
+  .card-dashed {
+    border: 3px dashed rgba(86, 62, 121, 0.4);
+    border-radius: var(--r-md);
+    background-color: rgba(255, 255, 255, 0.5);
+  }
+
+  /* organic blob radius */
+  .blob {
+    border-radius: 58% 42% 55% 45% / 48% 55% 45% 52%;
+  }
+  .blob-2 {
+    border-radius: 42% 58% 48% 52% / 55% 45% 58% 42%;
+  }
+
+  /* small pill label */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    border: 2.5px solid var(--ink);
+    border-radius: var(--r-pill);
+    padding: 0.28em 0.8em;
+    font-size: var(--fs-xs);
+    font-weight: 800;
+    background-color: #fff;
+    color: var(--plum);
+  }
+  .chip-sun { background: var(--sun); color: var(--ink); }
+  .chip-coral { background: var(--coral); color: #fff; }
+  .chip-teal { background: var(--teal); color: #fff; }
+
+  /* named gradient fills */
+  .grad-magic { background-image: var(--grad-magic); }
+  .grad-sea { background-image: var(--grad-sea); }
+  .grad-go { background-image: var(--grad-go); }
+  .grad-sun { background-image: var(--grad-sun); }
+  .grad-berry { background-image: var(--grad-berry); }
+
+  /* ─── 4. CONTROLS ───────────────────────────────────────────────────────── */
+
+  /* the one true button: thick ink border + hard offset shadow */
+  .sticker-btn {
+    position: relative;
+    border: 3px solid var(--ink);
+    box-shadow: var(--el-2);
+    transition: transform var(--dur-1) var(--ease-spring),
+                box-shadow var(--dur-1) ease,
+                background-color var(--dur-2) ease,
+                filter var(--dur-2) ease;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  @media (hover: hover) {
+    .sticker-btn:hover:not(:disabled) { filter: brightness(1.04); }
+  }
+  .sticker-btn:active:not(:disabled) {
+    transform: translateY(4px);
+    box-shadow: var(--el-0);
+  }
+  .sticker-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: var(--el-1);
+  }
+  .sticker-btn:focus-visible {
+    outline: none;
+    box-shadow: var(--el-2), 0 0 0 3px #fff, 0 0 0 7px var(--focus);
+  }
+  .sticker-btn:focus-visible:active:not(:disabled) {
+    box-shadow: var(--el-0), 0 0 0 3px #fff, 0 0 0 7px var(--focus);
+  }
+
+  /* every tappable thing clears 48×48 */
+  .tap {
+    min-width: var(--tap);
+    min-height: var(--tap);
+  }
+  .tap-lg { min-width: var(--tap-lg); min-height: var(--tap-lg); }
+
+  /* round icon button — the default for icon-only actions */
+  .btn-icon {
+    width: var(--tap);
+    height: var(--tap);
+    display: grid;
+    place-items: center;
+    border-radius: var(--r-pill);
+    background-color: #fff;
+    font-size: var(--fs-lg);
+    line-height: 1;
+    flex: none;
+  }
+  .btn-icon-lg { width: var(--tap-lg); height: var(--tap-lg); font-size: var(--fs-xl); }
+
+  /* full-width action */
+  .btn-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45em;
+    min-height: var(--tap-lg);
+    padding: 0.5em 1.15em;
+    border-radius: var(--r-pill);
+    font-family: "Baloo 2", "Nunito", ui-rounded, system-ui, sans-serif;
+    font-weight: 800;
+    font-size: var(--fs-lg);
+    background-color: #fff;
+    color: var(--plum);
+  }
+  .btn-hero {
+    min-height: var(--tap-hero);
+    font-size: var(--fs-2xl);
+    color: #fff;
+    background-image: var(--grad-magic);
+    text-shadow: 0 2px 0 rgba(45, 41, 38, 0.25);
+  }
+
+  /* crayon swatch — 48px, active state uses size + ring + tick, never colour alone */
+  .swatch {
+    position: relative;
+    width: var(--tap);
+    height: var(--tap);
+    border-radius: var(--r-pill);
+    flex: none;
+    transition: transform var(--dur-2) var(--ease-spring), box-shadow var(--dur-1) ease;
+  }
+  .swatch::after {
+    content: "";
+    position: absolute;
+    inset: 5px;
+    border-radius: var(--r-pill);
+    background: linear-gradient(150deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 55%);
+    pointer-events: none;
+  }
+  .swatch[aria-checked="true"] {
+    transform: translateY(-4px) scale(1.1);
+    box-shadow: var(--el-2), inset 0 0 0 3.5px #fff;
+  }
+  .swatch[aria-checked="true"]::before {
+    content: "✓";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: 900;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+    z-index: 1;
+  }
+
+  /* toggle-ish control that is ON */
+  .is-on {
+    box-shadow: var(--el-2), 0 0 0 3px #fff, 0 0 0 6px var(--coral);
+  }
+
+  /* ─── 5. TYPE ───────────────────────────────────────────────────────────── */
+  .type-hero,
+  .type-title,
+  .type-h2,
+  .type-h3 {
+    font-family: "Baloo 2", "Nunito", ui-rounded, system-ui, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.015em;
+    line-height: 1.05;
+    color: var(--ink);
+  }
+  .type-hero { font-size: var(--fs-4xl); }
+  .type-title { font-size: var(--fs-3xl); }
+  .type-h2 { font-size: var(--fs-xl); line-height: 1.15; color: var(--plum); }
+  .type-h3 { font-size: var(--fs-lg); line-height: 1.2; }
+  .type-body {
+    font-size: var(--fs-md);
+    font-weight: 700;
+    line-height: 1.45;
+    color: var(--plum);
+  }
+  .type-label {
+    font-size: var(--fs-sm);
+    font-weight: 800;
+    line-height: 1.3;
+    color: var(--ink-soft);
+  }
+  .type-fine {
+    font-size: var(--fs-2xs);
+    font-weight: 700;
+    line-height: 1.5;
+    color: var(--ink-soft);
+  }
+
+  /* ink outline for display text sitting on colour */
+  .ink-outline {
+    text-shadow:
+      2px 0 0 var(--ink), -2px 0 0 var(--ink), 0 2px 0 var(--ink), 0 -2px 0 var(--ink),
+      1.5px 1.5px 0 var(--ink), -1.5px 1.5px 0 var(--ink), 1.5px -1.5px 0 var(--ink), -1.5px -1.5px 0 var(--ink),
+      0 5px 0 rgba(45, 41, 38, 0.28);
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* ─── 6. LAYOUT ─────────────────────────────────────────────────────────── */
+
+  /* a full-viewport screen that never hides behind a notch or gesture bar */
+  .screen {
+    position: relative;
+    height: 100%;
+    height: 100dvh;
+    padding-left: max(var(--safe-l), 0px);
+    padding-right: max(var(--safe-r), 0px);
+  }
+  .pad-t { padding-top: max(var(--sp-3), var(--safe-t)); }
+  .pad-b { padding-bottom: max(var(--sp-3), var(--safe-b)); }
+  .pad-x { padding-left: var(--gutter); padding-right: var(--gutter); }
+
+  /* horizontally snapping shelf used for creature + world carousels */
+  .shelf {
+    display: flex;
+    gap: var(--sp-3);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scroll-padding-left: var(--gutter);
+    -webkit-overflow-scrolling: touch;
+    padding: var(--sp-2) var(--gutter) var(--sp-4);
+    margin-left: calc(var(--gutter) * -1);
+    margin-right: calc(var(--gutter) * -1);
+  }
+  .shelf > * { scroll-snap-align: start; flex: none; }
+
+  /* ── DrawScreen chrome ── */
+  /* One DOM order, two layouts: the prompt drops to its own line in portrait
+     and sits inline between the controls when the viewport is short. */
+  .topbar {
+    display: grid;
+    grid-template-areas: "nav actions" "prompt prompt";
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--sp-2);
+  }
+  .topbar-nav { grid-area: nav; display: flex; align-items: center; gap: var(--sp-2); }
+  .topbar-actions { grid-area: actions; display: flex; align-items: center; gap: var(--sp-2); }
+  .topbar-prompt { grid-area: prompt; min-width: 0; }
+
+  .toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    height: 100%;
+    min-height: 0;
+  }
+  .crayon-rail {
+    display: flex;
+    gap: var(--sp-2);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x proximity;
+    padding: var(--sp-1) var(--sp-1) var(--sp-2);
+  }
+  .crayon-rail > * { scroll-snap-align: center; }
+  .tool-cluster {
+    display: flex;
+    gap: var(--sp-2);
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* ── DrawScreen stage: portrait stack ⇄ landscape rail ── */
+  .stage-grid {
+    display: grid;
+    height: 100%;
+    min-height: 0;
+    gap: var(--sp-2);
+    grid-template-areas: "top" "canvas" "tools" "go";
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .stage-top { grid-area: top; min-width: 0; }
+  .stage-canvas { grid-area: canvas; min-height: 0; min-width: 0; }
+  .stage-tools { grid-area: tools; min-width: 0; }
+  .stage-go { grid-area: go; min-width: 0; }
+
+  /* ── MagicReveal: portrait stack ⇄ landscape split ── */
+  .reveal-grid {
+    display: grid;
+    height: 100%;
+    min-height: 0;
+    gap: var(--sp-2);
+    grid-template-areas: "head" "stage" "panel";
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .reveal-head { grid-area: head; min-width: 0; }
+  .reveal-stage { grid-area: stage; min-height: 0; min-width: 0; }
+  .reveal-panel { grid-area: panel; min-width: 0; }
+
+  @media (orientation: landscape) and (max-height: 560px) {
+    /* tools become a left rail; the canvas keeps the height it needs */
+    .stage-grid {
+      grid-template-areas: "tools top" "tools canvas" "tools go";
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar .crayon-rail {
+      display: grid;
+      grid-template-columns: repeat(2, var(--tap));
+      overflow-x: hidden;
+      overflow-y: auto;
+      min-height: 0;
+      flex: 1 1 auto;
+      padding: var(--sp-1);
+    }
+    .toolbar .tool-cluster {
+      display: grid;
+      grid-template-columns: repeat(2, var(--tap));
+    }
+
+    /* reveal: drawing on the left, decision panel on the right */
+    .reveal-grid {
+      grid-template-areas: "head head" "stage panel";
+      grid-template-columns: minmax(0, 1fr) minmax(0, 20rem);
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+    .topbar {
+      grid-template-areas: "nav prompt actions";
+      grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+    .stage-go .btn-hero { min-height: var(--tap-lg); font-size: var(--fs-xl); }
+
+    .reveal-panel { overflow-y: auto; align-self: stretch; }
+    .land-hide { display: none !important; }
+  }
+
+  .canvas-touch { touch-action: none; }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 }
 
-/* ── sticker button: thick ink border + hard offset shadow ───────────── */
-.sticker-btn {
-  position: relative;
-  border: 3px solid var(--ink);
-  box-shadow: 0 5px 0 var(--ink);
-  transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.12s;
-  cursor: pointer;
-}
-.sticker-btn:active {
-  transform: translateY(4px);
-  box-shadow: 0 1px 0 var(--ink);
-}
-.sticker-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* organic blob radius */
-.blob {
-  border-radius: 58% 42% 55% 45% / 48% 55% 45% 52%;
-}
-.blob-2 {
-  border-radius: 42% 58% 48% 52% / 55% 45% 58% 42%;
-}
-
-/* sticker card with white outline + ink border (double-stroke depth) */
-.sticker-card {
-  border: 3px solid var(--ink);
-  box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--ink), 0 10px 24px rgba(45, 41, 38, 0.18);
-  border-radius: 28px;
-  background: #fff;
-}
-
-/* ── keyframe library ────────────────────────────────────────────────── */
+/* ─── 7. MOTION ─────────────────────────────────────────────────────────── */
 @keyframes wiggle {
   0%, 100% { transform: rotate(-6deg) scale(1); }
   50% { transform: rotate(6deg) scale(1.04); }
@@ -119,12 +573,8 @@
   100% { transform: scale(1); opacity: 1; }
 }
 @keyframes sparkle-pulse {
-  0%, 100% { opacity: 0.4; transform: scale(0.8) rotate(0deg); }
+  0%, 100% { opacity: 0.35; transform: scale(0.8) rotate(0deg); }
   50% { opacity: 1; transform: scale(1.15) rotate(20deg); }
-}
-@keyframes shimmer-sweep {
-  0% { transform: translateX(-120%) skewX(-18deg); }
-  100% { transform: translateX(240%) skewX(-18deg); }
 }
 @keyframes ray-spin {
   from { transform: rotate(0deg); }
@@ -139,11 +589,20 @@
   from { transform: translateY(26px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+@keyframes rise-in-sm {
+  from { transform: translateY(12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
 @keyframes letter-bounce {
   0% { transform: translateY(0) rotate(0deg); }
   30% { transform: translateY(-14px) rotate(-5deg); }
   60% { transform: translateY(2px) rotate(2deg); }
   100% { transform: translateY(0) rotate(0deg); }
+}
+@keyframes letter-drop {
+  0% { transform: translateY(-70px) rotate(var(--tilt, 0deg)) scale(0.6); opacity: 0; }
+  62% { transform: translateY(6px) rotate(var(--tilt, 0deg)) scale(1.06); opacity: 1; }
+  100% { transform: translateY(0) rotate(var(--tilt, 0deg)) scale(1); opacity: 1; }
 }
 @keyframes sheen-slide {
   0% { transform: translateX(-160%) skewX(-20deg); }
@@ -153,43 +612,74 @@
   0%, 100% { filter: drop-shadow(0 0 0px rgba(251, 102, 229, 0)); }
   50% { filter: drop-shadow(0 0 14px rgba(251, 102, 229, 0.65)); }
 }
+@keyframes breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.035); }
+}
 @keyframes confetti-pop {
   0% { transform: translate(0, 0) rotate(0deg) scale(0.4); opacity: 1; }
   70% { opacity: 1; }
   100% { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(1); opacity: 0; }
 }
+@keyframes burst-ring {
+  0% { transform: scale(0.2); opacity: 0.9; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
 @keyframes screen-rise {
-  from { transform: translateY(4%) scale(0.985); opacity: 0; }
+  from { transform: translateY(3.5%) scale(0.985); opacity: 0; }
   to { transform: translateY(0) scale(1); opacity: 1; }
 }
 @keyframes screen-fade {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from { opacity: 0; transform: scale(0.995); }
+  to { opacity: 1; transform: scale(1); }
 }
 @keyframes screen-dive {
-  0% { opacity: 0; transform: scale(1.06); }
+  0% { opacity: 0; transform: scale(1.07); }
   100% { opacity: 1; transform: scale(1); }
 }
 @keyframes halo-ring {
-  0%, 100% { box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--ink), 0 10px 24px rgba(45,41,38,0.18); }
-  50% { box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--ink), 0 0 34px 6px rgba(255, 199, 44, 0.75); }
+  0%, 100% { box-shadow: var(--ring-white), var(--soft-2); }
+  50% { box-shadow: var(--ring-white), 0 0 34px 8px rgba(255, 199, 44, 0.8); }
 }
 @keyframes bob-tilt {
   0%, 100% { transform: rotate(-2.5deg); }
   50% { transform: rotate(2.5deg); }
 }
+@keyframes scan-dots {
+  0%, 20% { opacity: 0.2; }
+  50% { opacity: 1; }
+  80%, 100% { opacity: 0.2; }
+}
 
-.anim-wiggle { animation: wiggle 2.2s ease-in-out infinite; }
-.anim-bounce-soft { animation: bounce-soft 2.6s ease-in-out infinite; }
-.anim-float-y { animation: float-y 4.5s ease-in-out infinite; }
-.anim-pop-in { animation: pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
-.anim-spring-pop { animation: spring-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
-.anim-rise-in { animation: rise-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.anim-sparkle { animation: sparkle-pulse 1.4s ease-in-out infinite; }
-.anim-letter { display: inline-block; animation: letter-bounce 2.8s ease-in-out infinite; }
-.anim-glow-pulse { animation: glow-pulse 1.6s ease-in-out infinite; }
-.anim-halo { animation: halo-ring 1.8s ease-in-out infinite; }
-.anim-bob-tilt { animation: bob-tilt 3.4s ease-in-out infinite; }
+/* looping ambience */
+.anim-wiggle { animation: wiggle 2.2s var(--ease-in-out) infinite; }
+.anim-bounce-soft { animation: bounce-soft 2.6s var(--ease-in-out) infinite; }
+.anim-float-y { animation: float-y 4.5s var(--ease-in-out) infinite; }
+.anim-sparkle { animation: sparkle-pulse 1.4s var(--ease-in-out) infinite; }
+.anim-letter { display: inline-block; animation: letter-bounce 2.8s var(--ease-in-out) infinite; }
+.anim-glow-pulse { animation: glow-pulse 1.6s var(--ease-in-out) infinite; }
+.anim-halo { animation: halo-ring 1.8s var(--ease-in-out) infinite; }
+.anim-bob-tilt { animation: bob-tilt 3.4s var(--ease-in-out) infinite; }
+.anim-breathe { animation: breathe 2.4s var(--ease-in-out) infinite; }
+.anim-spin-slow { animation: ray-spin 18s linear infinite; }
+
+/* entrances — `--i` on the element stages the delay */
+.anim-pop-in { animation: pop-in var(--dur-3) var(--ease-spring) both; }
+.anim-spring-pop { animation: spring-pop var(--dur-4) var(--ease-spring) both; }
+.anim-rise-in { animation: rise-in var(--dur-4) var(--ease-out) both; }
+.enter {
+  animation: rise-in-sm var(--dur-3) var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+.enter-pop {
+  animation: spring-pop var(--dur-4) var(--ease-spring) both;
+  animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+.anim-letter-drop {
+  display: inline-block;
+  animation: letter-drop 620ms var(--ease-spring) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
 
 /* sheen sweep for hero buttons */
 .btn-sheen { position: relative; overflow: hidden; }
@@ -201,14 +691,14 @@
   width: 34%;
   left: 0;
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
-  animation: sheen-slide 2.8s ease-in-out infinite;
+  animation: sheen-slide 2.8s var(--ease-in-out) infinite;
   pointer-events: none;
 }
 
-/* screen transitions */
-.screen-enter-rise { animation: screen-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.screen-enter-fade { animation: screen-fade 0.4s ease-out both; }
-.screen-enter-dive { animation: screen-dive 0.65s cubic-bezier(0.22, 1, 0.36, 1) both; }
+/* screen transitions (class chosen by App.tsx state machine) */
+.screen-enter-rise { animation: screen-rise var(--dur-4) var(--ease-out) both; }
+.screen-enter-fade { animation: screen-fade var(--dur-3) var(--ease-out) both; }
+.screen-enter-dive { animation: screen-dive 0.65s var(--ease-out) both; }
 
 /* confetti particle */
 .confetti-p {
@@ -216,17 +706,53 @@
   animation: confetti-pop 1.15s cubic-bezier(0.15, 0.8, 0.4, 1) forwards;
   pointer-events: none;
 }
+.burst-ring {
+  position: absolute;
+  border-radius: 999px;
+  border: 6px solid rgba(255, 199, 44, 0.85);
+  animation: burst-ring 900ms var(--ease-out) forwards;
+  pointer-events: none;
+}
 
-/* smooth hover lift for cards on pointer devices */
 @media (hover: hover) {
-  .hover-lift { transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  .hover-lift { transition: transform var(--dur-2) var(--ease-spring); }
   .hover-lift:hover { transform: translateY(-6px) rotate(-0.5deg); }
 }
 
-.canvas-touch {
-  touch-action: none;
+/* ── reduced motion: no loops, no drift — entrances become a soft fade ──── */
+@media (prefers-reduced-motion: reduce) {
+  .anim-wiggle,
+  .anim-bounce-soft,
+  .anim-float-y,
+  .anim-sparkle,
+  .anim-letter,
+  .anim-glow-pulse,
+  .anim-halo,
+  .anim-bob-tilt,
+  .anim-breathe,
+  .anim-spin-slow {
+    animation: none !important;
+  }
+  .btn-sheen::after,
+  .confetti-p,
+  .burst-ring {
+    display: none !important;
+  }
+  .anim-pop-in,
+  .anim-spring-pop,
+  .anim-rise-in,
+  .anim-letter-drop,
+  .enter,
+  .enter-pop,
+  .screen-enter-rise,
+  .screen-enter-fade,
+  .screen-enter-dive {
+    animation-name: screen-fade !important;
+    animation-duration: 220ms !important;
+    animation-timing-function: ease !important;
+    animation-delay: 0ms !important;
+  }
+  .hover-lift:hover { transform: none; }
+  .swatch[aria-checked="true"] { transform: scale(1.06); }
+  * { scroll-behavior: auto !important; }
 }
-
-/* fat rounded scrollbar-free layouts */
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
