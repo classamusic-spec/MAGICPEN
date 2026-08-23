@@ -372,6 +372,588 @@ function paintArrow(ctx: CanvasRenderingContext2D, pts: Pt[], size: number) {
   ctx.restore();
 }
 
+/* ── the letter comes alive ──────────────────────────────────────────────────
+   The moment a target is finished, the child's own crayon gets up and does the
+   one thing only that character would do — S slithers, T spins its crossbar,
+   8 cartwheels — and then settles back exactly where it was drawn.
+
+   Every act is a pure function of time across one short beat, written in the
+   glyph's own 100×140 space so the same numbers mean the same thing on a phone
+   and on a tablet, and every act is the *identity* at t=0 and t=1 — which is
+   what makes the settle seamless and makes a torn-down animation harmless.
+
+   Nothing in here touches `boxRef`, the strokes the scorer saw, or any state.
+   The score is already in by the time a letter comes alive: this is only paint. */
+
+/** One stroke of the child's ink, in glyph space. */
+type LifeStroke = { color: string; size: number; pts: Pt[] };
+
+/** The ink's own bounds — pivots come from what the child drew, not the ideal. */
+interface LifeBox {
+  x0: number; y0: number; x1: number; y1: number;
+  cx: number; cy: number; w: number; h: number;
+}
+
+interface LifeCtx {
+  /** 0…1 through the beat. */
+  t: number;
+  bb: LifeBox;
+  /** The edges of the sheet, in glyph units — so a letter that runs, rolls or
+   *  hops stays on the paper on a 320px phone and uses the room a tablet has. */
+  room: { x0: number; x1: number; y0: number; y1: number };
+}
+
+/** Take the ink and give it back moved. May return extra strokes (I's dot). */
+type Act = (src: LifeStroke[], c: LifeCtx) => LifeStroke[];
+
+const cl01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const cl11 = (v: number) => (v < -1 ? -1 : v > 1 ? 1 : v);
+
+/** Smoothstep from a to b — and b may be *below* a, for a falling ramp. */
+function smooth(a: number, b: number, v: number): number {
+  const u = cl01((v - a) / ((b - a) || 1e-6));
+  return u * u * (3 - 2 * u);
+}
+/** 0 → 1 → 0 across the beat. The workhorse: guarantees a clean start and end. */
+const bell = (t: number) => Math.sin(Math.PI * cl01(t));
+/** Like `bell` but flat-topped — an envelope for something that oscillates. */
+const hold = (t: number) => Math.pow(Math.sin(Math.PI * cl01(t)), 0.55);
+/** Ease in and out, 0…1 — for spins that must land on a whole turn. */
+const ease = (t: number) => { const u = cl01(t); return u * u * (3 - 2 * u); };
+
+function rotP(p: Pt, c: Pt, a: number): Pt {
+  if (!a) return p;
+  const s = Math.sin(a);
+  const k = Math.cos(a);
+  const dx = p.x - c.x;
+  const dy = p.y - c.y;
+  return { x: c.x + dx * k - dy * s, y: c.y + dx * s + dy * k };
+}
+const scaleP = (p: Pt, c: Pt, sx: number, sy: number): Pt => ({
+  x: c.x + (p.x - c.x) * sx,
+  y: c.y + (p.y - c.y) * sy,
+});
+
+/** Move every point of every stroke. */
+const move = (s: LifeStroke[], f: (p: Pt) => Pt): LifeStroke[] =>
+  s.map((k) => ({ color: k.color, size: k.size, pts: k.pts.map(f) }));
+
+/** Move every point, told where it sits along its own stroke and which way is
+ *  sideways there — for waves that travel along a letter's path. */
+const along = (
+  s: LifeStroke[],
+  f: (p: Pt, u: number, nx: number, ny: number) => Pt,
+): LifeStroke[] =>
+  s.map((k) => {
+    const n = k.pts.length;
+    return {
+      color: k.color,
+      size: k.size,
+      pts: k.pts.map((p, i) => {
+        const a = k.pts[Math.max(0, i - 1)];
+        const b = k.pts[Math.min(n - 1, i + 1)];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy) || 1;
+        return f(p, n > 1 ? i / (n - 1) : 0, -dy / d, dx / d);
+      }),
+    };
+  });
+
+function lifeBounds(src: LifeStroke[]): LifeBox {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const s of src) {
+    for (const p of s.pts) {
+      if (p.x < x0) x0 = p.x;
+      if (p.y < y0) y0 = p.y;
+      if (p.x > x1) x1 = p.x;
+      if (p.y > y1) y1 = p.y;
+    }
+  }
+  if (!isFinite(x0)) return { x0: 0, y0: 0, x1: 100, y1: 140, cx: 50, cy: 70, w: 100, h: 140 };
+  const w = Math.max(6, x1 - x0);
+  const h = Math.max(6, y1 - y0);
+  return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w, h };
+}
+
+/** Where a letter sits, 0…1, so an act can say "only the arms" or "only the
+ *  foot" without caring how the child happened to split their strokes. */
+const vy = (p: Pt, b: LifeBox) => (p.y - b.y0) / b.h;
+const vx = (p: Pt, b: LifeBox) => (p.x - b.x0) / b.w;
+
+/** As much of the wanted travel as the sheet actually has room for. */
+const goRight = (c: LifeCtx, want: number) => Math.max(0, Math.min(want, c.room.x1 - c.bb.x1));
+const goUp = (c: LifeCtx, want: number) => Math.max(0, Math.min(want, c.bb.y0 - c.room.y0));
+
+/* ── the roster ───────────────────────────────────────────────────────────
+   26 letters and 10 digits. Each one is about its own shape: a hinge where
+   the letter has a joint, a wave along the path the letter actually takes,
+   a pivot on the point it would really balance on. */
+
+const ACTS: Record<string, Act> = {
+  /* A — pitches its roof up like a tent: crouches wide, then springs tall. */
+  A: (s, c) => {
+    const crouch = smooth(0, 0.3, c.t) - smooth(0.26, 0.6, c.t);
+    const rise = smooth(0.3, 0.62, c.t) - smooth(0.6, 1, c.t);
+    const base = { x: c.bb.cx, y: c.bb.y1 };
+    const sx = 1 + 0.22 * crouch - 0.11 * rise;
+    const sy = 1 - 0.3 * crouch + 0.18 * rise;
+    return move(s, (p) => scaleP(p, base, sx, sy));
+  },
+
+  /* B — bounces on its flat back, squashing as it lands. */
+  B: (s, c) => {
+    const air = Math.abs(Math.sin(Math.PI * 2 * c.t));
+    const g = hold(c.t);
+    const land = Math.pow(1 - air, 3) * g;
+    const base = { x: c.bb.cx, y: c.bb.y1 };
+    const lift = -goUp(c, c.bb.h * 0.2) * air * g;
+    return move(s, (p) => {
+      const q = scaleP(p, base, 1 + 0.16 * land - 0.06 * air * g, 1 - 0.18 * land + 0.08 * air * g);
+      return { x: q.x, y: q.y + lift };
+    });
+  },
+
+  /* C — chomps: the open side is a mouth, hinged at the back of the curve. */
+  C: (s, c) => {
+    const a = -0.36 * Math.sin(Math.PI * 3 * c.t); // open, snap shut, open, rest
+    const hinge = { x: c.bb.x0, y: c.bb.cy };
+    const lunge = 3 * bell(c.t);
+    return move(s, (p) => {
+      const jaw = smooth(0.05, 0.5, vx(p, c.bb));
+      const side = cl11((p.y - c.bb.cy) / (c.bb.h * 0.26));
+      const q = rotP(p, hinge, a * jaw * side);
+      return { x: q.x + lunge, y: q.y };
+    });
+  },
+
+  /* D — a door: the bowl swings open on the spine and shuts again. */
+  D: (s, c) => {
+    const open = bell(c.t);
+    const spine = c.bb.x0 + c.bb.w * 0.14;
+    return move(s, (p) => {
+      const w = smooth(0, 0.22, (p.x - spine) / c.bb.w);
+      const k = 1 - 0.6 * open * w;
+      return { x: spine + (p.x - spine) * k, y: p.y };
+    });
+  },
+
+  /* E — its three arms shoot out and back in turn, top one leading. */
+  E: (s, c) => {
+    const g = hold(c.t);
+    const spine = c.bb.x0 + c.bb.w * 0.12;
+    return move(s, (p) => {
+      const w = smooth(0.02, 0.34, (p.x - spine) / c.bb.w);
+      const ph = Math.PI * 2 * (c.t * 1.7 - vy(p, c.bb) * 0.42);
+      return { x: p.x + 7 * w * g * Math.sin(ph), y: p.y + 2.4 * w * g * Math.cos(ph) };
+    });
+  },
+
+  /* F — a flag: the arms ripple away from the pole, the stem holds still. */
+  F: (s, c) => {
+    const g = hold(c.t);
+    const spine = c.bb.x0 + c.bb.w * 0.12;
+    return move(s, (p) => {
+      const u = cl01((p.x - spine) / (c.bb.w * 0.88));
+      return { x: p.x, y: p.y + 8 * u * u * g * Math.sin(Math.PI * 2 * (u * 1.15 - c.t * 2.6)) };
+    });
+  },
+
+  /* G — the spiral winds itself up and springs open again. */
+  G: (s, c) => {
+    const a = bell(c.t);
+    const cn = { x: c.bb.cx, y: c.bb.cy };
+    const rmax = Math.max(1, Math.hypot(c.bb.w, c.bb.h) / 2);
+    return move(s, (p) => {
+      const r = Math.hypot(p.x - cn.x, p.y - cn.y) / rmax;
+      const k = 1 - 0.14 * a;
+      return scaleP(rotP(p, cn, 0.8 * a * r), cn, k, k);
+    });
+  },
+
+  /* H — the crossbar is a trampoline: it sags, then twangs back. */
+  H: (s, c) => {
+    const drop = 9 * Math.sin(Math.PI * 2 * c.t) * (1 - 0.4 * c.t);
+    const bar = c.bb.y0 + c.bb.h * 0.5;
+    return move(s, (p) => {
+      const near = 1 - smooth(0, c.bb.h * 0.2, Math.abs(p.y - bar));
+      const mid = 1 - smooth(c.bb.w * 0.16, c.bb.w * 0.42, Math.abs(p.x - c.bb.cx));
+      return { x: p.x, y: p.y + drop * near * mid };
+    });
+  },
+
+  /* I — hops, and dots itself on the way down. */
+  I: (s, c) => {
+    const air = Math.abs(Math.sin(Math.PI * 2 * c.t));
+    const g = hold(c.t);
+    const land = Math.pow(1 - air, 3) * g;
+    const lift = -goUp(c, c.bb.h * 0.2) * air;
+    const foot = { x: c.bb.cx, y: c.bb.y1 };
+    const lean = 0.12 * Math.sin(Math.PI * 4 * c.t) * g; // leans into each hop
+    const out = move(s, (p) => {
+      const q = scaleP(p, foot, 1 + 0.3 * land - 0.1 * air * g, 1 - 0.16 * land + 0.08 * air * g);
+      const r = rotP(q, foot, lean);
+      return { x: r.x, y: r.y + lift };
+    });
+    const first = out[0];
+    if (first) {
+      const fall = Math.pow(1 - cl01(c.t * 1.9), 2);
+      const r = first.size * 1.25 * (1 - smooth(0.78, 1, c.t));
+      const rest = c.bb.y0 - goUp(c, c.bb.h * 0.12);
+      if (r > 0.6) {
+        out.push({
+          color: first.color,
+          size: r,
+          pts: [{ x: c.bb.cx, y: rest - fall * (rest - c.room.y0) + lift }],
+        });
+      }
+    }
+    return out;
+  },
+
+  /* J — hangs off its own top and swings like a hook. */
+  J: (s, c) => {
+    const piv = { x: c.bb.x1, y: c.bb.y0 };
+    const a = 0.22 * Math.sin(Math.PI * 3 * c.t) * (1 - c.t);
+    return move(s, (p) => rotP(p, piv, a));
+  },
+
+  /* K — kicks: the low diagonal swings up from the joint, twice. */
+  K: (s, c) => {
+    const joint = { x: c.bb.x0 + c.bb.w * 0.08, y: c.bb.cy };
+    const a = -0.5 * Math.abs(Math.sin(Math.PI * 2 * c.t));
+    return move(s, (p) => {
+      const w = smooth(0.06, 0.4, vx(p, c.bb)) * smooth(0.48, 0.62, vy(p, c.bb));
+      return rotP(p, joint, a * w);
+    });
+  },
+
+  /* L — lifts its toe and stamps, and the stem shivers with the bang. */
+  L: (s, c) => {
+    const up = smooth(0, 0.42, c.t) - smooth(0.42, 0.56, c.t);
+    const after = cl01((c.t - 0.56) / 0.44);
+    const ring = c.t > 0.56 ? Math.sin(Math.PI * 8 * (c.t - 0.56)) * (1 - after) : 0;
+    const corner = { x: c.bb.x0, y: c.bb.y1 };
+    return move(s, (p) => {
+      const foot = smooth(0.66, 0.92, vy(p, c.bb));
+      const q = rotP(p, corner, -0.34 * up * foot);
+      return { x: q.x + ring * 2.2 * (1 - foot), y: q.y + ring * 1.1 * foot };
+    });
+  },
+
+  /* M — a wave rolls through it, left to right. */
+  M: (s, c) => {
+    const g = hold(c.t);
+    return move(s, (p) => ({
+      x: p.x,
+      y: p.y + 7 * g * Math.sin(Math.PI * 2 * (vx(p, c.bb) * 1.25 - c.t * 2)),
+    }));
+  },
+
+  /* N — a concertina: the zigzag squeezes shut, then springs wide. */
+  N: (s, c) => {
+    const k = -0.15 * Math.sin(Math.PI * 2 * c.t);
+    const cn = { x: c.bb.cx, y: c.bb.cy };
+    return move(s, (p) => scaleP(p, cn, 1 + k, 1 - 0.5 * k));
+  },
+
+  /* O — rolls away and rolls back, turning exactly as far as it travels. */
+  O: (s, c) => {
+    const r = Math.max(6, c.bb.w / 2);
+    const dx = Math.sin(Math.PI * c.t) * goRight(c, c.bb.w * 0.66);
+    const bump = bell(cl01((c.t - 0.34) / 0.32));
+    const cn = { x: c.bb.cx, y: c.bb.cy };
+    return move(s, (p) => {
+      const q = scaleP(rotP(p, cn, dx / r), cn, 1 - 0.1 * bump, 1 + 0.07 * bump);
+      return { x: q.x + dx, y: q.y };
+    });
+  },
+
+  /* P — its head puffs up like a balloon on a stick. */
+  P: (s, c) => {
+    const puff = bell(c.t);
+    const bowl = { x: c.bb.x0 + c.bb.w * 0.48, y: c.bb.y0 + c.bb.h * 0.24 };
+    return move(s, (p) => {
+      const w = smooth(0.52, 0.1, vy(p, c.bb));
+      const k = 1 + 0.24 * puff * w;
+      const q = scaleP(p, bowl, k, k);
+      return { x: q.x, y: q.y - 2.5 * puff * w };
+    });
+  },
+
+  /* Q — sits still and wags its tail. */
+  Q: (s, c) => {
+    const g = hold(c.t);
+    const wag = 0.5 * Math.sin(Math.PI * 5 * c.t) * g;
+    const piv = { x: c.bb.x0 + c.bb.w * 0.6, y: c.bb.y0 + c.bb.h * 0.72 };
+    const bob = -c.bb.h * 0.03 * Math.abs(Math.sin(Math.PI * 5 * c.t)) * g;
+    return move(s, (p) => {
+      const w = smooth(0.5, 0.82, vx(p, c.bb)) * smooth(0.6, 0.84, vy(p, c.bb));
+      const q = rotP(p, piv, wag * w);
+      return { x: q.x, y: q.y + bob };
+    });
+  },
+
+  /* R — strides: the leg swings through and the body bobs with the step. */
+  R: (s, c) => {
+    const swing = Math.sin(Math.PI * 2 * c.t);
+    const joint = { x: c.bb.x0 + c.bb.w * 0.18, y: c.bb.y0 + c.bb.h * 0.45 };
+    const bob = -c.bb.h * 0.06 * Math.abs(swing);
+    return move(s, (p) => {
+      const w = smooth(0.2, 0.55, vx(p, c.bb)) * smooth(0.46, 0.62, vy(p, c.bb));
+      const q = rotP(p, joint, 0.38 * swing * w);
+      return { x: q.x, y: q.y + bob };
+    });
+  },
+
+  /* S — a snake: a wave travels down the letter's own path, and it slides. */
+  S: (s, c) => {
+    const amp = 9 * bell(c.t);
+    const slide = 3.5 * Math.sin(Math.PI * 2 * c.t) * (1 - c.t);
+    return along(s, (p, u, nx, ny) => {
+      const w = Math.sin(Math.PI * 2 * (u * 1.5 - c.t * 2.2));
+      return { x: p.x + nx * amp * w + slide, y: p.y + ny * amp * w };
+    });
+  },
+
+  /* T — hovers, spinning its crossbar like a propeller. Two whole turns, so
+     it lands facing exactly the way the child drew it. */
+  T: (s, c) => {
+    const a = Math.PI * 4 * ease(c.t);
+    const piv = { x: c.bb.cx, y: c.bb.y0 };
+    const lift = -goUp(c, c.bb.h * 0.08) * bell(c.t);
+    const chord = 1 - 0.34 * bell(c.t); // the blade foreshortens as it turns
+    return move(s, (p) => {
+      const w = smooth(0.05, 0.15, Math.abs(p.x - c.bb.cx) / c.bb.w) * smooth(0.34, 0.16, vy(p, c.bb));
+      const k = 1 - (1 - chord) * w;
+      const q = rotP(scaleP(p, piv, k, k), piv, a * w);
+      return { x: q.x, y: q.y + lift };
+    });
+  },
+
+  /* U — a cup rocking on its round bottom. */
+  U: (s, c) => {
+    const a = 0.2 * Math.sin(Math.PI * 3 * c.t) * (1 - c.t);
+    const piv = { x: c.bb.cx, y: c.bb.y1 };
+    return move(s, (p) => {
+      const q = rotP(p, piv, a);
+      return { x: q.x - a * c.bb.w * 0.32, y: q.y };
+    });
+  },
+
+  /* V — a beak: it snaps shut on the point it stands on, then opens again.
+     Wide open is what the child drew, so the snap is the half that moves. */
+  V: (s, c) => {
+    const k = Math.sin(Math.PI * 2 * c.t);
+    const a = k > 0 ? 0.36 * k : 0.14 * k; // snaps shut hard, opens gently
+    const tip = { x: c.bb.cx, y: c.bb.y1 };
+    return move(s, (p) => {
+      const side = cl11((p.x - c.bb.cx) / (c.bb.w * 0.22));
+      return rotP(p, tip, -a * side);
+    });
+  },
+
+  /* W — the deeper water: a bigger, slower swell running the other way. */
+  W: (s, c) => {
+    const g = hold(c.t);
+    const sway = 3 * Math.sin(Math.PI * 2 * c.t) * g;
+    return move(s, (p) => ({
+      x: p.x + sway,
+      y: p.y + 9 * g * Math.sin(Math.PI * 2 * (vx(p, c.bb) * 2.1 + c.t * 1.6)),
+    }));
+  },
+
+  /* X — scissors: both pairs of arms pinch together and open again. */
+  X: (s, c) => {
+    const a = 0.26 * Math.sin(Math.PI * 4 * c.t);
+    const cn = { x: c.bb.cx, y: c.bb.cy };
+    return move(s, (p) =>
+      rotP(p, cn, a * cl11((p.x - cn.x) / (c.bb.w * 0.24)) * cl11((p.y - cn.y) / (c.bb.h * 0.24))),
+    );
+  },
+
+  /* Y — throws both arms up in a cheer, and lifts onto its toes. */
+  Y: (s, c) => {
+    const up = bell(c.t);
+    const joint = { x: c.bb.cx, y: c.bb.y0 + c.bb.h * 0.42 };
+    return move(s, (p) => {
+      const w = smooth(0.44, 0.16, vy(p, c.bb));
+      const side = cl11((p.x - c.bb.cx) / (c.bb.w * 0.2));
+      const q = rotP(p, joint, -0.4 * up * w * side);
+      return { x: q.x, y: q.y - goUp(c, c.bb.h * 0.06) * up };
+    });
+  },
+
+  /* Z — zips off to the right and snaps back, stretching as it goes. */
+  Z: (s, c) => {
+    const g = hold(c.t);
+    const reach = 0.72 * Math.min(goRight(c, c.bb.w * 0.7), Math.max(0, c.bb.x0 - c.room.x0));
+    const dart = Math.sin(Math.PI * 3 * c.t); // out, back past home, out, rest
+    const dx = dart * reach;
+    const speed = Math.cos(Math.PI * 3 * c.t);
+    const stretch = 1 + 0.34 * Math.abs(speed) * g;
+    const lean = speed * g * c.bb.w * 0.15; // the top leans into the run
+    const cn = { x: c.bb.cx, y: c.bb.cy };
+    return move(s, (p) => {
+      const q = scaleP(p, cn, stretch, 1 - 0.1 * (stretch - 1));
+      return { x: q.x + dx + lean * (0.5 - vy(p, c.bb)), y: q.y };
+    });
+  },
+
+  /* 0 — spins on the spot like a coin, edge-on and back. */
+  "0": (s, c) => {
+    const a = Math.PI * 4 * ease(c.t);
+    const k = Math.max(0.1, Math.abs(Math.cos(a)));
+    const cn = { x: c.bb.cx, y: c.bb.cy };
+    return move(s, (p) => scaleP(p, cn, k, 1 + 0.06 * (1 - k)));
+  },
+
+  /* 1 — takes a bow from the waist. */
+  "1": (s, c) => {
+    const bow = smooth(0, 0.42, c.t) - smooth(0.55, 1, c.t);
+    const base = { x: c.bb.cx, y: c.bb.y1 };
+    const lean = Math.min(0.36, (c.room.x1 - c.bb.x1 + 8) / Math.max(20, c.bb.h));
+    return move(s, (p) => {
+      const w = Math.pow(1 - vy(p, c.bb), 1.3);
+      const q = scaleP(rotP(p, base, lean * bow * w), base, 1, 1 - 0.16 * bow * w);
+      return { x: q.x, y: q.y + 2 * bow * w };
+    });
+  },
+
+  /* 2 — a swan: the neck dips down for a drink and lifts again. */
+  "2": (s, c) => {
+    const dip = bell(c.t);
+    const neck = { x: c.bb.cx, y: c.bb.y0 + c.bb.h * 0.55 };
+    return move(s, (p) => {
+      const w = smooth(0.6, 0.1, vy(p, c.bb));
+      const q = rotP(p, neck, Math.min(0.42, (c.room.x1 - c.bb.x1 + 10) / Math.max(20, c.bb.h)) * dip * w);
+      return { x: q.x, y: q.y + 4 * dip * w };
+    });
+  },
+
+  /* 3 — flexes: both bowls bulge out like a strongman, twice. */
+  "3": (s, c) => {
+    const f = Math.abs(Math.sin(Math.PI * 2 * c.t));
+    const cn = { x: c.bb.cx, y: c.bb.cy };
+    return move(s, (p) => {
+      const v = vy(p, c.bb);
+      const top = Math.exp(-Math.pow((v - 0.26) / 0.19, 2));
+      const bot = Math.exp(-Math.pow((v - 0.76) / 0.19, 2));
+      const right = smooth(0.2, 0.62, vx(p, c.bb));
+      const q = scaleP(p, cn, 1, 1 - 0.06 * f);
+      return { x: q.x + (top + bot * 1.15) * right * 8 * f, y: q.y };
+    });
+  },
+
+  /* 4 — winks: the little window under its arm blinks shut and open. */
+  "4": (s, c) => {
+    const shut = Math.abs(Math.sin(Math.PI * 2 * c.t));
+    const bar = c.bb.y0 + c.bb.h * 0.66;
+    const stem = c.bb.x0 + c.bb.w * 0.74;
+    return move(s, (p) => {
+      const w = smooth(0.02, 0.3, (stem - p.x) / c.bb.w);
+      return { x: p.x, y: p.y + 0.62 * shut * w * Math.max(0, bar - p.y) };
+    });
+  },
+
+  /* 5 — its belly bounces like a ball while the flat top holds. */
+  "5": (s, c) => {
+    const k = Math.sin(Math.PI * 2 * c.t);
+    const foot = c.bb.y1;
+    return move(s, (p) => {
+      const w = smooth(0.4, 0.7, vy(p, c.bb));
+      return {
+        x: c.bb.cx + (p.x - c.bb.cx) * (1 + 0.16 * k * w),
+        y: foot + (p.y - foot) * (1 - 0.2 * k * w),
+      };
+    });
+  },
+
+  /* 6 — a fern frond: the tail coils into the loop and unrolls again. Each
+     step bends a shade more than the one before, the way a real curl does. */
+  "6": (s, c) => {
+    const curl = 2.0 * bell(c.t);
+    return s.map((k) => {
+      const n = k.pts.length;
+      const out: Pt[] = new Array(n);
+      out[n - 1] = k.pts[n - 1];
+      let ang = 0;
+      for (let i = n - 2; i >= 0; i--) {
+        ang += (curl * 2 * (1 - i / (n - 1))) / n;
+        const dx = k.pts[i].x - k.pts[i + 1].x;
+        const dy = k.pts[i].y - k.pts[i + 1].y;
+        const co = Math.cos(ang);
+        const si = Math.sin(ang);
+        out[i] = { x: out[i + 1].x + dx * co - dy * si, y: out[i + 1].y + dx * si + dy * co };
+      }
+      return { color: k.color, size: k.size, pts: out };
+    });
+  },
+
+  /* 7 — cracks like a whip, all the snap out at the foot. */
+  "7": (s, c) => {
+    const g = hold(c.t);
+    return along(s, (p, u, nx, ny) => {
+      const amp = 11 * Math.pow(u, 2.2) * g;
+      const w = Math.sin(Math.PI * 2 * (u * 1.1 - c.t * 2.8));
+      return { x: p.x + nx * amp * w, y: p.y + ny * amp * w };
+    });
+  },
+
+  /* 8 — cartwheels: one whole turn, out over the arc and back. */
+  "8": (s, c) => {
+    const a = Math.PI * 2 * ease(c.t);
+    const arc = Math.sin(Math.PI * c.t);
+    const cn = { x: c.bb.cx, y: c.bb.cy };
+    const tuck = 1 - 0.4 * arc; // tucks in mid-air, the way a cartwheel does
+    // turning sideways makes it wider than it stands: spend that width first,
+    // and travel on whatever is left, so a 320px phone still fits the whole turn
+    const bulge = Math.max(0, (Math.hypot(c.bb.w, c.bb.h) * tuck - c.bb.w) / 2);
+    const over = arc * Math.max(0, goRight(c, c.bb.w * 0.55) - bulge);
+    const up = arc * goUp(c, c.bb.h * 0.12);
+    return move(s, (p) => {
+      const q = rotP(scaleP(p, cn, tuck, tuck), cn, a);
+      return { x: q.x + over, y: q.y - up };
+    });
+  },
+
+  /* 9 — a balloon tugging up on its string, swaying as it goes. */
+  "9": (s, c) => {
+    const g = hold(c.t);
+    const sway = 3.4 * Math.sin(Math.PI * 3 * c.t) * g;
+    return move(s, (p) => {
+      const w = smooth(0.9, 0.08, vy(p, c.bb));
+      return { x: p.x + sway * w, y: p.y - goUp(c, c.bb.h * 0.09) * g * w };
+    });
+  },
+};
+
+/** For anything with no act of its own: a short, happy jump. Better a good
+ *  shared moment than a bad bespoke one. */
+const CHEER: Act = (s, c) => {
+  const air = bell(c.t);
+  const g = hold(c.t);
+  const base = { x: c.bb.cx, y: c.bb.y1 };
+  const squash = Math.pow(1 - air, 2) * g;
+  return move(s, (p) => {
+    const q = scaleP(p, base, 1 + 0.1 * squash - 0.04 * air, 1 - 0.12 * squash + 0.06 * air);
+    const r = rotP(q, base, 0.08 * Math.sin(Math.PI * 2 * c.t) * g);
+    return { x: r.x, y: r.y - goUp(c, c.bb.h * 0.16) * air };
+  });
+};
+
+/** Reduced motion: no somersault, just a breath in and out. */
+const PULSE: Act = (s, c) => {
+  const k = 1 + 0.05 * bell(c.t);
+  const cn = { x: c.bb.cx, y: c.bb.cy };
+  return move(s, (p) => scaleP(p, cn, k, k));
+};
+
+/** How long a letter is alive for. Short on purpose: the child is mid-praise
+ *  and the Next button is live the whole time. */
+const LIFE_MS = 1150;
+const LIFE_CALM_MS = 700;
+
 /* ── layout mode ─────────────────────────────────────────────────────────── */
 
 const LAND_Q = "(orientation: landscape) and (max-height: 560px)";
@@ -413,6 +995,16 @@ interface Demo {
   t0: number;
   spans: number[];
   gap: number;
+}
+
+/** One letter's turn at being alive: the ink it moves, in glyph space, and the
+ *  act that moves it. Held in a ref so a frame never sees a stale letter. */
+interface Life {
+  t0: number;
+  dur: number;
+  act: Act;
+  src: LifeStroke[];
+  bb: LifeBox;
 }
 
 export default function TraceScreen({
@@ -464,6 +1056,8 @@ export default function TraceScreen({
   const finishedRef = useRef(false);
   const phaseRef = useRef<"trace" | "praise">("trace");
   const demoRef = useRef<Demo>({ active: false, still: false, t0: 0, spans: [], gap: 0 });
+  const lifeRef = useRef<Life | null>(null);
+  const lifeRafRef = useRef(0);
   const rafRef = useRef(0);
   const timersRef = useRef<number[]>([]);
   const itemsRef = useRef<Item[]>(items);
@@ -525,7 +1119,7 @@ export default function TraceScreen({
     const ghost = ghostRef.current;
     if (ghost) {
       ctx.save();
-      ctx.globalAlpha = d.active ? 0.16 : 0.4;
+      ctx.globalAlpha = d.active || phaseRef.current === "praise" ? 0.16 : 0.4;
       ctx.drawImage(ghost, 0, 0, cw, ch);
       ctx.restore();
     }
@@ -559,6 +1153,10 @@ export default function TraceScreen({
       }
       return;
     }
+
+    // The letter is written and being praised — and possibly up on its feet.
+    // The dots, numbers and arrows were instructions; they step out of the way.
+    if (phaseRef.current === "praise") return;
 
     // resting state: the dotted trail a workbook prints, then where to start
     // and which way to go
@@ -610,6 +1208,89 @@ export default function TraceScreen({
     const live = liveRef.current;
     if (live) drawCrayonStroke(ctx, live.pts, live.color, live.size, 999);
   }, []);
+
+  /* ── the letter comes alive ───────────────────────────────────────────── */
+
+  /** One frame of the come-alive beat: the child's own ink, moved. Lives on the
+   *  ink canvas and reads `boxRef` without ever writing to it — the source is
+   *  kept in glyph space, so a resize mid-caper lands in the right place. */
+  const paintLife = useCallback((now: number) => {
+    const cv = inkRef.current;
+    const ctx = cv?.getContext("2d");
+    const L = lifeRef.current;
+    const b = boxRef.current;
+    if (!cv || !ctx || !L || b.w < 8) return;
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cv.width / dpr, cv.height / dpr);
+    const k = b.w / GLYPH_BOX.w;
+    const { w: sw, h: shh } = sheetRef.current;
+    // the word strip owns the top band of the sheet: a hopping letter stops
+    // short of it rather than jumping through the word it belongs to
+    const top = itemsRef.current.length > 1 ? Math.min(78, Math.max(48, shh * 0.15)) : 0;
+    const room = {
+      x0: (0 - b.x) / k + 10,
+      x1: (sw - b.x) / k - 10,
+      y0: (top - b.y) / k + 10,
+      y1: (shh - b.y) / k - 10,
+    };
+    const t = Math.max(0, Math.min(1, (now - L.t0) / L.dur));
+    for (const [i, s] of L.act(L.src, { t, bb: L.bb, room }).entries()) {
+      if (!s.pts.length) continue;
+      drawCrayonStroke(ctx, toCanvas(s.pts, b), s.color, Math.max(1.5, s.size * k), i + 1);
+    }
+  }, []);
+
+  const stopLife = useCallback(() => {
+    if (lifeRafRef.current) cancelAnimationFrame(lifeRafRef.current);
+    lifeRafRef.current = 0;
+    if (!lifeRef.current) return;
+    lifeRef.current = null;
+    paintInk(); // whatever happened, the letter settles exactly where it was drawn
+  }, [paintInk]);
+
+  /** Hand the finished letter its own small personality for a beat. Called
+   *  once the score is already recorded: nothing below can change it. */
+  const startLife = useCallback(() => {
+    const item = itemsRef.current[idxRef.current];
+    const b = boxRef.current;
+    if (!item || b.w < 8) return;
+    const src: LifeStroke[] = strokesRef.current
+      .map((s) => {
+        const g = strokeToGlyph(s, b);
+        return { color: g.color, size: g.size, pts: densify(g.pts, 2.4) };
+      })
+      .filter((s) => s.pts.length >= 2);
+    if (!src.length) return;
+
+    if (lifeRafRef.current) cancelAnimationFrame(lifeRafRef.current);
+    const calm = reducedRef.current;
+    lifeRef.current = {
+      t0: performance.now(),
+      dur: calm ? LIFE_CALM_MS : LIFE_MS,
+      act: calm ? PULSE : (ACTS[item.char] ?? CHEER),
+      src,
+      bb: lifeBounds(src),
+    };
+    paintGuide(); // the dots and arrows step aside while the letter has its moment
+
+    const step = () => {
+      const L = lifeRef.current;
+      if (!L) {
+        lifeRafRef.current = 0;
+        return;
+      }
+      const now = performance.now();
+      if (now - L.t0 >= L.dur) {
+        lifeRafRef.current = 0;
+        stopLife();
+        return;
+      }
+      paintLife(now);
+      lifeRafRef.current = requestAnimationFrame(step);
+    };
+    lifeRafRef.current = requestAnimationFrame(step);
+  }, [paintGuide, paintLife, stopLife]);
 
   /** Re-derive everything that depends on (target × box): paths and the ghost. */
   const rebuild = useCallback(() => {
@@ -702,6 +1383,7 @@ export default function TraceScreen({
     if (!paths.length) return;
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = 0;
+    stopLife(); // one animation at a time, and the guide is the important one
 
     if (reducedRef.current) {
       // no motion: hold the finished letter for a beat instead of drawing it
@@ -727,7 +1409,7 @@ export default function TraceScreen({
       rafRef.current = requestAnimationFrame(step);
     };
     rafRef.current = requestAnimationFrame(step);
-  }, [after, paintGuide, stopDemo]);
+  }, [after, paintGuide, stopDemo, stopLife]);
 
   // play it once, unprompted, whenever a new letter arrives
   const shownRef = useRef(-1);
@@ -745,6 +1427,9 @@ export default function TraceScreen({
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       rafRef.current = 0;
+      if (lifeRafRef.current) cancelAnimationFrame(lifeRafRef.current);
+      lifeRafRef.current = 0;
+      lifeRef.current = null;
       timersRef.current.forEach((t) => window.clearTimeout(t));
       timersRef.current = [];
       demoRef.current.active = false;
@@ -771,6 +1456,7 @@ export default function TraceScreen({
     clearTimers();
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = 0;
+    stopLife();
     demoRef.current.active = false;
     liveRef.current = null;
     strokesRef.current = [];
@@ -785,7 +1471,7 @@ export default function TraceScreen({
     setPhase("trace");
     setSay("");
     setIdx(0);
-  }, [sig, clearTimers]);
+  }, [sig, clearTimers, stopLife]);
 
   /* ── scoring and praise ───────────────────────────────────────────────── */
 
@@ -793,6 +1479,7 @@ export default function TraceScreen({
     if (phaseRef.current !== "praise") return;
     phaseRef.current = "trace";
     clearTimers();
+    stopLife(); // tapping Next cuts the caper short — it never holds the child up
     const next = idxRef.current + 1;
     if (next >= itemsRef.current.length) {
       // the auto-advance timer and the Next button both land here; whoever is
@@ -812,7 +1499,7 @@ export default function TraceScreen({
     setResult(null);
     setPhase("trace");
     setIdx(next);
-  }, [clearTimers]);
+  }, [clearTimers, stopLife]);
 
   const celebrate = useCallback(
     (s: TraceScore) => {
@@ -841,9 +1528,11 @@ export default function TraceScreen({
       if (s.stars === 3) sfxHappy();
       else sfxPop();
       if ("vibrate" in navigator) navigator.vibrate(s.stars === 3 ? [18, 40, 18] : 14);
+      // …and the letter they just wrote gets up and shows them who it is.
+      startLife();
       after(2100, advance);
     },
-    [advance, after, clearTimers],
+    [advance, after, clearTimers, startLife],
   );
 
   /** Score whatever is on the page right now. */

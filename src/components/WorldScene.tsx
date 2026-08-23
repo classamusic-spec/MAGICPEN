@@ -763,6 +763,19 @@ export default function WorldScene({
     let lastT = performance.now();
     /** Ground shake, in px. A footfall knocks it up; it dies away in a moment. */
     let shake = 0;
+    /* ── idle beats ──────────────────────────────────────────────────────────
+       Every so often one creature — never two, that reads as a bug — does
+       something it did not have to do: a spin, a hop, a shiver, a look at
+       whoever is watching. Rarity is the whole point. A hop every few seconds
+       is a walk cycle; a hop once in twenty is a personality. One slot, so two
+       can never overlap, and the next gap is only counted from the end of the
+       last one. All numbers, no allocation. */
+    let beatId: string | null = null;
+    let beatKind = 0;
+    let beatFrom = 0;                 // scene time the beat began
+    let beatDur = 0;
+    let beatNext = performance.now() / 1000 + 7 + Math.random() * 9;
+    let beatDX = 0, beatDY = 0, beatRot = 0, beatSx = 1, beatSy = 1;
 
     const fit = () => {
       const dpr = window.devicePixelRatio || 1;
@@ -841,6 +854,47 @@ export default function WorldScene({
       const list = creaturesRef.current;
       const pen = maskRef.current;          // the painted regions, when there are any
       const calm = calmRef.current;         // < 1 when the viewer asked for less motion
+
+      /* ── whose turn it is to be a character ── */
+      if (beatId !== null) {
+        const u = (t - beatFrom) / beatDur;
+        if (u >= 1) {
+          beatId = null;
+          beatDX = 0; beatDY = 0; beatRot = 0; beatSx = 1; beatSy = 1;
+          beatNext = t + (15 + Math.random() * 15) / calm;   // 15–30s, and longer when calmed
+        } else if (beatKind === 0) {                 // a whole turn, for no reason at all
+          const e = u * u * (3 - 2 * u);
+          beatRot = e * Math.PI * 2;
+        } else if (beatKind === 1) {                 // a hop, stretched at the top
+          const k = Math.sin(Math.PI * u);
+          beatDY = -k * 26 * calm;
+          beatSx = 1 - k * 0.1 * calm;
+          beatSy = 1 + k * 0.1 * calm;
+        } else if (beatKind === 2) {                 // a shiver that shakes itself out
+          const d = Math.sin(u * 44) * (1 - u) * calm;
+          beatDX = d * 4;
+          beatRot = d * 0.05;
+        } else {                                     // a look at whoever is watching
+          const f = Math.min(1, Math.sin(Math.PI * u) * 1.7);
+          beatSx = 1 - 0.34 * f * calm;              // turning towards you, flattened
+          beatDY = -3 * f;
+          beatRot = Math.sin(u * Math.PI * 2) * 0.05 * calm;
+        }
+      } else if (t >= beatNext && list.length > 0) {
+        // whoever it falls to must be on screen and done arriving
+        const pick = list[(Math.random() * list.length) | 0];
+        const prt = rtRef.current.get(pick.id);
+        if (prt && now - prt.born > 2400 && prt.x > -0.2 && prt.x < 1.2) {
+          const pb = kindById(pick.kindId).behavior;
+          beatId = pick.id;
+          beatFrom = t;
+          beatKind = ROOTED.has(pb) ? 2 + ((Math.random() * 2) | 0) : (Math.random() * 4) | 0;
+          beatDur = (beatKind === 0 ? 0.8 : beatKind === 1 ? 0.55 : beatKind === 2 ? 0.7 : 1.1) / calm;
+        } else {
+          beatNext = t + 2;                          // ask again in a moment
+        }
+      }
+
       // nobody stands so low that the bottom HUD is drawn over them
       const standCap = Math.max(0.62, 1 - HUD_CLEAR / Math.max(1, H));
       for (const c of list) {
@@ -1105,6 +1159,20 @@ export default function WorldScene({
           }
         }
 
+        /* ── what trails ──────────────────────────────────────────────────
+           Once a frame, from how far this creature *actually* ended up moving
+           — after its own motion, after the standing cap, after a painted
+           region has pushed it back. A comet leaving and re-entering the scene
+           is a jump, not a movement, so its followers are reset rather than
+           whipped: the shear then eases away from where it was instead of
+           snapping. `updateLag` writes into `rt.lag` in place. */
+        const ldx = rt.x - wasX, ldy = rt.y - wasY;
+        if (ldx * ldx + ldy * ldy > 0.04) {
+          rt.lag.vx = 0; rt.lag.vy = 0; rt.lag.wx = 0; rt.lag.wy = 0;
+        } else {
+          updateLag(rt.lag, ldx, ldy, dt, rt.lagW, calm);
+        }
+
         const px = rt.x * W;
         const py = rt.y * H;
         const scl = c.scale * sizeF * (1 + rt.excite * 0.25);
@@ -1151,6 +1219,20 @@ export default function WorldScene({
           ctx.rotate((1 - ease) * Math.PI * 4 * rt.dir);
           ctx.globalAlpha = ease;
         } else {
+          /* ── the idle beat, if this is the one having one ── */
+          if (beatId === c.id) {
+            if (beatDX !== 0 || beatDY !== 0) ctx.translate(beatDX * sizeF, beatDY * sizeF);
+            if (beatRot !== 0) ctx.rotate(beatRot);
+            if (beatSx !== 1 || beatSy !== 1) ctx.scale(beatSx, beatSy);
+          }
+          /* ── what trails ──
+             Applied out here, *before* the facing flip below: the whip is a
+             direction in the world, and `scale(scl * flip, …)` would mirror it
+             onto the wrong side of anything walking left. Out here it is also
+             in screen px, so the sprite's drawn height is `sp.h * scl`. It
+             wraps the tilt rather than fighting it — the body still swims and
+             leans inside a frame that is itself trailing. */
+          applyLag(ctx, rt.lag, sp.h * scl, GROUNDED.has(b));
           const tilt = b === "swim" ? Math.sin(rt.t * 1.8 + rt.seed) * 0.07 :
                        b === "grow" ? Math.sin(rt.t * 1.1 + rt.seed) * 0.06 :
                        b === "twinkle" ? Math.sin(rt.t * 0.9 + rt.seed) * 0.1 : 0;
@@ -1175,6 +1257,12 @@ export default function WorldScene({
             ctx.scale(p, p);
           }
         }
+        /* One shared blink clock, staggered by each creature's own seed and run
+           at its own period, so no two ever close together. Skipped entirely
+           while a creature is still making its entrance. */
+        const bph = (t + rt.seed) % rt.blinkP;
+        const blink = entrance || bph > 0.12 ? 0 : Math.sin((bph / 0.12) * Math.PI) * calm;
+
         // AI-polished art (breathing squash) or crayon wiggle frames
         const art = c.artUrl ? artSprite(c.artUrl) : null;
         if (art) {
@@ -1183,11 +1271,11 @@ export default function WorldScene({
           const ah = sp.h * 1.15;
           const aw = ah * ar;
           ctx.scale(breathe, 1 / breathe);
-          ctx.drawImage(art, -aw / 2, -ah / 2, aw, ah);
+          drawBlink(ctx, art, -aw / 2, -ah / 2, aw, ah, blink);
         } else {
           const frameI = Math.floor(rt.t * (rt.excite > 0 ? 14 : 7)) % 4;
           const img = sp.frames[frameI];
-          ctx.drawImage(img, -sp.w / 2, -sp.h / 2);
+          drawBlink(ctx, img, -sp.w / 2, -sp.h / 2, sp.w, sp.h, blink);
         }
         ctx.restore();
 

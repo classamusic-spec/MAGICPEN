@@ -24,12 +24,105 @@ import {
   cachedSprite, mulberry32, noise1, fbm1, detail, quality, richFx,
   bloom, vGrad, wavyBand, grade, vignette, slot,
   lerp, clamp, clamp01, easeOut, damp,
+  dayLight, dayWarmth, applyNight,
   type ThemeFrame, type FxState,
 } from "./shared";
 
 type Ctx = CanvasRenderingContext2D;
 
 const TAU = Math.PI * 2;
+
+/* ── the time of day ──────────────────────────────────────────────────────────
+   Sunlight is the reef's whole lighting rig: it makes the caustics, the god
+   rays and the colour of the water itself. Snapshotted into module scope so
+   the baked painters can read it; the bake key carries the same value, so a
+   layer only repaints when the light has actually moved a step. */
+
+let DAY = 1;    // 0 = deep night, 1 = full midday
+let WARM = 0;   // 1 at golden hour
+
+/** Mix two "#rrggbb" strings. Bake time only — never called in the draw loop. */
+function mix(a: string, b: string, k: number): string {
+  const ai = parseInt(a.slice(1), 16), bi = parseInt(b.slice(1), 16);
+  const r = Math.round(lerp((ai >> 16) & 255, (bi >> 16) & 255, k));
+  const g = Math.round(lerp((ai >> 8) & 255, (bi >> 8) & 255, k));
+  const l = Math.round(lerp(ai & 255, bi & 255, k));
+  return `rgb(${r},${g},${l})`;
+}
+
+/** night → golden hour → midday, picked by the shared clock. */
+const ramp = (night: string, gold: string, day: string, D = DAY) =>
+  D < 0.5 ? mix(night, gold, D * 2) : mix(gold, day, (D - 0.5) * 2);
+
+/** The same ramp, carrying an explicit alpha. */
+const rampA = (night: string, gold: string, day: string, alpha: number, D = DAY) =>
+  `rgba(${ramp(night, gold, day, D).slice(4, -1)},${alpha})`;
+
+/**
+ * A different gap before the next set-piece, every time round, derived from
+ * when the last one fired. Fixed intervals are what make a scene feel like a
+ * loop: a child who sees the whale at 0:21 and again at 0:42 has worked the
+ * trick out. Returns 0‥1.
+ */
+const gap = (seed: number) => noise1(seed * 0.37, 13) * 0.5 + 0.5;
+
+/**
+ * Colour strings that move only with the light. Built once per light step, so
+ * the draw loop never allocates one.
+ */
+function jpal(fx: FxState, lightK: number) {
+  const p = slot(fx, "oc.pal", () => ({ k: -1, tintA: "", tintB: "", far: "" }));
+  if (p.k !== lightK) {
+    p.k = lightK;
+    p.tintA = rampA("#8affd8", "#ffc6dd", "#ffd2e6", 0.62);
+    p.tintB = rampA("#7fe6ff", "#c8b4ff", "#d9c6ff", 0.62);
+    p.far = ramp("#020c1c", "#053050", "#063a63");
+  }
+  return p;
+}
+
+/* ── motion preference ────────────────────────────────────────────────────── */
+
+let reduced: boolean | null = null;
+/** True when the viewer asked for less motion — the reef slows, never stops. */
+function calm(): boolean {
+  if (reduced === null) {
+    const mq = typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)")
+      : null;
+    reduced = !!mq?.matches;
+    mq?.addEventListener?.("change", (e) => { reduced = e.matches; });
+  }
+  return reduced;
+}
+
+/* ── dither: the cure for 8-bit banding in a full-height water gradient ───── */
+
+/** 256² of white noise, mid-grey centred so `overlay` leaves the tone alone. */
+function grainTile(): HTMLCanvasElement {
+  return cachedSprite("fx.grain", 256, 256, "v1", (c, w, h) => {
+    const r = mulberry32(19283);
+    const img = c.createImageData(w, h);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const v = 128 + Math.round((r() - 0.5) * 78);
+      d[i] = v; d[i + 1] = v; d[i + 2] = v; d[i + 3] = 255;
+    }
+    c.putImageData(img, 0, 0);
+  });
+}
+
+/** Break up a smooth gradient with one pattern fill. Bake time only. */
+function dither(c: Ctx, x: number, y: number, w: number, h: number, amount = 0.2) {
+  const pat = c.createPattern(grainTile(), "repeat");
+  if (!pat) return;
+  c.save();
+  c.globalCompositeOperation = "overlay";
+  c.globalAlpha = amount;
+  c.fillStyle = pat;
+  c.fillRect(x, y, w, h);
+  c.restore();
+}
 
 /* ── palette ─────────────────────────────────────────────────────────────── */
 
@@ -617,6 +710,127 @@ function paintReef(c: Ctx, w: number, top: number, floorY: number, H: number, S:
   }
 }
 
+/**
+ * The whole water column, baked. It was a live gradient fill, which banded
+ * badly over 800px of near-identical blue; baking it costs the same one blit
+ * per frame and buys room for a dither pass that kills the banding outright.
+ * It also lets the column carry the time of day — night water is genuinely a
+ * different, colder colour, not the day colour with a filter over it.
+ */
+function paintWater(c: Ctx, w: number, h: number) {
+  c.fillStyle = vGrad(c, 0, h, [
+    [0.00, ramp("#0d2f57", "#6fd3dd", "#8af4ff")],
+    [0.08, ramp("#0a2547", "#41aec6", "#4ad9f4")],
+    [0.30, ramp("#081c39", "#1e87b0", "#15abdf")],
+    [0.56, ramp("#06152c", "#136394", "#0c7ec6")],
+    [0.80, ramp("#04101f", "#0d4670", "#0a5596")],
+    [1.00, ramp("#030a16", "#093352", "#083c74")],
+  ]);
+  c.fillRect(0, 0, w, h);
+  dither(c, 0, 0, w, h, 0.13);
+}
+
+/**
+ * One shaft of light. The old rays were flat polygons, so each carried two
+ * hard vertical seams down the frame; a shaft of light in water has no edge at
+ * all, it just runs out. So: paint the light as a plain vertical falloff, then
+ * cut it to a cone with a *blurred* mask. The blur is what removes the edge,
+ * it happens once at bake time, and it leaves one blit per ray in the frame
+ * rather than a stack of overlapping ones.
+ */
+function paintRay(c: Ctx, w: number, h: number, rgb: string) {
+  c.fillStyle = vGrad(c, 0, h, [
+    [0, `rgba(${rgb},0)`],
+    [0.11, `rgba(${rgb},0.9)`],
+    [0.42, `rgba(${rgb},0.44)`],
+    [0.78, `rgba(${rgb},0.12)`],
+    [1, `rgba(${rgb},0)`],
+  ]);
+  c.fillRect(0, 0, w, h);
+
+  c.globalCompositeOperation = "destination-in";
+  const cx = w * 0.5;
+  const cone = () => {
+    c.beginPath();
+    c.moveTo(cx - w * 0.09, -h * 0.06);
+    c.lineTo(cx + w * 0.09, -h * 0.06);
+    c.lineTo(cx + w * 0.33, h * 1.06);
+    c.lineTo(cx - w * 0.33, h * 1.06);
+    c.closePath();
+  };
+  if (typeof c.filter === "string") {
+    c.filter = `blur(${(w * 0.14).toFixed(1)}px)`;
+    c.fillStyle = "#000";
+    cone();
+    c.fill();
+    c.filter = "none";
+  } else {
+    // no filter support: a horizontal falloff across the cone still beats an edge
+    c.save();
+    cone();
+    c.clip();
+    const g = c.createLinearGradient(cx - w * 0.42, 0, cx + w * 0.42, 0);
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(0.5, "rgba(0,0,0,1)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = g;
+    c.fillRect(0, 0, w, h);
+    c.restore();
+  }
+  c.globalCompositeOperation = "source-over";
+}
+
+/** A jellyfish bell. The tentacles are live, because they lag the pulse. */
+function paintJelly(c: Ctx, w: number, h: number, body: string, rim: string) {
+  const cx = w / 2, by = h * 0.72, rx = w * 0.44, ry = h * 0.56;
+  const g = c.createRadialGradient(cx - rx * 0.25, by - ry * 0.6, rx * 0.1, cx, by - ry * 0.3, rx * 1.15);
+  g.addColorStop(0, rim);
+  g.addColorStop(0.55, body);
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  c.fillStyle = g;
+  c.beginPath();
+  c.ellipse(cx, by - ry * 0.28, rx, ry, 0, Math.PI, 0);
+  c.quadraticCurveTo(cx, by + ry * 0.22, cx - rx, by - ry * 0.28);
+  c.closePath();
+  c.fill();
+  // the gastric ring and four radial canals you can see straight through
+  c.strokeStyle = rim;
+  c.globalAlpha = 0.5;
+  c.lineWidth = Math.max(1, w * 0.018);
+  for (let i = 0; i < 4; i++) {
+    const u = (i + 0.5) / 4;
+    c.beginPath();
+    c.moveTo(lerp(cx - rx * 0.72, cx + rx * 0.72, u), by - ry * 0.34);
+    c.lineTo(lerp(cx - rx * 0.3, cx + rx * 0.3, u), by - ry * 0.86);
+    c.stroke();
+  }
+  c.beginPath();
+  c.ellipse(cx, by - ry * 0.32, rx * 0.72, ry * 0.14, 0, 0, TAU);
+  c.stroke();
+  c.globalAlpha = 1;
+  // the scalloped lip
+  c.beginPath();
+  for (let i = 0; i <= 10; i++) {
+    const u = i / 10;
+    const x = lerp(cx - rx, cx + rx, u);
+    c.lineTo(x, by - ry * 0.28 + Math.sin(u * Math.PI * 5) * ry * 0.05);
+  }
+  c.strokeStyle = rim;
+  c.lineWidth = Math.max(1, w * 0.022);
+  c.stroke();
+}
+
+const paintJellyA = (c: Ctx, w: number, h: number) => paintJelly(
+  c, w, h,
+  rampA("#4fd8b0", "#f0a0bc", "#ffb0cc", 0.5),
+  rampA("#c8fff0", "#ffe0ec", "#fff0f6", 0.95),
+);
+const paintJellyB = (c: Ctx, w: number, h: number) => paintJelly(
+  c, w, h,
+  rampA("#4fb4d8", "#a68cf0", "#b79cff", 0.5),
+  rampA("#c8f4ff", "#e6dcff", "#efe4ff", 0.95),
+);
+
 function paintCaustic(c: Ctx, w: number, h: number) {
   const r = mulberry32(31337);
   c.globalCompositeOperation = "lighter";
@@ -766,13 +980,19 @@ interface Kelp { x: number; h: number; ph: number; w: number; col: string; dep: 
 interface Clam { x: number; s: number; ph: number; per: number }
 interface Vent { x: number; rate: number; ph: number }
 interface Bio { x: number; y: number; r: number; ph: number; sp: number; alt: boolean }
+/** A shaft of light. Seeded, so the shafts are never evenly spaced. */
+interface Ray { x: number; w: number; sp: number; ph: number; a: number }
+/** A jellyfish: it rises when it contracts and sinks when it relaxes. */
+interface Jelly { x: number; y: number; home: number; ph: number; per: number; s: number; k: number; wob: number }
 interface Bokeh { x: number; y: number; r: number; sp: number; a: number; dark: boolean; ph: number }
 interface Snow { x: number; y: number; r: number; sp: number; ph: number }
 interface Props {
   sig: string;
   anem: Anemone[]; kelp: Kelp[]; clam: Clam[]; vent: Vent[];
-  bio: Bio[]; bok: Bokeh[]; snow: Snow[];
+  bio: Bio[]; bok: Bokeh[]; snow: Snow[]; ray: Ray[]; jelly: Jelly[]; far: Far[];
 }
+/** A fish so far off it is only a smudge of a slightly darker blue. */
+interface Far { y: number; s: number; sp: number; ph: number; dir: number }
 
 interface Fish { ox: number; oy: number; x: number; y: number; ph: number; sc: number }
 interface School {
@@ -784,26 +1004,24 @@ interface Bub { x: number; y: number; r: number; v: number; ph: number; life: nu
 interface Ev { last: number; u: number }
 
 /** Per-size gradients, built once and reused until the canvas resizes. */
-interface Grads { sig: string; ctx: Ctx; water: CanvasGradient; bounce: CanvasGradient; ray: CanvasGradient; surf: CanvasGradient }
+interface Grads { sig: string; ctx: Ctx; bounce: CanvasGradient; surf: CanvasGradient; deep: CanvasGradient }
 
 const SHELL_SIDES = [-1, 1];   // hoisted: the clam loop runs every frame
 
 function buildGrads(ctx: Ctx, H: number, floorY: number, surfH: number, sig: string): Grads {
   return {
     sig, ctx,
-    water: vGrad(ctx, 0, H, [
-      [0, "#8af4ff"], [0.08, "#4ad9f4"], [0.3, "#15abdf"],
-      [0.56, "#0c7ec6"], [0.8, "#0a5596"], [1, "#083c74"],
-    ]),
     bounce: vGrad(ctx, floorY - H * 0.3, floorY + H * 0.02, [
       [0, "rgba(255,206,128,0)"], [1, "rgba(255,198,116,0.16)"],
     ]),
-    ray: vGrad(ctx, -H * 0.05, floorY + H * 0.04, [
-      [0, "rgba(214,255,255,0.62)"], [0.3, "rgba(160,244,255,0.26)"],
-      [0.75, "rgba(128,226,255,0.07)"], [1, "rgba(120,220,255,0)"],
-    ]),
     surf: vGrad(ctx, 0, surfH, [
-      [0, "rgba(240,255,252,0.72)"], [0.45, "rgba(196,246,255,0.28)"], [1, "rgba(180,240,255,0)"],
+      [0, rampA("#4a6ea8", "#ffe4bc", "#f0fffc", 0.72)],
+      [0.45, rampA("#33507f", "#ffcfa0", "#c4f6ff", 0.28)],
+      [1, rampA("#26406a", "#e0b48c", "#b4f0ff", 0)],
+    ]),
+    // the cold weight of deep water, laid over the lower third after dark
+    deep: vGrad(ctx, H * 0.34, H, [
+      [0, "rgba(4,12,30,0)"], [0.55, "rgba(4,12,30,0.5)"], [1, "rgba(3,9,22,0.86)"],
     ]),
   };
 }
@@ -840,7 +1058,38 @@ function buildProps(sig: string): Props {
   }
   const snow: Snow[] = [];
   for (let i = 0; i < 70; i++) snow.push({ x: r(), y: r(), r: 0.7 + r() * 1.5, sp: 0.01 + r() * 0.03, ph: r() * TAU });
-  return { sig, anem, kelp, clam, vent, bio, bok, snow };
+  /* Light shafts. Evenly-spaced rays read as a picket fence, so the base
+     positions are jittered off the grid and every shaft gets its own width,
+     brightness and sway speed. */
+  const ray: Ray[] = [];
+  for (let i = 0; i < 8; i++) {
+    ray.push({
+      x: (i + 0.18 + r() * 0.64) / 8,
+      w: 0.72 + r() * 0.85,
+      sp: 0.05 + r() * 0.075,
+      ph: r() * TAU,
+      a: 0.55 + r() * 0.45,
+    });
+  }
+  /* Jellyfish drifting through the mid-water, which was the emptiest part of
+     the frame. They pulse; the pulse is why they move. */
+  const jelly: Jelly[] = [];
+  for (let i = 0; i < 3; i++) {
+    const home = 0.30 + r() * 0.24;
+    jelly.push({
+      x: 0.18 + r() * 0.68, y: home, home, ph: r(),
+      per: 3.4 + r() * 2.6, s: 0.72 + r() * 0.6, k: i % 2, wob: r() * 40,
+    });
+  }
+  /* Fish at the edge of visibility. They read as depth, not as fish. */
+  const far: Far[] = [];
+  for (let i = 0; i < 6; i++) {
+    far.push({
+      y: 0.14 + r() * 0.42, s: 0.03 + r() * 0.035,
+      sp: 0.010 + r() * 0.016, ph: r(), dir: r() > 0.45 ? 1 : -1,
+    });
+  }
+  return { sig, anem, kelp, clam, vent, bio, bok, snow, ray, jelly, far };
 }
 
 function buildSchools(): School[] {
@@ -863,22 +1112,42 @@ function buildSchools(): School[] {
 
 /* ── the world ───────────────────────────────────────────────────────────── */
 
-export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: number) {
+export function drawOcean({ ctx, W, H, t: rt, floorY }: ThemeFrame, fx: FxState, dt: number) {
   if (!(W > 1) || !(H > 1)) return;
   const S = Math.min(W, H);
   const q = quality();
   const rich = richFx();
   const ss = ssFactor(W, H);
+
+  DAY = dayLight();
+  WARM = dayWarmth();
+  const D = DAY;
+  const night = 1 - D;
+  const lightK = Math.round(D * 8);
   const sig = `${Math.round(W)}x${Math.round(H)}x${Math.round(floorY)}`;
 
-  /* stagger the big set-pieces on the very first ocean frame */
-  slot(fx, "oc.boot", () => {
-    fx.fly2.last = t + 8;
-    fx.fly3.last = t + 3;
-    return 1;
+  /* One scene clock. "Less motion" slows the whole reef — the current, the
+     schools, the flyovers — instead of freezing it, and because every phase
+     and every event timer reads this one clock they all stay in step. */
+  const clk = slot(fx, "oc.clock", () => {
+    // park anything a previous world left mid-flight, then stagger the entrance
+    fx.fly2.x = -1;
+    fx.fly3.x = 2;
+    fx.fly2.last = rt + 8;
+    fx.fly3.last = rt + 3;
+    return { t: rt };
   });
+  clk.t += Math.min(0.05, dt) * (calm() ? 0.45 : 1);
+  const t = clk.t;
+  dt = Math.min(0.05, dt) * (calm() ? 0.45 : 1);
 
   /* one coherent current every swaying thing reads from */
+  // `fly2`/`fly3` are shared across worlds, so a farm visit can leave a stamp
+  // from a different clock behind. A stamp far in this world's future would
+  // mean no whale for minutes; clear it rather than wait it out.
+  if (fx.fly2.last - t > 40) fx.fly2.last = t - 14;
+  if (fx.fly3.last - t > 40) fx.fly3.last = t - 20;
+
   const cur = Math.sin(t * 0.21) * 0.62 + Math.sin(t * 0.097 + 1.9) * 0.38;   // −1‥1
   const surge = Math.sin(t * 0.41) * 0.5 + 0.5;
 
@@ -887,17 +1156,20 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
   let props = slot<Props>(fx, "oc.props", () => buildProps(sig));
   if (props.sig !== sig) { props = buildProps(sig); fx.store["oc.props"] = props; }
 
-  let G = slot<Grads>(fx, "oc.grads", () => buildGrads(ctx, H, floorY, surfH, sig));
-  if (G.sig !== sig || G.ctx !== ctx) { G = buildGrads(ctx, H, floorY, surfH, sig); fx.store["oc.grads"] = G; }
+  const gsig = `${sig}|${lightK}`;
+  let G = slot<Grads>(fx, "oc.grads", () => buildGrads(ctx, H, floorY, surfH, gsig));
+  if (G.sig !== gsig || G.ctx !== ctx) { G = buildGrads(ctx, H, floorY, surfH, gsig); fx.store["oc.grads"] = G; }
+
+  const jp = jpal(fx, lightK);
 
   /* ── 0 · water column ─────────────────────────────────────────────────── */
-  ctx.fillStyle = G.water;
-  ctx.fillRect(0, 0, W, H);
+  ctx.drawImage(hiSprite("oc:water", W, H, ss, `${sig}|${lightK}`, paintWater), 0, 0, W, H);
 
-  // warm bounce light kicked back up off the sand (first thing to go if we chug)
-  if (q > 0) {
+  // warm bounce light kicked back up off the sand — no sun, no bounce
+  if (q > 0 && D > 0.12) {
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = D;
     ctx.fillStyle = G.bounce;
     ctx.fillRect(0, floorY - H * 0.3, W, H * 0.32);
     ctx.restore();
@@ -909,23 +1181,35 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
   const farTop = H - farH;
   const farCv = cachedSprite("oc:far", W + PADF * 2, farH, `${sig}`, (c, cw, ch) =>
     paintFar(c, cw, ch, PADF, floorY, H));
-  ctx.drawImage(farCv, -PADF + cur * 5, farTop + Math.sin(t * 0.13) * 2);
+  ctx.drawImage(farCv, -PADF + cur * 4, farTop + Math.sin(t * 0.13) * 1.6);
 
-  /* distant fish, dissolved into the haze */
+  /* distant fish, dissolved into the haze. They used to march past on fixed
+     rails at fixed speeds, which a child spots inside a minute; now each one
+     has its own heading, pace and vertical wander drawn from the seeded noise
+     field, so no two crossings look the same. */
   ctx.save();
-  ctx.globalAlpha = 0.14;
-  ctx.fillStyle = "#063a63";
-  for (let i = 0; i < detail(4); i++) {
-    const px = ((t * (7 + i * 5) + i * 320) % (W + 260)) - 130;
-    const py = H * (0.2 + i * 0.12) + Math.sin(t * 0.6 + i * 2) * 14;
-    const s = S * (0.04 + i * 0.018);
+  ctx.fillStyle = jp.far;
+  const nFar = detail(5);
+  for (let i = 0; i < nFar && i < props.far.length; i++) {
+    const f = props.far[i];
+    const span = W + S * 0.6;
+    const u = ((f.ph + t * f.sp) % 1 + 1) % 1;
+    const px = (f.dir > 0 ? u : 1 - u) * span - S * 0.3;
+    const py = H * f.y + noise1(t * 0.09 + f.ph * 20, i * 3) * H * 0.05;
+    const s = S * f.s;
+    // the further off it is, the more the water eats it
+    ctx.globalAlpha = 0.07 + (f.s / 0.065) * 0.09;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.scale(f.dir, 1);
     ctx.beginPath();
-    ctx.ellipse(px, py, s, s * 0.42, Math.sin(t * 0.5 + i) * 0.06, 0, TAU);
-    ctx.moveTo(px - s, py);
-    ctx.lineTo(px - s * 1.62, py - s * 0.36);
-    ctx.lineTo(px - s * 1.62, py + s * 0.36);
+    ctx.ellipse(0, 0, s, s * 0.42, Math.sin(t * 0.5 + f.ph * 9) * 0.06, 0, TAU);
+    ctx.moveTo(-s, 0);
+    ctx.lineTo(-s * 1.62, -s * 0.36);
+    ctx.lineTo(-s * 1.62, s * 0.36);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
   }
   ctx.restore();
 
@@ -935,7 +1219,7 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
   const midTop = H - midH;
   const midCv = cachedSprite("oc:mid", W + PADM * 2, midH, `${sig}`, (c, cw, ch) =>
     paintMid(c, cw, ch, PADM, floorY, H, S));
-  ctx.drawImage(midCv, -PADM + cur * 13, midTop + Math.sin(t * 0.17 + 1) * 3);
+  ctx.drawImage(midCv, -PADM + cur * 15, midTop + Math.sin(t * 0.17 + 1) * 3.4);
 
   /* ── 3 · mid kelp, alive on the current ───────────────────────────────── */
   const nKelp = detail(clamp(Math.round(W / 140), 4, 14));
@@ -980,16 +1264,17 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
 
   /* ── 5 · caustics — two surging nets over rock and sand alike ─────────── */
   const PADC = 120;
-  const causTop = Math.max(0, floorY - H * 0.42);
+  const causTop = Math.max(0, floorY - H * 0.34);
   const causH = Math.max(40, H - causTop + 4);
   const causCv = cachedSprite("oc:caust", W + PADC * 2, causH, `${Math.round(W)}x${Math.round(causH)}`,
     (c, cw, ch) => paintCaustic(c, cw, ch));
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  ctx.globalAlpha = 0.34 + surge * 0.16;
+  const causK = 0.12 + D * 0.88;
+  ctx.globalAlpha = (0.34 + surge * 0.16) * causK;
   ctx.drawImage(causCv, -PADC + Math.sin(t * 0.19) * PADC * 0.55 + cur * 26, causTop + Math.sin(t * 0.31) * 5);
   if (q > 0) {
-    ctx.globalAlpha = 0.2 + (1 - surge) * 0.14;
+    ctx.globalAlpha = (0.2 + (1 - surge) * 0.14) * causK;
     ctx.save();
     ctx.translate(W, causTop - causH * 0.2);
     ctx.scale(-1.28, 1.28);
@@ -1085,9 +1370,15 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
     const ve = props.vent[v];
     const vx = ve.x * W;
     const vy = seabedAt(vx, floorY, H);
-    for (let i = 0; i < detail(7); i++) {
-      const p = (t * ve.rate + i / 7 + ve.ph) % 1;
-      const by = vy - p * (floorY * 0.72);
+    const nb = detail(7);
+    for (let i = 0; i < nb; i++) {
+      // each bubble leaves on its own beat, so the string never reads as a
+      // metronome — and it rises faster as it swells, which is what buoyancy
+      // actually does to a bubble
+      const jit = noise1(i * 3.1 + v * 11, 5) * 0.4;
+      const p = (t * ve.rate * (0.82 + jit * 0.5) + i / nb + ve.ph + jit) % 1;
+      const rise = p * p * 0.45 + p * 0.55;
+      const by = vy - rise * (floorY * 0.72);
       const bx = vx + Math.sin(t * 2 + i * 2.2 + p * 9) * (4 + p * 16) + cur * p * 26;
       ctx.globalAlpha = (1 - p * 0.75) * 0.5;
       ctx.beginPath();
@@ -1104,7 +1395,7 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
     paintDot(c, w, h, "rgba(235,255,225,1)", "rgba(130,255,180,0.5)"));
 
   const blm = slot<Ev>(fx, "oc.bloom", () => ({ last: t + 16, u: -1 }));
-  if (blm.u < 0 && t - blm.last > 41) { blm.last = t; blm.u = 0; }
+  if (blm.u < 0 && t - blm.last > 41 + gap(blm.last * 3.1) * 28) { blm.last = t; blm.u = 0; }
   if (blm.u >= 0) {
     blm.u += dt / 6;
     if (blm.u > 1) blm.u = -1;
@@ -1128,7 +1419,7 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
       a += hit * 0.75;
       rr *= 1 + hit * 1.6;
     }
-    ctx.globalAlpha = clamp01(a) * 0.85;
+    ctx.globalAlpha = clamp01(a) * 0.85 * (0.25 + D * 0.75);
     const img = b.alt ? dotB : dotA;
     ctx.drawImage(img, bx - rr, by - rr, rr * 2, rr * 2);
   }
@@ -1139,6 +1430,62 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
       [1, "rgba(80,255,210,0.6)"],
     ]);
     ctx.fillRect(0, H * 0.45, W, H * 0.55);
+  }
+  ctx.restore();
+
+  /* ── 8b · jellyfish in the mid-water ───────────────────────────────────────
+     The middle of the frame was the emptiest part of the reef: too deep for
+     the surface light, too high for the coral. Jellyfish belong there, and
+     they solve the ambient-motion problem honestly — a jellyfish moves because
+     it contracts its bell, so the pulse *is* the propulsion. It jets upward on
+     the squeeze and sinks back between squeezes, and the tentacles trail a
+     beat behind because they are being dragged, not driven. */
+  const nJel = Math.max(1, detail(3));
+  // sprites and colour strings depend only on the light, so they are built
+  // once per light step rather than once per jellyfish per frame
+  const jellyA = cachedSprite("oc:jelly0", 112, 112, `v1|${lightK}`, paintJellyA);
+  const jellyB = cachedSprite("oc:jelly1", 112, 112, `v1|${lightK}`, paintJellyB);
+  ctx.save();
+  ctx.lineCap = "round";
+  const jelStep = props.jelly.length / Math.max(1, nJel);
+  for (let i = 0; i < nJel; i++) {
+    const j = props.jelly[Math.min(props.jelly.length - 1, Math.floor(i * jelStep))];
+    const beat = ((t / j.per + j.ph) % 1 + 1) % 1;
+    const push = Math.pow(Math.max(0, Math.sin(beat * TAU)), 3);
+    const lag = Math.pow(Math.max(0, Math.sin(((beat - 0.13) % 1) * TAU)), 3);
+    j.y += ((j.home - j.y) * 0.10 + 0.024 - push * 0.105) * dt;
+    j.x += (cur * 0.011 + Math.sin(t * 0.13 + j.wob) * 0.005) * dt;
+    if (j.x > 1.18) j.x = -0.18;
+    if (j.x < -0.18) j.x = 1.18;
+
+    const jx = j.x * W, jy = j.y * H;
+    const sz = S * 0.085 * j.s;
+    const sq = 1 - push * 0.24;      // the bell narrows as it squeezes …
+    const st = 1 + push * 0.20;      // … and lengthens
+    const tint = j.k ? jp.tintB : jp.tintA;
+    ctx.save();
+    ctx.translate(jx, jy);
+    ctx.rotate(Math.sin(t * 0.4 + j.wob) * 0.09 + cur * 0.05);
+    // tentacles, dragged along behind the pulse
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = tint;
+    for (let k = 0; k < 6; k++) {
+      const u = (k + 0.5) / 6;
+      const ox = lerp(-sz * 0.4, sz * 0.4, u) * sq;
+      const len = sz * (1.15 + (k % 3) * 0.42) * (1 + lag * 0.3);
+      const swirl = Math.sin(t * 1.5 + j.wob + k * 1.3) * sz * 0.16 + cur * sz * 0.2 - lag * sz * 0.1;
+      ctx.lineWidth = Math.max(1, sz * (k % 2 ? 0.05 : 0.032));
+      ctx.beginPath();
+      ctx.moveTo(ox, 0);
+      ctx.quadraticCurveTo(ox + swirl * 0.45, len * 0.55, ox + swirl, len);
+      ctx.stroke();
+    }
+    // and the bell over the top of them
+    const dw = sz * 1.7 * sq, dh = sz * 1.7 * st;
+    ctx.globalAlpha = 0.78;
+    ctx.drawImage(j.k ? jellyB : jellyA, -dw / 2, -0.72 * dh, dw, dh);
+    ctx.restore();
+    if (rich) bloom(ctx, jx, jy - sz * 0.55, sz * 2.4, tint, 0.12 + night * 0.1);
   }
   ctx.restore();
 
@@ -1228,7 +1575,7 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
 
   /* whale flyby — bubble wake + distant song */
   const bubs = slot<Bub[]>(fx, "oc.wbub", () => []);
-  if (t - fx.fly2.last > 21) { fx.fly2.last = t; fx.fly2.x = 1.4; }
+  if (t - fx.fly2.last > 21 + gap(fx.fly2.last) * 17) { fx.fly2.last = t; fx.fly2.x = 1.4; }
   if (fx.fly2.x > -0.62) {
     fx.fly2.x -= dt * 0.082;
     const wx = fx.fly2.x * W;
@@ -1318,7 +1665,7 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
   }
 
   /* manta ray glide */
-  if (t - fx.fly3.last > 29) { fx.fly3.last = t; fx.fly3.x = -0.45; }
+  if (t - fx.fly3.last > 29 + gap(fx.fly3.last * 1.7) * 21) { fx.fly3.last = t; fx.fly3.x = -0.45; }
   if (fx.fly3.x < 1.45) {
     fx.fly3.x += dt * 0.105;
     const mx = fx.fly3.x * W;
@@ -1360,7 +1707,7 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
 
   /* turtle crossing */
   const tur = slot<Ev>(fx, "oc.turtle", () => ({ last: t + 24, u: -1 }));
-  if (tur.u < 0 && t - tur.last > 37) { tur.last = t; tur.u = 0; }
+  if (tur.u < 0 && t - tur.last > 37 + gap(tur.last * 2.3) * 26) { tur.last = t; tur.u = 0; }
   if (tur.u >= 0) {
     tur.u += dt * 0.055;
     if (tur.u > 1) tur.u = -1;
@@ -1411,43 +1758,49 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
 
   /* ── 10 · god rays with refraction wobble ─────────────────────────────── */
   const wav = slot<Ev>(fx, "oc.wave", () => ({ last: t + 11, u: -1 }));
-  if (wav.u < 0 && t - wav.last > 23) { wav.last = t; wav.u = 0; }
+  if (wav.u < 0 && t - wav.last > 23 + gap(wav.last * 5.7) * 15) { wav.last = t; wav.u = 0; }
   if (wav.u >= 0) {
     wav.u += dt * 0.26;
     if (wav.u > 1) wav.u = -1;
   }
   const waveX = wav.u >= 0 ? lerp(-0.25, 1.3, wav.u) * W : -1e6;
 
-  const nRay = detail(7);
+  /* Sunlight through a moving ceiling. Each shaft is one soft-edged sprite,
+     swayed by the swell above it — the ceiling is what is moving, so the
+     shafts move with it rather than on their own private timers, and their
+     brightness breathes with the same surge that drives the caustics. After
+     dark the sun is replaced by two thin, cold moon shafts. */
   const sunX = W * (0.5 + Math.sin(t * 0.05) * 0.1);
+  const rayLen = floorY * 0.82;
+  const rayW = Math.max(26, S * 0.19);
+  const warmRay = WARM > 0.45;
+  const rayRGB = D <= 0.2 ? "176,206,255" : warmRay ? "255,238,198" : "222,255,255";
+  const rayCv = cachedSprite(
+    D > 0.2 ? "oc:raySun" : "oc:rayMoon", 96, 320,
+    `v4|${D > 0.2 ? (warmRay ? "w" : "s") : "m"}`,
+    (c, w, h) => paintRay(c, w, h, rayRGB),
+  );
+  const nRay = D > 0.2 ? Math.max(3, detail(6)) : 2;
+  const rayK = D > 0.2 ? 0.2 + D * 0.34 : 0.1 + D * 0.3;
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  ctx.fillStyle = G.ray;
+  const rayStep = props.ray.length / Math.max(1, nRay);
   for (let i = 0; i < nRay; i++) {
-    const bx = W * ((i + 0.4) / nRay) + Math.sin(t * 0.07 + i * 2.3) * W * 0.04;
-    const wTop = S * (0.016 + (i % 3) * 0.007);
-    const wBot = wTop * (5 + (i % 2) * 3);
-    const lean = (bx - sunX) * 0.28;
-    const segs = 7;
+    const r = props.ray[Math.min(props.ray.length - 1, Math.floor(i * rayStep))];
+    // the ceiling above is moving, so the shaft under it slides and shivers
+    const bx = r.x * W + Math.sin(t * r.sp * 3.1 + r.ph) * S * 0.035
+      + noise1(t * 0.09 + r.ph, i * 5) * S * 0.05;
     const near = Math.exp(-Math.pow((bx - waveX) / (W * 0.16), 2));
-    ctx.globalAlpha = clamp01((0.34 + Math.sin(t * 0.62 + i * 1.7) * 0.2) * (1 + near * 2.2));
-    ctx.beginPath();
-    for (let s2 = 0; s2 <= segs; s2++) {
-      const u = s2 / segs;
-      const y = lerp(-H * 0.04, floorY + H * 0.04, u);
-      const cx = bx + lean * u + noise1(u * 2.4 + t * 0.5 + i * 7, i) * S * 0.03 * u;
-      const hw = lerp(wTop, wBot, u * u) * 0.5;
-      if (s2 === 0) ctx.moveTo(cx - hw, y); else ctx.lineTo(cx - hw, y);
-    }
-    for (let s2 = segs; s2 >= 0; s2--) {
-      const u = s2 / segs;
-      const y = lerp(-H * 0.04, floorY + H * 0.04, u);
-      const cx = bx + lean * u + noise1(u * 2.4 + t * 0.5 + i * 7, i) * S * 0.03 * u;
-      const hw = lerp(wTop, wBot, u * u) * 0.5;
-      ctx.lineTo(cx + hw, y);
-    }
-    ctx.closePath();
-    ctx.fill();
+    const breathe = 0.72 + 0.28 * Math.sin(t * (0.23 + r.sp) + r.ph * 2) + surge * 0.14;
+    const a = clamp01(rayK * r.a * breathe * (1 + near * 2.6));
+    if (a < 0.006) continue;
+    ctx.globalAlpha = a;
+    /* Deliberately axis-aligned. A rotated or sheared blit of a shaft this
+       size takes the general-transform path and costs more on its own than
+       the rest of the reef put together; the convergence toward the sun is
+       carried by the cone's taper and by where the shafts are placed. */
+    const rw = rayW * r.w * (1 + surge * 0.05);
+    ctx.drawImage(rayCv, bx - rw / 2, -H * 0.03, rw, rayLen);
   }
   ctx.restore();
 
@@ -1487,7 +1840,7 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
   ctx.globalCompositeOperation = "lighter";
   // refraction wobble: three interfering crest bands
   for (let i = 0; i < detail(3); i++) {
-    ctx.globalAlpha = 0.12 + Math.sin(t * (0.9 + i * 0.4) + i) * 0.05;
+    ctx.globalAlpha = (0.12 + Math.sin(t * (0.9 + i * 0.4) + i) * 0.05) * (0.35 + D * 0.65);
     wavyBand(
       ctx, W,
       surfH * (0.12 + i * 0.2), surfH * (0.3 + i * 0.24),
@@ -1495,9 +1848,14 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
       "rgba(255,255,246,0.9)", 24,
     );
   }
-  // the sun, seen through the wobbling ceiling
+  // the sun — or, after dark, the moon — seen through the wobbling ceiling
   ctx.globalAlpha = 1;
-  bloom(ctx, sunX, -surfH * 0.35, surfH * (2.6 + Math.sin(t * 1.3) * 0.2), "rgba(255,252,214,0.75)", 0.34);
+  bloom(
+    ctx, sunX, -surfH * 0.35,
+    surfH * ((D > 0.2 ? 2.6 : 1.5) + Math.sin(t * 1.3) * 0.2),
+    D > 0.2 ? "rgba(255,252,214,0.75)" : "rgba(196,220,255,0.8)",
+    0.1 + D * 0.24,
+  );
   if (wav.u >= 0) {
     ctx.globalAlpha = 0.5 * Math.sin(clamp01(wav.u) * Math.PI);
     ctx.fillStyle = "rgba(255,253,232,0.8)";
@@ -1543,11 +1901,78 @@ export function drawOcean({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
   ctx.drawImage(frondCv, 0, -frondH * 0.84, frondW, frondH * 0.84);
   ctx.restore();
 
-  /* ── 14 · grade + vignette ────────────────────────────────────────────── */
+  /* ── 14 · night ───────────────────────────────────────────────────────────
+     The water column already carries the hour, so this is the last of it: the
+     deep goes properly black, then the reef's own light comes back on. Every
+     glow below is additive and drawn *after* the wash, which is the only way
+     a light source survives being told the scene is dark. */
+  if (night > 0.04) {
+    ctx.save();
+    ctx.globalAlpha = night * 0.85;
+    ctx.fillStyle = G.deep;
+    ctx.fillRect(0, H * 0.34, W, H * 0.66);
+    ctx.restore();
+  }
+
+  applyNight(ctx, W, H);
+
+  if (night > 0.12) {
+    const glowK = clamp01((night - 0.12) * 1.5);
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+
+    /* the reef lights up: bioluminescence is what the dark is *for* */
+    const nBioN = detail(30);
+    for (let i = 0; i < nBioN && i < props.bio.length; i++) {
+      const b = props.bio[i];
+      const bxn = ((b.x + t * 0.004 * b.sp + cur * 0.006) % 1 + 1) % 1;
+      const by = b.y * H + Math.sin(t * 0.5 * b.sp + b.ph) * H * 0.012;
+      if (by > H) continue;
+      // each mote breathes on its own clock, so the field never pulses in time
+      const a = 0.18 + Math.pow(Math.max(0, Math.sin(t * b.sp * 0.9 + b.ph)), 3) * 0.7;
+      const rr = S * 0.016 * b.r * (1 + a * 0.5);
+      ctx.globalAlpha = a * glowK * 0.9;
+      ctx.drawImage(b.alt ? dotB : dotA, bxn * W - rr, by - rr, rr * 2, rr * 2);
+    }
+
+    /* anemone tips carry their own light; so do the vents, faintly */
+    ctx.globalAlpha = 1;
+    const nAnemN = detail(5);
+    for (let i = 0; i < nAnemN && i < props.anem.length; i++) {
+      const a = props.anem[i];
+      const ax = a.x * W;
+      const ay = seabedAt(ax, floorY, H) + 2;
+      const sz = clamp(S * 0.05 * a.s, 10, 46);
+      const puff = 0.6 + 0.4 * Math.sin(t * 0.7 + a.ph);
+      bloom(ctx, ax, ay - sz * 0.5, sz * 2.1, "rgba(120,255,224,0.55)", glowK * 0.3 * puff);
+    }
+    for (let v = 0; v < detail(3) && v < props.vent.length; v++) {
+      const ve = props.vent[v];
+      const vx = ve.x * W;
+      bloom(ctx, vx, seabedAt(vx, floorY, H), S * 0.09, "rgba(120,220,255,0.5)", glowK * 0.18);
+    }
+
+    /* and the jellyfish, which is when they finally look like what they are */
+    for (let i = 0; i < nJel; i++) {
+      const j = props.jelly[Math.min(props.jelly.length - 1, Math.floor(i * jelStep))];
+      const beat = ((t / j.per + j.ph) % 1 + 1) % 1;
+      const push = Math.pow(Math.max(0, Math.sin(beat * TAU)), 3);
+      bloom(
+        ctx, j.x * W, j.y * H - S * 0.05 * j.s, S * 0.24 * j.s,
+        j.k ? "rgba(150,200,255,0.65)" : "rgba(150,255,220,0.65)",
+        glowK * (0.16 + push * 0.24),
+      );
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  /* ── 15 · grade + vignette ────────────────────────────────────────────── */
   // top-light is already baked into the water gradient, so skip grade's second
   // full-screen pass and keep the finish to two fills.
-  grade(ctx, W, H, "#2fd6ff", 0.07 + Math.sin(t * 0.08) * 0.015, 0);
-  vignette(ctx, W, H, 0.2);
+  grade(ctx, W, H, night > 0.5 ? "#3a6cff" : "#2fd6ff", 0.07 + Math.sin(t * 0.08) * 0.015, 0);
+  vignette(ctx, W, H, 0.2 + night * 0.12);
 
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = "source-over";
