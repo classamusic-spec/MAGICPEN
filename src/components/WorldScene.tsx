@@ -7,8 +7,13 @@
 // artwork underneath it.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { Creature, DreamWorld } from "@/lib/types";
+import type { Creature, DreamWorld, RegionKind } from "@/lib/types";
 import { kindById, BEHAVIOR_COPY, WORLD_PACKS } from "@/lib/creatures";
+import {
+  maskOf, regionAt, regionBand, regionForBehavior, findSpawn, groundTopAt,
+  REGION_W,
+} from "@/lib/regions";
+import { usePrefersReducedMotion } from "@/components/ink/motion";
 import { sfxBubble, sfxPop, sfxSplash, sfxTap, setMuted, isMuted, sfxHappy, sfxMagic } from "@/lib/audio";
 import { drawOcean, drawSpace, drawFarm, drawDino, drawDream, newFxState, floorRatio } from "./world/themes";
 import { sampleFrame, clearLayers } from "./world/shared";
@@ -35,6 +40,68 @@ const WORLD_EMPTY: Record<string, string> = {
   farm: "Your meadow is waiting…",
   dino: "Your island is waiting…",
 };
+
+/* ── arrival copy ────────────────────────────────────────────────────────────
+   `BEHAVIOR_COPY` in lib/creatures was written when there were eight ways to
+   move and four worlds. It has no line for a crab scuttling in, and none at all
+   for the world the child painted themselves — and its own fallback would have
+   a UFO "swimming into the reef". These fill those gaps in the same voice: the
+   shared table still wins wherever it has something to say. */
+const ARRIVAL_ANY: Record<string, string> = {
+  swim: "swims in", drive: "drives in", fly: "flies in", float: "floats in",
+  twinkle: "twinkles into view", grow: "puts its roots down", crawl: "wiggles in",
+  bounce: "bounces in", orbit: "starts going round and round", jet: "whooshes in",
+  scuttle: "scuttles in sideways", stomp: "STOMPS in", waddle: "waddles in",
+  graze: "ambles in for a nibble", hover: "hovers into view", streak: "zooms across the sky",
+  erupt: "rumbles into place", sway: "settles in and sways",
+};
+const ARRIVAL_WORLD: Record<string, Record<string, string>> = {
+  ocean: {
+    orbit: "circles over the reef", jet: "squeezes and whooshes off",
+    scuttle: "scuttles across the sand", stomp: "stomps along the seabed",
+    waddle: "waddles down to the water", graze: "nibbles at the seaweed",
+    hover: "hovers over the reef", streak: "zooms over the waves",
+    erupt: "settles on the seabed and puffs", sway: "sways in the current",
+  },
+  space: {
+    orbit: "swings into orbit", jet: "puffs off into the stars",
+    scuttle: "skitters over a moon", stomp: "stomps across the moon dust",
+    waddle: "waddles over the moon", graze: "nibbles at the moon dust",
+    hover: "hovers over the galaxy", streak: "streaks across the stars",
+    erupt: "rumbles on a faraway moon", sway: "sways in the starlight",
+  },
+  farm: {
+    orbit: "circles over the barn", jet: "whooshes across the pond",
+    scuttle: "scuttles through the grass", stomp: "stomps across the meadow",
+    waddle: "waddles into the yard", graze: "starts munching the grass",
+    hover: "hovers over the field", streak: "zooms over the hayfield",
+    erupt: "settles in the field and puffs", sway: "sways in the breeze",
+  },
+  dino: {
+    orbit: "circles over the island", jet: "whooshes through the lagoon",
+    scuttle: "scuttles over the rocks", stomp: "STOMPS onto the island",
+    waddle: "waddles out of the ferns", graze: "starts munching the ferns",
+    hover: "hovers over the jungle", streak: "streaks over the volcano",
+    erupt: "rumbles and puffs out smoke", sway: "sways over the beach",
+  },
+  dream: {
+    swim: "swims into your world", drive: "drives into your world",
+    fly: "flies into your world", float: "floats into your world",
+    twinkle: "twinkles over your world", grow: "puts its roots down in your world",
+    crawl: "wiggles into your world", bounce: "bounces into your world",
+    orbit: "circles over your world", stomp: "STOMPS into your world",
+    hover: "hovers over your world", streak: "zooms across your sky",
+  },
+};
+/** The line for a creature arriving — never blank, never the wrong world. */
+function arrivalLine(worldId: string, behavior: string): string {
+  return (
+    ARRIVAL_WORLD[worldId]?.[behavior] ??
+    BEHAVIOR_COPY[worldId]?.[behavior]?.arrival ??
+    ARRIVAL_ANY[behavior] ??
+    "arrives"
+  );
+}
 
 /* ── the HUD's wax box ───────────────────────────────────────────────────────
    Four skies have to be survived: farm blue, reef blue, near-black space and a
@@ -64,12 +131,112 @@ const BANNER_INK: Partial<Record<IconName, { color: string; fill?: string }>> = 
   heart: { color: "#2d2926", fill: "#ff6b6b" },
 };
 
-/* ── runtime state per creature ──────────────────────────────────────────── */
+/* ── runtime state per creature ──────────────────────────────────────────────
+   One flat record of numbers per creature, made once when it is staged. The
+   render loop only ever writes into these fields — it allocates nothing, so
+   thirty creatures cost thirty objects for the life of the scene, not thirty
+   per frame. */
 interface RT {
   x: number; y: number; dir: 1 | -1;
   baseY: number; t: number; speed: number;
   excite: number; born: number; labelT: number;
   seed: number;
+  /* ── the way this particular kind of thing moves ──
+     Each style is a tiny state machine over the same handful of slots:
+       mode   which beat of the cycle it is on (0 = resting/drifting)
+       next   the value of `t` at which that beat ends
+       vx,vy  velocity, for the styles that coast (jet, streak)
+       ax,ay  its anchor: orbit centre, hovering station, root in the ground
+       tx,ty  where it is heading, or how far it swings (orbit radii)
+       sq     squash: >0 wide and flat, <0 stretched tall
+       roll   a screen-space lean, positive = nose down / tipped right
+       dip    0..1, how far a grazer's head is down in the grass */
+  mode: number; next: number;
+  vx: number; vy: number;
+  ax: number; ay: number;
+  tx: number; ty: number;
+  sq: number; roll: number; dip: number;
+  /* ── where it belongs, in a world the child painted regions onto ──
+     `reg` is null in every other case, and null is the old behaviour: free
+     roaming against the flat floor line. Resolved once, at spawn. */
+  reg: RegionKind | null;
+  bandT: number; bandB: number;
+  /** The region this kind wants, painted or not — what it is placed among. */
+  home: RegionKind;
+  /** Its own depth along the ground, so a row of animals is not one flat line. */
+  foot: number;
+}
+
+/** Behaviours whose artwork turns to face the way it is travelling. */
+const FACING = new Set([
+  "swim", "fly", "drive", "crawl",              // (unchanged: exactly today's set)
+  "jet", "stomp", "waddle", "graze", "streak",
+]);
+/** Behaviours that pivot around their feet rather than their middle. */
+const FOOTED = new Set(["sway", "erupt", "stomp", "waddle", "graze", "scuttle"]);
+/** Behaviours that live on the ground line rather than in the air. */
+const GROUNDED = new Set([
+  "drive", "grow", "crawl",
+  "stomp", "waddle", "graze", "scuttle", "erupt", "sway",
+]);
+/** Bottom of the canvas kept clear of standing creatures, in CSS px: the
+ *  friends pill and the tip live down there, and a creature hidden behind a
+ *  label may as well not have been drawn. Measured against the real chrome —
+ *  the tip banner starts ~70px up — plus a standing sprite's own height, which
+ *  is what the first value missed. */
+const HUD_CLEAR = 214;
+/** How far below the middle of the artwork those feet are. */
+const FOOT = 0.45;
+
+/** Set up the state machine for one motion style. Runs once, at spawn. */
+function styleSpawn(rt: RT, b: string) {
+  const r = () => Math.random();
+  if (b === "orbit") {
+    // a circle that is guaranteed to stay on screen, centred where it landed
+    rt.tx = 0.12 + r() * 0.08;
+    rt.ty = rt.tx * (0.45 + r() * 0.3);
+    rt.ax = Math.max(0.08 + rt.tx, Math.min(0.92 - rt.tx, rt.x));
+    rt.ay = Math.max(rt.bandT + rt.ty + 0.02, Math.min(rt.bandB - rt.ty - 0.02, rt.y));
+    if (rt.ay < rt.ty + 0.06) rt.ay = rt.ty + 0.06;
+  } else if (b === "jet") {
+    rt.next = rt.t + 0.4 + r() * 1.4;
+  } else if (b === "scuttle") {
+    rt.next = rt.t + 0.2 + r() * 0.8;
+  } else if (b === "stomp") {
+    rt.next = rt.t + r() * 1.1;
+  } else if (b === "graze" || b === "erupt") {
+    rt.next = rt.t + 0.8 + r() * 3;
+  } else if (b === "hover") {
+    rt.ax = rt.x; rt.ay = rt.y;
+    rt.tx = rt.x; rt.ty = rt.y;
+    rt.next = rt.t + 0.9 + r() * 1.4;
+  } else if (b === "streak") {
+    rt.mode = 1;                 // "gone": it comes in off the edge on frame one
+    rt.next = rt.t + 0.1;
+  }
+  if (b === "erupt" || b === "sway") rt.ax = rt.x;   // rooted: it stays put
+}
+
+/** Ground height at normalized x: the painted hills, or the flat floor line. */
+function groundAt(cols: Float32Array | null, floor: number, nx: number): number {
+  if (!cols) return floor;
+  const f = nx * REGION_W - 0.5;
+  const i = Math.floor(f);
+  const a = cols[i < 0 ? 0 : i > REGION_W - 1 ? REGION_W - 1 : i];
+  const j = i + 1;
+  const bb = cols[j < 0 ? 0 : j > REGION_W - 1 ? REGION_W - 1 : j];
+  const av = a === a ? a : bb === bb ? bb : floor;      // NaN = nothing painted here
+  const bv = bb === bb ? bb : av;
+  const k = f - i;
+  return av + (bv - av) * (k < 0 ? 0 : k > 1 ? 1 : k);
+}
+
+/** True where the child actually painted ground for this column to stand on. */
+function hasGroundAt(cols: Float32Array | null, nx: number): boolean {
+  if (!cols) return true;
+  const i = Math.floor(nx * REGION_W);
+  if (i < 0 || i > REGION_W - 1) return false;
+  return cols[i] === cols[i];
 }
 
 /* ── drawn shapes on the world canvas ────────────────────────────────────── */
@@ -307,7 +474,34 @@ export default function WorldScene({
   const floorRef = useRef(floorR);
   floorRef.current = floorR;
 
-  const copy = BEHAVIOR_COPY[worldId] ?? BEHAVIOR_COPY.ocean;
+  /* ── the painted world ────────────────────────────────────────────────────
+     When the child has painted regions onto their own world, creatures live in
+     the one their behaviour wants: fish in the water they painted, birds in
+     their sky, a cow on the hill rather than on one flat line. Everything here
+     is null in every other world — and null is exactly today's behaviour. */
+  const mask = useMemo(() => (worldId === "dream" ? maskOf(dream) : null), [worldId, dream]);
+  /** The top of the ground per mask column, resolved once per repaint. */
+  const groundCols = useMemo(() => {
+    if (!mask) return null;
+    const cols = new Float32Array(REGION_W);
+    for (let i = 0; i < REGION_W; i++) {
+      const g = groundTopAt(mask, (i + 0.5) / REGION_W);
+      cols[i] = g == null ? NaN : g;
+    }
+    return cols;
+  }, [mask]);
+  const maskRef = useRef(mask);
+  maskRef.current = mask;
+  const colsRef = useRef(groundCols);
+  colsRef.current = groundCols;
+
+  const reduced = usePrefersReducedMotion();
+  const reducedRef = useRef(reduced);
+  reducedRef.current = reduced;
+  /** Everything new moves at this fraction of full pelt, and waits longer. */
+  const calmRef = useRef(1);
+  calmRef.current = reduced ? 0.45 : 1;
+
   const newCreature = useMemo(() => view.find((c) => c.id === newId) ?? null, [view, newId]);
   const detail = sheet?.mode === "detail" ? view.find((c) => c.id === sheet.id) ?? null : null;
 
@@ -369,20 +563,70 @@ export default function WorldScene({
       if (rtRef.current.has(c.id)) return;
       const kind = kindById(c.kindId);
       const b = kind.behavior;
-      const grounded = b === "drive" || b === "grow" || b === "crawl";
+      const want = regionForBehavior(b);
+      const grounded = GROUNDED.has(b);
       const top = b === "twinkle";
-      rtRef.current.set(c.id, {
-        x: 0.2 + Math.random() * 0.6,
-        y: grounded ? floorR + Math.random() * 0.04 : top ? 0.1 + Math.random() * 0.12 : 0.25 + Math.random() * 0.45,
-        dir: Math.random() > 0.5 ? 1 : -1,
-        baseY: 0.3 + Math.random() * 0.4,
-        t: Math.random() * 100,
-        speed: (0.02 + Math.random() * 0.025) * (b === "crawl" || b === "drive" ? 0.7 : 1),
+      /* Everything about where a creature starts is drawn from its own id, so
+         the same drawing lands in the same place every time the scene mounts
+         instead of hopping about between visits. */
+      let h = seedOf(c.id) || 1;
+      const rnd = () => { h = (h * 1664525 + 1013904223) >>> 0; return h / 4294967296; };
+      // its own depth into the scene: a row of animals is a band, not a line
+      const foot = grounded ? -0.045 + rnd() * 0.06 : 0;
+      let y = grounded ? floorR + foot
+            : top ? 0.1 + rnd() * 0.12
+            : 0.22 + rnd() * 0.44;
+      /* Spread out along the width, then stepped clear of anyone already
+         standing at the same height. Ten creatures is nothing to compare at
+         spawn time, and it never happens again. */
+      const LO = 0.07, SPAN = 0.86;
+      let peers = 0;
+      for (const o of rtRef.current.values()) if (o.home === want) peers++;
+      const gap = Math.max(0.055, Math.min(0.16, SPAN / (peers + 2)));
+      let x = LO + rnd() * SPAN;
+      for (let tries = 0; tries < 16; tries++) {
+        let clash = false;
+        for (const o of rtRef.current.values()) {
+          if (o.home !== want || Math.abs(o.y - y) > 0.09) continue;
+          if (Math.abs(o.x - x) < gap) { clash = true; break; }
+        }
+        if (!clash) break;
+        x = LO + ((x - LO + gap * 1.3) % SPAN);
+      }
+      // how high a flyer or a swimmer may range, before any painted region
+      let reg: RegionKind | null = null;
+      let bandT = want === "sky" ? 0.08 : 0.18;
+      let bandB = want === "sky" ? 0.6 : 0.78;
+      const m = maskRef.current;
+      if (m) {
+        // seeded by the creature's own id, so it keeps its spot across renders
+        const spot = findSpawn(m, want, seedOf(c.id));
+        if (spot) {
+          reg = want;
+          x = spot.x;
+          y = want === "ground" ? groundAt(colsRef.current, floorR, x) + foot : spot.y;
+          const band = regionBand(m, want);
+          if (band) { bandT = band[0]; bandB = band[1]; }
+        }
+      }
+      const rt: RT = {
+        x, y,
+        dir: rnd() > 0.5 ? 1 : -1,
+        baseY: reg ? y : 0.3 + rnd() * 0.4,
+        t: rnd() * 100,
+        speed: (0.02 + rnd() * 0.025) * (b === "crawl" || b === "drive" ? 0.7 : 1),
         excite: 0,
         born: c.id === newId ? performance.now() : -1e9,
         labelT: c.id === newId ? performance.now() + 1200 : -1e9,
-        seed: Math.random() * 1000,
-      });
+        seed: rnd() * 1000,
+        mode: 0, next: 0, vx: 0, vy: 0,
+        ax: x, ay: y, tx: x, ty: y,
+        sq: 0, roll: 0, dip: 0,
+        reg, bandT, bandB, home: want, foot,
+      };
+      rt.next = rt.t;
+      styleSpawn(rt, b);
+      rtRef.current.set(c.id, rt);
     };
     for (const c of view) {
       if (!spritesRef.current.has(c.id)) {
@@ -413,15 +657,40 @@ export default function WorldScene({
     for (const id of [...spritesRef.current.keys()]) if (!alive.has(id)) spritesRef.current.delete(id);
   }, [view, newId, floorR]);
 
+  // Repainting the world moves the water and the hills. Anyone left standing in
+  // the wrong place is re-homed — once, here, never in the render loop.
+  useEffect(() => {
+    const m = mask;
+    for (const c of creaturesRef.current) {
+      const rt = rtRef.current.get(c.id);
+      if (!rt) continue;
+      const b = kindById(c.kindId).behavior;
+      const want = regionForBehavior(b);
+      const spot = m ? findSpawn(m, want, seedOf(c.id)) : null;
+      if (!m || !spot) { rt.reg = null; continue; }
+      const band = regionBand(m, want);
+      if (band) { rt.bandT = band[0]; rt.bandB = band[1]; }
+      const home = want === "ground"
+        ? hasGroundAt(groundCols, rt.x)
+        : regionAt(m, Math.max(0, Math.min(1, rt.x)), Math.max(0, Math.min(1, rt.y))) === want;
+      rt.reg = want;
+      if (home) continue;
+      rt.x = spot.x;
+      rt.y = want === "ground" ? groundAt(groundCols, floorR, spot.x) : spot.y;
+      rt.baseY = rt.y;
+      rt.ax = rt.tx = rt.x;
+      rt.ay = rt.ty = rt.y;
+    }
+  }, [mask, groundCols, floorR]);
+
   // entrance banner + splash sound (once per arriving creature)
   useEffect(() => {
     if (!newCreature || arrivalRef.current === newCreature.id) return;
     arrivalRef.current = newCreature.id;
     const kind = kindById(newCreature.kindId);
     sfxSplash();
-    const arrival = (copy[kind.behavior] ?? copy.swim).arrival;
-    pushBanner(`${newCreature.name} the ${kind.label} ${arrival}!`, "sparkle");
-  }, [newCreature, copy, pushBanner]);
+    pushBanner(`${newCreature.name} the ${kind.label} ${arrivalLine(worldId, kind.behavior)}!`, "sparkle");
+  }, [newCreature, worldId, pushBanner]);
 
   // gentle ambient bubbles (ocean only)
   useEffect(() => {
@@ -449,6 +718,8 @@ export default function WorldScene({
     const bubbles: { x: number; y: number; r: number; v: number; wob: number }[] = [];
     const sparkles: { x: number; y: number; vx: number; vy: number; life: number }[] = [];
     let lastT = performance.now();
+    /** Ground shake, in px. A footfall knocks it up; it dies away in a moment. */
+    let shake = 0;
 
     const fit = () => {
       const dpr = window.devicePixelRatio || 1;
@@ -464,6 +735,8 @@ export default function WorldScene({
     ro.observe(wrap);
 
     const seabedY = () => H * floorRef.current;
+    /** What a walker stands on at normalized x — painted hills, or the floor. */
+    const gy = (nx: number) => groundAt(colsRef.current, floorRef.current, nx);
 
     const loop = (now: number) => {
       const dt = Math.min(0.05, (now - lastT) / 1000);
@@ -471,10 +744,19 @@ export default function WorldScene({
       sampleFrame(dt);
       const dpr = window.devicePixelRatio || 1;
       const ctx = cv.getContext("2d")!;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // A heavy footfall knocks the whole scene about for a moment. The zoom is
+      // the amount needed to keep the shifted background covering its own edges.
+      shake = shake > 0.06 ? shake * Math.exp(-dt * 7.5) : 0;
+      if (shake > 0) {
+        const k = 1 + (2.4 * shake) / Math.max(1, Math.min(W, H));
+        const ox = Math.sin(now * 0.085) * shake - ((k - 1) * W) / 2;
+        const oy = Math.cos(now * 0.121) * shake - ((k - 1) * H) / 2;
+        ctx.setTransform(dpr * k, 0, 0, dpr * k, ox * dpr, oy * dpr);
+      } else {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
       const t = now / 1000;
       const world = worldRef.current;
-      const floorNorm = floorRef.current;
 
       /* ── world theme (background + floor + ambience) ── */
       const frame = { ctx, W, H, t, floorY: seabedY() };
@@ -514,6 +796,10 @@ export default function WorldScene({
 
       /* ── creatures ── */
       const list = creaturesRef.current;
+      const pen = maskRef.current;          // the painted regions, when there are any
+      const calm = calmRef.current;         // < 1 when the viewer asked for less motion
+      // nobody stands so low that the bottom HUD is drawn over them
+      const standCap = Math.max(0.62, 1 - HUD_CLEAR / Math.max(1, H));
       for (const c of list) {
         const sp = spritesRef.current.get(c.id);
         const rt = rtRef.current.get(c.id);
@@ -525,17 +811,21 @@ export default function WorldScene({
         const speedBoost = 1 + rt.excite * 3;
         const sizeF = Math.min(W, H) / 520;
 
+        // where it was, in case the painted world says it may not go there
+        const wasX = rt.x, wasY = rt.y, wasB = rt.baseY;
+
         // behavior motion
         if (b === "swim" || b === "fly") {
           rt.x += rt.dir * rt.speed * speedBoost * dt;
           rt.baseY += Math.sin(t * 0.3 + rt.seed) * 0.008 * dt * 60;
-          rt.baseY = Math.min(0.72, Math.max(0.16, rt.baseY));
+          // (the painted band, when the child painted one — else exactly as before)
+          rt.baseY = Math.min(rt.reg ? rt.bandB - 0.03 : 0.72, Math.max(rt.reg ? rt.bandT + 0.03 : 0.16, rt.baseY));
           rt.y = rt.baseY + Math.sin(rt.t * (b === "fly" ? 1.4 : 0.9) + rt.seed) * 0.045;
           if (rt.x > 1.08) { rt.x = 1.08; rt.dir = -1; }
           if (rt.x < -0.08) { rt.x = -0.08; rt.dir = 1; }
         } else if (b === "drive" || b === "crawl") {
           rt.x += rt.dir * rt.speed * speedBoost * dt;
-          rt.y = floorNorm + Math.abs(Math.sin(rt.t * (b === "drive" ? 9 : 4))) * -0.008;
+          rt.y = gy(rt.x) + rt.foot + Math.abs(Math.sin(rt.t * (b === "drive" ? 9 : 4))) * -0.008;
           if (rt.x > 1.05) { rt.dir = -1; }
           if (rt.x < -0.05) { rt.dir = 1; }
         } else if (b === "float") {
@@ -547,11 +837,230 @@ export default function WorldScene({
         } else if (b === "bounce") {
           rt.x += rt.dir * rt.speed * 0.8 * speedBoost * dt;
           const hop = Math.abs(Math.sin(rt.t * 2.2 + rt.seed));
-          rt.y = 0.68 - hop * 0.24;
+          rt.y = (rt.reg ? gy(rt.x) + rt.foot : 0.68) - hop * 0.24;
           if (rt.x > 1.02) rt.dir = -1;
           if (rt.x < -0.02) rt.dir = 1;
+
+        /* ── and now the ten that belong to one kind of thing ── */
+
+        } else if (b === "orbit") {
+          // a planet: one slow circle, ten to twenty seconds round. The angle is
+          // accumulated (in `vx`) rather than read off the clock, so an excited
+          // wobble speeds it up instead of teleporting it round the ring.
+          rt.vx += dt * rt.speed * 14 * calm * speedBoost;
+          const a = rt.vx + rt.seed;
+          rt.x = rt.ax + Math.cos(a) * rt.tx;
+          rt.y = rt.ay + Math.sin(a) * rt.ty;
+          rt.roll = Math.sin(a) * 0.06;
+        } else if (b === "jet") {
+          // an octopus: squeeze… surge… then a long, passive, sinking drift
+          if (rt.t >= rt.next) {
+            if (rt.mode === 0) {                       // the bell squeezes shut
+              rt.mode = 1;
+              rt.next = rt.t + 0.24 / calm;
+              rt.sq = 0.26;
+            } else {                                    // and shoves off
+              rt.mode = 0;
+              rt.next = rt.t + (1.6 + (rt.seed % 10) * 0.14) / calm;
+              rt.sq = -0.22;
+              rt.vx = rt.dir * 0.34 * calm * speedBoost;
+              rt.vy = -0.2 * calm;
+            }
+          }
+          const drag = Math.exp(-1.5 * dt);
+          rt.vx *= drag;
+          rt.vy = rt.vy * drag + 0.05 * dt;              // and then it sinks again
+          rt.x += rt.vx * dt;
+          rt.y += rt.vy * dt;
+          rt.sq += (0 - rt.sq) * Math.min(1, dt * 3.2);
+          rt.roll = -Math.min(0.34, Math.abs(rt.vx) * 0.9);   // nose up on the surge
+          if (rt.x > 0.97) { rt.x = 0.97; rt.dir = -1; rt.vx = -Math.abs(rt.vx); }
+          if (rt.x < 0.03) { rt.x = 0.03; rt.dir = 1; rt.vx = Math.abs(rt.vx); }
+          if (rt.y > rt.bandB - 0.04) { rt.y = rt.bandB - 0.04; rt.vy = -Math.abs(rt.vy) * 0.4; }
+          if (rt.y < rt.bandT + 0.04) { rt.y = rt.bandT + 0.04; rt.vy = Math.abs(rt.vy) * 0.4; }
+        } else if (b === "scuttle") {
+          // a crab: quick sideways skitters and sharp stops. It never turns to
+          // face where it is going — that is the whole read.
+          if (rt.t >= rt.next) {
+            if (rt.mode === 0) {
+              rt.mode = 1;
+              rt.next = rt.t + (0.16 + (rt.seed % 7) * 0.035) / calm;
+              if (Math.random() < 0.4) rt.dir = rt.dir === 1 ? -1 : 1;
+            } else {
+              rt.mode = 0;
+              rt.next = rt.t + (0.4 + (rt.seed % 5) * 0.2 + Math.random() * 0.4) / calm;
+            }
+          }
+          if (rt.mode === 1) {
+            rt.x += rt.dir * 0.34 * calm * speedBoost * dt;
+            rt.y = gy(rt.x) + rt.foot - Math.abs(Math.sin(rt.t * 26)) * 0.005;
+            rt.roll = rt.dir * 0.1;                      // leaning into the dash
+          } else {
+            rt.y = gy(rt.x) + rt.foot;
+            rt.roll = Math.sin(rt.t * 3.1 + rt.seed) * 0.03;   // a nervous little jiggle
+          }
+          if (rt.x > 0.95) rt.dir = -1;
+          if (rt.x < 0.05) rt.dir = 1;
+        } else if (b === "stomp") {
+          // a T-rex: one heavy step at a time, and the ground knows about it
+          const per = 1.15 / calm;
+          if (rt.t >= rt.next) {                          // …and it lands
+            rt.next = rt.t + per;
+            rt.mode = rt.mode === 1 ? 0 : 1;              // alternating feet
+            rt.sq = 0.17;
+            if (!reducedRef.current) shake = Math.max(shake, 2.4 + 1.6 * Math.min(1.3, c.scale));
+            const fy = rt.y * H + sp.h * c.scale * sizeF * 0.4;
+            for (let k = 0; k < 5; k++) {
+              sparkles.push({
+                x: rt.x * W + (Math.random() - 0.5) * 34,
+                y: fy,
+                vx: (Math.random() - 0.5) * 80,
+                vy: -18 - Math.random() * 46,
+                life: 0.45 + Math.random() * 0.3,
+              });
+            }
+            if (rt.x > 0.9) rt.dir = -1;
+            else if (rt.x < 0.1) rt.dir = 1;
+          }
+          const step = Math.min(1, (1 - (rt.next - rt.t) / per) / 0.62);   // 0..1 through the swing
+          if (step < 1) rt.x += rt.dir * 0.075 * calm * speedBoost * dt;
+          rt.y = gy(rt.x) + rt.foot - Math.sin(step * Math.PI) * 0.022;
+          rt.sq += (0 - rt.sq) * Math.min(1, dt * 7);
+          rt.roll = Math.sin(step * Math.PI) * 0.05 * (rt.mode === 1 ? 1 : -1);
+        } else if (b === "waddle") {
+          // a chicken: rocks from one foot to the other, and gains a little
+          // ground on every rock
+          const w = rt.t * 4.6 * calm + rt.seed;
+          const rock = Math.sin(w);
+          rt.roll = rock * 0.22;
+          rt.x += rt.dir * 0.075 * calm * speedBoost * Math.abs(rock) * dt;
+          rt.y = gy(rt.x) + rt.foot - Math.abs(Math.cos(w)) * 0.008;
+          if (rt.x > 0.94) rt.dir = -1;
+          if (rt.x < 0.06) rt.dir = 1;
+        } else if (b === "graze") {
+          // a cow: amble a few steps, put your head down in the grass, chew
+          if (rt.t >= rt.next) {
+            rt.mode = rt.mode === 0 ? 1 : 0;
+            rt.next = rt.t + (rt.mode === 1 ? 2.6 + (rt.seed % 9) * 0.4 : 2.2 + (rt.seed % 7) * 0.5) / calm;
+            if (rt.mode === 0 && Math.random() < 0.35) rt.dir = rt.dir === 1 ? -1 : 1;
+          }
+          rt.dip += ((rt.mode === 1 ? 1 : 0) - rt.dip) * Math.min(1, dt * 2.6);
+          if (rt.mode === 0) rt.x += rt.dir * 0.05 * calm * speedBoost * (1 - rt.dip) * dt;
+          rt.roll = rt.dip * (0.3 + Math.sin(rt.t * 7.5) * 0.03);   // nose down, chewing
+          rt.y = gy(rt.x) + rt.foot + rt.dip * 0.012;
+          if (rt.x > 0.94) rt.dir = -1;
+          if (rt.x < 0.06) rt.dir = 1;
+        } else if (b === "hover") {
+          // a UFO: hold station, bob — then slide, decisively, somewhere new
+          if (rt.t >= rt.next) {
+            if (rt.mode === 0) {
+              rt.mode = 1;
+              rt.tx = 0.12 + Math.random() * 0.76;
+              rt.ty = rt.bandT + 0.08 + Math.random() * Math.max(0.02, rt.bandB - rt.bandT - 0.16);
+              rt.next = rt.t + 1.4 / calm;
+            } else {
+              rt.mode = 0;
+              rt.ax = rt.tx; rt.ay = rt.ty;
+              rt.next = rt.t + (1.5 + Math.random() * 1.6) / calm;
+            }
+          }
+          if (rt.mode === 1) {
+            const k = Math.min(1, dt * 3.2 * calm * speedBoost);
+            const dx = rt.tx - rt.ax;
+            rt.ax += dx * k;
+            rt.ay += (rt.ty - rt.ay) * k;
+            rt.roll = Math.max(-0.2, Math.min(0.2, dx * 0.7));      // banking into the move
+          } else {
+            rt.roll += (0 - rt.roll) * Math.min(1, dt * 3);
+          }
+          rt.x = rt.ax + Math.sin(rt.t * 0.7 + rt.seed) * 0.005;
+          rt.y = rt.ay + Math.sin(rt.t * 1.9 + rt.seed) * 0.009;
+        } else if (b === "streak") {
+          // a comet: one fast diagonal dash, gone, then round again from
+          // another edge. While it is away it waits off-canvas, where nothing
+          // draws it and nothing can tap it.
+          if (rt.mode === 1) {
+            if (rt.t >= rt.next) {
+              rt.mode = 0;
+              const left = Math.random() < 0.5;
+              rt.dir = left ? 1 : -1;
+              rt.x = left ? -0.14 : 1.14;
+              const hi = Math.max(rt.bandT + 0.04, Math.min(rt.bandB - 0.1, rt.bandT + 0.05));
+              rt.y = hi + Math.random() * Math.max(0.04, (rt.bandB - hi) * 0.5);
+              rt.vx = rt.dir * (0.5 + Math.random() * 0.3) * calm;
+              rt.vy = (0.06 + Math.random() * 0.2) * calm;
+              rt.roll = Math.atan2(rt.vy, rt.vx * rt.dir);
+            } else {
+              rt.x = -0.5; rt.y = -0.5;
+            }
+          } else {
+            rt.x += rt.vx * dt * speedBoost;
+            rt.y += rt.vy * dt * speedBoost;
+            if (rt.x < -0.22 || rt.x > 1.22 || rt.y > Math.min(0.98, rt.bandB + 0.12)) {
+              rt.mode = 1;
+              rt.next = rt.t + (0.7 + Math.random() * 1.4) / calm;
+              rt.x = -0.5; rt.y = -0.5;
+            }
+          }
+        } else if (b === "erupt") {
+          // a volcano: rooted and grumbling, with the occasional puff
+          if (rt.t >= rt.next) {
+            const big = Math.random() < 0.3;
+            rt.next = rt.t + (big ? 5 : 2.2) + Math.random() * 3;
+            rt.sq = big ? -0.14 : -0.06;
+            if (big && !reducedRef.current) shake = Math.max(shake, 1.6);
+            const top = rt.y * H - sp.h * c.scale * sizeF * 0.5;
+            const puff = big ? 16 : 5;
+            for (let k = 0; k < puff; k++) {
+              sparkles.push({
+                x: rt.x * W + (Math.random() - 0.5) * 20,
+                y: top,
+                vx: (Math.random() - 0.5) * 70 * calm,
+                vy: -(60 + Math.random() * 130) * calm,
+                life: 0.6 + Math.random() * 0.6,
+              });
+            }
+          }
+          rt.sq += (0 - rt.sq) * Math.min(1, dt * 2.2);
+          const rumble = Math.min(1, Math.max(0, -rt.sq) * 9);
+          rt.x = rt.ax + Math.sin(rt.t * 31) * 0.0022 * rumble;
+          rt.y = gy(rt.x) + rt.foot;
+          rt.roll = Math.sin(rt.t * 0.6 + rt.seed) * 0.012;
+        } else if (b === "sway") {
+          // a palm tree: rooted, arcing over and back like something in a current
+          const a = rt.t * 0.85 * calm + rt.seed;
+          rt.roll = (Math.sin(a) * 0.17 + Math.sin(a * 2.1 + 1.3) * 0.045) * calm;
+          rt.x = rt.ax + Math.sin(a) * 0.004;
+          rt.y = gy(rt.x) + rt.foot;
         }
-        // grow: anchored, sway only
+        // grow, and anything we have never heard of: anchored, sway only
+
+        if (GROUNDED.has(b) && rt.y > standCap) rt.y = standCap;
+
+        /* ── a painted world keeps everyone where they belong ── */
+        if (pen && rt.reg) {
+          if (rt.reg === "ground") {
+            if (!hasGroundAt(colsRef.current, rt.x)) {
+              rt.x = wasX; rt.y = wasY;
+              rt.dir = rt.dir === 1 ? -1 : 1;
+              rt.ax = rt.x;
+            }
+          } else if (b !== "streak") {
+            if (rt.y < rt.bandT + 0.02) rt.y = rt.bandT + 0.02;
+            else if (rt.y > rt.bandB - 0.02) rt.y = rt.bandB - 0.02;
+            const cy = rt.y < 0 ? 0 : rt.y > 1 ? 1 : rt.y;
+            const cx = rt.x < 0 ? 0 : rt.x > 1 ? 1 : rt.x;
+            if (regionAt(pen, cx, cy) !== rt.reg) {
+              rt.x = wasX; rt.y = wasY; rt.baseY = wasB;
+              rt.dir = rt.dir === 1 ? -1 : 1;
+              rt.vx = -rt.vx * 0.6; rt.vy = -rt.vy * 0.6;
+              if (b === "hover") {                        // pick somewhere it can actually go
+                rt.ax = rt.tx = rt.x; rt.ay = rt.ty = rt.y;
+                rt.mode = 0; rt.next = rt.t + 0.7;
+              }
+            }
+          }
+        }
 
         const px = rt.x * W;
         const py = rt.y * H;
@@ -581,6 +1090,17 @@ export default function WorldScene({
           });
         }
 
+        // a comet drags its tail behind it, whatever world it turns up in
+        if (b === "streak" && rt.mode === 0 && Math.random() < 0.7) {
+          sparkles.push({
+            x: px - rt.vx * W * 0.045,
+            y: py - rt.vy * H * 0.045,
+            vx: -rt.vx * W * 0.16,
+            vy: -rt.vy * H * 0.16,
+            life: 0.5 + Math.random() * 0.35,
+          });
+        }
+
         ctx.save();
         ctx.translate(px, py);
         if (entrance) {
@@ -595,9 +1115,18 @@ export default function WorldScene({
             world === "space" && (b === "swim" || b === "float" || b === "fly")
               ? Math.sin(rt.t * 0.45 + rt.seed) * 0.2
               : 0;
-          const flip = (b === "swim" || b === "fly" || b === "drive" || b === "crawl") ? rt.dir : 1;
+          const flip = FACING.has(b) ? rt.dir : 1;
           ctx.scale(scl * flip, scl);
-          ctx.rotate(tilt * flip + spaceRoll);
+          // `rt.roll` is a lean in screen terms, so unlike `tilt` it is not
+          // mirrored by the flip: a grazing cow puts its head down towards the
+          // grass whichever way round it happens to be standing. Things with
+          // feet pivot on them, so a palm tree bends from its root and a T-rex
+          // squashes onto the ground rather than through it.
+          const footed = FOOTED.has(b);
+          if (footed) ctx.translate(0, sp.h * FOOT);
+          ctx.rotate(tilt * flip + spaceRoll + rt.roll);
+          if (rt.sq !== 0) ctx.scale(1 + rt.sq, 1 - rt.sq);
+          if (footed) ctx.translate(0, -sp.h * FOOT);
           if (b === "twinkle") {
             const p = 1 + Math.sin(rt.t * 3 + rt.seed) * 0.08;
             ctx.scale(p, p);

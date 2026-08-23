@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Creature, DreamWorld, RecognitionResult, Screen, Stroke, WritingWorldId } from "@/lib/types";
 import { recognize } from "@/lib/recognizer";
-import { kindById, WORLD_PACKS } from "@/lib/creatures";
+import { kindById, rosterFor, WORLD_PACKS } from "@/lib/creatures";
 import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid, loadDream, saveDream } from "@/lib/storage";
 import { trpc } from "@/providers/trpc";
 import { bakeSketchPNG, proxyArtUrl } from "@/lib/polish";
@@ -27,6 +27,10 @@ export default function App() {
   const [worldId, setWorldId] = useState<string>("ocean");
   const [writeWorld, setWriteWorld] = useState<WritingWorldId>("letters");
   const [dream, setDream] = useState<DreamWorld | null>(() => loadDream());
+  /* Which world's creatures the reveal screen offers. Drawing from inside a
+     world offers that world's things; drawing from the sketchbook offers the
+     everyday set, because the child has not picked a world yet. */
+  const [drawWorld, setDrawWorld] = useState<string>("dream");
   const [creatures, setCreatures] = useState<Creature[]>(() => loadCreatures());
   const [draft, setDraft] = useState<Stroke[]>([]);
   const [photoDraft, setPhotoDraft] = useState<string | null>(null);
@@ -112,10 +116,16 @@ export default function App() {
 
   const takenNames = useMemo(() => new Set(creatures.map((c) => c.name)), [creatures]);
 
-  const result: RecognitionResult = useMemo(
-    () => (draft.length ? recognize(draft) : { kindId: "mystery", confidence: 0, alternatives: [] }),
-    [draft]
-  );
+  const result: RecognitionResult = useMemo(() => {
+    const raw: RecognitionResult = draft.length
+      ? recognize(draft)
+      : { kindId: "mystery", confidence: 0, alternatives: [] };
+    // The recognizer knows nothing about worlds, so its guess can be a fish in
+    // outer space. If this world does not offer that creature, fall back to the
+    // mystery creature rather than highlighting a card that isn't there.
+    const offered = rosterFor(drawWorld).some((k) => k.id === raw.kindId);
+    return offered ? raw : { ...raw, kindId: "mystery", confidence: 0 };
+  }, [draft, drawWorld]);
 
   const prompt = useMemo(() => {
     const pack = WORLD_PACKS.find((p) => p.id === worldId) ?? WORLD_PACKS[0];
@@ -206,7 +216,7 @@ export default function App() {
               setWorldId(id);
               setScreen("world");
             }}
-            onDraw={() => setScreen("draw")}
+            onDraw={() => { setDrawWorld("dream"); setScreen("draw"); }}
             onWrite={(id) => { setWriteWorld(id); setScreen("write"); }}
           />
         )}
@@ -223,6 +233,7 @@ export default function App() {
             strokes={draft}
             result={result}
             photo={photoDraft}
+            worldId={drawWorld}
             name={pickName(result.kindId, takenNames)}
             onShuffleName={(k) => pickName(k, takenNames)}
             onConfirm={handleConfirm}
@@ -237,7 +248,7 @@ export default function App() {
             dream={dream}
             polishingIds={polishingIds}
             onBack={() => { setNewId(null); setScreen("home"); }}
-            onDrawMore={() => { setNewId(null); setScreen("draw"); }}
+            onDrawMore={() => { setNewId(null); setDrawWorld(worldId); setScreen("draw"); }}
             onPlayGame={() => { setNewId(null); setScreen("game"); }}
             onRepaint={() => setScreen("paintworld")}
           />

@@ -30,8 +30,8 @@ export const WORD_KINDS: CreatureKind[] = [
   { id: "cat",   label: "Cat",   emoji: "", behavior: "crawl",   names: ["Mittens", "Whiskers", "Nibbles", "Smudge"] },
   { id: "bee",   label: "Bee",   emoji: "", behavior: "fly",     names: ["Buzz", "Honey", "Fuzzy", "Zip"] },
   { id: "frog",  label: "Frog",  emoji: "", behavior: "bounce",  names: ["Hopper", "Ribbit", "Lily", "Splot"] },
-  { id: "duck",  label: "Duck",  emoji: "", behavior: "swim",    names: ["Quackers", "Puddle", "Waddle", "Beaky"] },
-  { id: "pig",   label: "Pig",   emoji: "", behavior: "bounce",  names: ["Truffle", "Snout", "Pinky", "Oink"] },
+  { id: "duck",  label: "Duck",  emoji: "", behavior: "waddle",  names: ["Quackers", "Puddle", "Waddle", "Beaky"] },
+  { id: "pig",   label: "Pig",   emoji: "", behavior: "graze",   names: ["Truffle", "Snout", "Pinky", "Oink"] },
   { id: "moon",  label: "Moon",  emoji: "", behavior: "twinkle", names: ["Luna", "Crescent", "Dozy", "Silver"] },
   { id: "apple", label: "Apple", emoji: "", behavior: "grow",    names: ["Pip", "Crunch", "Rosy", "Core"] },
   { id: "ball",  label: "Ball",  emoji: "", behavior: "bounce",  names: ["Bouncy", "Rolly", "Boing", "Spot"] },
@@ -40,7 +40,54 @@ export const WORD_KINDS: CreatureKind[] = [
   { id: "cake",  label: "Cake",  emoji: "", behavior: "grow",    names: ["Sprinkle", "Frosting", "Cherry", "Slice"] },
 ];
 
-const ALL_KINDS = [...CREATURE_KINDS, ...WORD_KINDS];
+/* Creatures that belong to one particular world. Like WORD_KINDS these stay out
+   of CREATURE_KINDS — the recognizer cannot tell a stegosaurus from a sheep, and
+   the reveal screen no longer shows one flat list anyway: it shows the roster of
+   the world the child is drawing for (see WORLD_ROSTERS below). Each id here has
+   drawn artwork in lib/doodles, because we render the drawing, never an emoji. */
+export const WORLD_KINDS: CreatureKind[] = [
+  /* ── Magic Reef ─────────────────────────────────────────────────────────── */
+  { id: "starfish",    label: "Starfish",    emoji: "", behavior: "crawl",   names: ["Twinkletoes", "Sandy", "Wishy", "Five-Points", "Glitter"] },
+  { id: "octopus",     label: "Octopus",     emoji: "", behavior: "jet",     names: ["Inky", "Eight-Arms", "Squishy", "Noodle-Arms", "Blub"] },
+  { id: "crab",        label: "Crab",        emoji: "", behavior: "scuttle", names: ["Pinchy", "Sideways", "Clacky", "Snip-Snap", "Shelly"] },
+  { id: "seahorse",    label: "Seahorse",    emoji: "", behavior: "swim",    names: ["Curly", "Twirl", "Sea-Pony", "Bobbin", "Ripple"] },
+  { id: "turtle",      label: "Turtle",      emoji: "", behavior: "swim",    names: ["Shelldon", "Slowpoke", "Paddle", "Domey", "Tuck"] },
+  { id: "shark",       label: "Shark",       emoji: "", behavior: "swim",    names: ["Chomper", "Toothy", "Finny", "Big Grin", "Zoomer"] },
+  { id: "jellyfish",   label: "Jellyfish",   emoji: "", behavior: "jet",     names: ["Wobble", "Squish", "Glowy", "Bloop", "Jelly-Belly"] },
+  { id: "whale",       label: "Whale",       emoji: "", behavior: "swim",    names: ["Big Blue", "Spout", "Gulp", "Songy", "Splashy"] },
+
+  /* ── Giggle Galaxy ──────────────────────────────────────────────────────── */
+  { id: "planet",      label: "Planet",      emoji: "", behavior: "orbit",   names: ["Ringo", "Bumpy", "Spinny", "Swirl", "Big Ball"] },
+  { id: "mercury",     label: "Mercury",     emoji: "", behavior: "orbit",   names: ["Speedy", "Zippy", "Little Rock", "Sizzle"] },
+  { id: "venus",       label: "Venus",       emoji: "", behavior: "orbit",   names: ["Cloudy", "Toasty", "Puff", "Shimmer"] },
+  { id: "mars",        label: "Mars",        emoji: "", behavior: "orbit",   names: ["Rusty", "Red-Red", "Dusty", "Blush"] },
+  { id: "ufo",         label: "UFO",         emoji: "", behavior: "hover",   names: ["Beep-Boop", "Saucer", "Blinky", "Whoosh", "Zoop"] },
+  { id: "alien",       label: "Alien",       emoji: "", behavior: "bounce",  names: ["Zorb", "Blip", "Greenie", "Bloop-Bloop", "Squeek"] },
+  { id: "astronaut",   label: "Astronaut",   emoji: "", behavior: "float",   names: ["Bouncy Boots", "Star Hopper", "Bubble-Head", "Moonwalker"] },
+  { id: "comet",       label: "Comet",       emoji: "", behavior: "streak",  names: ["Swoosh", "Sparktail", "Dash", "Glimmer", "Zing"] },
+  { id: "satellite",   label: "Satellite",   emoji: "", behavior: "orbit",   names: ["Beep", "Wing-Ding", "Ping", "Chirpy", "Antenna"] },
+
+  /* ── Sunny Farm ─────────────────────────────────────────────────────────── */
+  { id: "cow",         label: "Cow",         emoji: "", behavior: "graze",   names: ["Moo-Moo", "Buttercup", "Spots", "Clover", "Bessie"] },
+  { id: "chicken",     label: "Chicken",     emoji: "", behavior: "waddle",  names: ["Cluck-Cluck", "Feathers", "Peck", "Henrietta", "Fluffy"] },
+  { id: "sheep",       label: "Sheep",       emoji: "", behavior: "graze",   names: ["Woolly", "Baa-Baa", "Puffball", "Marshmallow", "Nibble"] },
+  { id: "horse",       label: "Horse",       emoji: "", behavior: "graze",   names: ["Clip-Clop", "Sugar", "Gallop", "Star-Nose", "Pepper"] },
+  { id: "barn",        label: "Barn",        emoji: "", behavior: "grow",    names: ["Red Roof", "Hay House", "Creaky", "Cozy", "Big Doors"] },
+  { id: "tractor",     label: "Tractor",     emoji: "", behavior: "drive",   names: ["Chugger", "Putt-Putt", "Big Wheels", "Muddy", "Tilly"] },
+
+  /* ── Dino Island ────────────────────────────────────────────────────────── */
+  { id: "trex",        label: "T-Rex",       emoji: "", behavior: "stomp",   names: ["Chompy", "Tiny Arms", "Roary", "Rexy", "Big Teeth"] },
+  { id: "triceratops", label: "Triceratops", emoji: "", behavior: "stomp",   names: ["Three-Horn", "Frilly", "Bonk", "Trixie", "Charger"] },
+  { id: "stegosaurus", label: "Stegosaurus", emoji: "", behavior: "stomp",   names: ["Spike", "Steggy", "Platey", "Thwack", "Diamond-Back"] },
+  { id: "pterodactyl", label: "Pterodactyl", emoji: "", behavior: "fly",     names: ["Screech", "Wingnut", "Glider", "Swoopy", "Kite"] },
+  { id: "longneck",    label: "Long-neck",   emoji: "", behavior: "stomp",   names: ["Stretch", "Tall-Boy", "Necky", "Munch", "Treetop"] },
+  { id: "egg",         label: "Dino Egg",    emoji: "", behavior: "bounce",  names: ["Crackle", "Hatchy", "Speckles", "Peep", "Wibble"] },
+  { id: "volcano",     label: "Volcano",     emoji: "", behavior: "erupt",   names: ["Rumbly", "Puffs", "Hot-Top", "Boom-Boom", "Smokey"] },
+  { id: "palmtree",    label: "Palm Tree",   emoji: "", behavior: "sway",    names: ["Swishy", "Coco", "Fronds", "Breezy", "Tall Tom"] },
+];
+
+/** Every kind the app knows: guessable, written, and world-specific. */
+export const ALL_KINDS: CreatureKind[] = [...CREATURE_KINDS, ...WORD_KINDS, ...WORLD_KINDS];
 
 export const kindById = (id: string): CreatureKind =>
   ALL_KINDS.find((k) => k.id === id) ?? CREATURE_KINDS[CREATURE_KINDS.length - 1];
@@ -97,6 +144,48 @@ export const WORLD_PACKS: WorldPack[] = [
     prompts: ["anything you like", "your house", "a rainbow", "a garden", "the sky", "a castle"],
   },
 ];
+
+/* ── who you are offered, world by world ──────────────────────────────────────
+   "What did you draw?" used to show the same fourteen chips everywhere, so the
+   Reef offered a rocket and the Galaxy offered a flower. Each world now offers
+   the things that live in it, most-likely-first. Keep these to about a dozen:
+   they are tappable cards on a small phone, and twenty is a wall of noise. */
+
+/** Ordered kind ids offered on the reveal screen, per world id. */
+export const WORLD_ROSTERS: Record<string, string[]> = {
+  ocean: ["fish", "starfish", "octopus", "crab", "jellyfish", "seahorse", "turtle", "shark", "whale", "duck", "snake"],
+  space: ["rocket", "ufo", "alien", "astronaut", "planet", "star", "moon", "mars", "comet", "satellite", "mercury", "venus"],
+  farm:  ["cow", "pig", "chicken", "sheep", "horse", "duck", "barn", "tractor", "tree", "flower"],
+  dino:  ["trex", "longneck", "triceratops", "stegosaurus", "pterodactyl", "egg", "volcano", "palmtree"],
+  /* "My World" is the everyday set — the things children actually draw when
+     nobody has told them what to draw, plus the two show-offs (a volcano and
+     an alien) that every five-year-old wants in their world. */
+  dream: ["cat", "dog", "house", "tree", "flower", "sun", "butterfly", "bird", "rainbow", "car", "volcano", "alien", "star", "heart"],
+};
+
+/** The world an unknown id falls back to: "My World", the everyday set. */
+const FALLBACK_ROSTER = "dream";
+
+/**
+ * The roster for a world as full kinds, always ending with "mystery" — the
+ * escape hatch for "it is not any of these", which every world needs last.
+ * Unknown ids and ids with no kind behind them are dropped rather than
+ * silently resolved to mystery, so a typo cannot smuggle in a duplicate.
+ */
+export function rosterFor(worldId: string): CreatureKind[] {
+  const ids = WORLD_ROSTERS[worldId] ?? WORLD_ROSTERS[FALLBACK_ROSTER];
+  const seen = new Set<string>(["mystery"]);
+  const roster: CreatureKind[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    const kind = ALL_KINDS.find((k) => k.id === id);
+    if (!kind) continue;
+    seen.add(id);
+    roster.push(kind);
+  }
+  roster.push(kindById("mystery"));
+  return roster;
+}
 
 /** Behavior → arrival copy, per world. */
 export const BEHAVIOR_COPY: Record<string, Record<string, { arrival: string }>> = {

@@ -1,18 +1,21 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Stroke, RecognitionResult, CreatureKind } from "@/lib/types";
 import { drawStrokeFull, strokesBounds } from "@/lib/crayon";
-import { CREATURE_KINDS, kindById } from "@/lib/creatures";
+import { kindById, rosterFor } from "@/lib/creatures";
 import { sfxScan, sfxMagic, sfxTap, sfxHappy } from "@/lib/audio";
 import { hand, paperTile, roughEllipse, roughUnderline, seedOf, waxTile } from "@/lib/ink";
 import { InkButton, InkCard, InkShape, Scribble, Tape } from "@/components/ink/Ink";
 import { usePrefersReducedMotion } from "@/components/ink/motion";
 import { Icon } from "@/components/ink/Icons";
+import { C, doodleParts } from "@/lib/doodles";
+import { Doodle } from "@/components/ink/Doodles";
 
 interface Props {
   strokes: Stroke[];
   result: RecognitionResult;
   name: string;
   photo?: string | null;   // paper-photo drawing (data URL) — skips the guess
+  worldId: string;         // the world being drawn for — it picks the choices
   onShuffleName: (kindId: string) => string;
   onConfirm: (kindId: string, name: string) => void;
   onRedraw: () => void;
@@ -20,36 +23,38 @@ interface Props {
 
 type Phase = "scan" | "guess" | "pick";
 
-/* mystery last, and on its own: "something else" is a real answer, not a
-   failure, so it gets a card of its own width rather than a slot in the grid */
-const NAMED = CREATURE_KINDS.filter((k) => k.id !== "mystery");
-const MYSTERY = CREATURE_KINDS.find((k) => k.id === "mystery") ?? CREATURE_KINDS[CREATURE_KINDS.length - 1];
-
 /* ── the crayon box ──────────────────────────────────────────────────────── */
+// The waxes and the drawn creatures come from @/lib/doodles. This screen used
+// to keep a private copy of both, which went stale the moment a world added a
+// creature: every new kind drew a blank card.
 
-const C = {
-  cherry: "#e63b2e",
-  orange: "#ff7a1a",
-  sun: "#ffc72c",
-  leaf: "#3aae3a",
-  lagoon: "#00c2b9",
-  ocean: "#2f6fe4",
-  grape: "#8b46c7",
-  candy: "#fb66e5",
-  cocoa: "#7a4a21",
-  ink: "#2d2926",
-  cream: "#fffaf0",
-  paper: "#fffdf7",
-};
-
-/** Each creature gets one crayon out of the box — its wax, its ink, its badge. */
+/** The fourteen the recognizer knows get a crayon chosen by hand. */
 const TONE: Record<string, string> = {
   fish: C.lagoon, car: C.cherry, sun: C.sun, star: C.sun, bird: C.ocean,
   butterfly: C.candy, flower: C.candy, tree: C.leaf, snake: C.leaf,
   rainbow: C.grape, balloon: C.orange, rocket: C.ocean, heart: C.cherry,
   house: C.cocoa, mystery: C.grape,
 };
-const toneOf = (id: string) => TONE[id] ?? C.grape;
+
+/* A world roster reaches well past those fourteen, and a whale in grape wax
+   looks wrong. Anyone unnamed above borrows the crayon their own drawing was
+   drawn with: the first stroke that isn't ink, cream or paper. */
+const borrowedTone = new Map<string, string>();
+
+/** Each creature gets one crayon out of the box — its wax, its ink, its badge. */
+function toneOf(id: string): string {
+  const chosen = TONE[id];
+  if (chosen) return chosen;
+  let tone = borrowedTone.get(id);
+  if (!tone) {
+    const lead = doodleParts(id).find(
+      (part) => part.c && part.c !== C.ink && part.c !== C.cream && part.c !== C.paper,
+    );
+    tone = lead?.c ?? C.grape;
+    borrowedTone.set(id, tone);
+  }
+  return tone;
+}
 
 /** Wax this pale needs dark letters on it. */
 function isLight(hex: string): boolean {
@@ -61,107 +66,15 @@ function isLight(hex: string): boolean {
 const onWax = (hex: string) => (isLight(hex) ? C.ink : C.cream);
 
 /* ── drawn creatures ─────────────────────────────────────────────────────── */
-// Fourteen doodles plus a mystery, drawn on a 24×24 grid with the same round
-// caps and off-true geometry as the app's icons. Emoji are somebody else's
-// artwork rendered differently on every phone; these are ours.
 
-interface Part { d: string; c?: string; fill?: string; w?: number }
-
-const DOODLES: Record<string, Part[]> = {
-  fish: [
-    { d: "M15.4 12.2 20.9 8.3v7.9z", c: C.lagoon, fill: "rgba(0,194,185,0.22)" },
-    { d: "M9.5 6.5a6.3 5.5 0 1 0 .1 11 6.3 5.5 0 0 0-.1-11z", c: C.lagoon, fill: "rgba(0,194,185,0.22)" },
-    { d: "M9.6 6.8c.5-1.7 1.9-2.6 3.4-2.4-.2 1.7-1.1 2.6-2.4 2.8", c: C.lagoon },
-    { d: "M6.4 10.5h.05", c: C.ink, w: 2.6 },
-    { d: "M4.5 13.3c1 .9 2.1.9 3.1 0", c: C.ink, w: 1.6 },
-  ],
-  car: [
-    { d: "M2.6 15.7v-2.5l2.4-4.5h8.8l3.9 4.5h3.8v2.5z", c: C.cherry, fill: "rgba(230,59,46,0.2)" },
-    { d: "M6.6 12.8 8.2 9.6h4.6v3.2z", c: C.cherry },
-    { d: "M7.3 15.3a2.4 2.4 0 1 0 .1 4.8 2.4 2.4 0 0 0-.1-4.8z", c: C.cocoa },
-    { d: "M16.7 15.3a2.4 2.4 0 1 0 .1 4.8 2.4 2.4 0 0 0-.1-4.8z", c: C.cocoa },
-  ],
-  sun: [
-    { d: "M12 6.8a5.2 5.2 0 1 0 .1 10.4A5.2 5.2 0 0 0 12 6.8z", c: C.sun, fill: "rgba(255,199,44,0.4)" },
-    { d: "M12 1.7v3M11.9 19.4v2.9M1.8 12h3M19.3 11.9h2.9M4.7 4.6 6.9 6.8M17.1 17l2.2 2.2M19.2 4.7 17 6.9M6.8 17.1l-2.2 2.2", c: C.orange },
-    { d: "M10.2 11.4h.05M13.7 11.3h.05", c: C.ink, w: 2.2 },
-    { d: "M10.1 13.6c1.2 1.2 2.6 1.2 3.8 0", c: C.ink, w: 1.7 },
-  ],
-  star: [
-    { d: "M12 3.3 14.9 9l6.3 1-4.6 4.4 1.1 6.3-5.6-3-5.7 2.9 1.2-6.2L3 10.1l6.3-1z", c: C.sun, fill: "rgba(255,199,44,0.4)" },
-    { d: "M10.4 11.4h.05M13.7 11.3h.05", c: C.ink, w: 2.2 },
-  ],
-  bird: [
-    { d: "M12 6.9c3.1 0 5.5 2.5 5.5 5.5S15.1 18 12 18s-5.6-2.6-5.6-5.6S8.9 6.9 12 6.9z", c: C.ocean, fill: "rgba(47,111,228,0.2)" },
-    { d: "M17.3 10.8l3.5 1.4-3.4 1.4", c: C.orange },
-    { d: "M9.2 12.4c1.9-1.4 4-1 5.3.6-1.5 1.8-3.9 1.6-5.3-.6z", c: C.ocean },
-    { d: "M14.9 10.7h.05", c: C.ink, w: 2.4 },
-    { d: "M10.4 17.8 9.5 20.5M13.4 17.8l.9 2.7", c: C.orange },
-  ],
-  butterfly: [
-    { d: "M11.5 8.6C9.6 5.3 4.5 5.1 3.7 8c-.7 2.6 3 4.3 7.8 4.5zM11.5 13c-4.5.2-7.2 1.8-6.4 4.2.8 2.2 4.8 1.4 6.4-1.6z", c: C.candy, fill: "rgba(251,102,229,0.22)" },
-    { d: "M12.5 8.6c1.9-3.3 7-3.5 7.8-.6.7 2.6-3 4.3-7.8 4.5zM12.5 13c4.5.2 7.2 1.8 6.4 4.2-.8 2.2-4.8 1.4-6.4-1.6z", c: C.candy, fill: "rgba(251,102,229,0.22)" },
-    { d: "M12 6.7v10.6", c: C.grape },
-    { d: "M11.7 6.8 9.9 4.3M12.3 6.8 14.2 4.4", c: C.grape },
-  ],
-  flower: [
-    { d: "M12 3.6a2.6 2.6 0 1 0 .1 5.2 2.6 2.6 0 0 0-.1-5.2zM15.3 5.9a2.6 2.6 0 1 0 .1 5.2 2.6 2.6 0 0 0-.1-5.2zM14 9.8a2.6 2.6 0 1 0 .1 5.2 2.6 2.6 0 0 0-.1-5.2zM9.9 9.8a2.6 2.6 0 1 0 .1 5.2 2.6 2.6 0 0 0-.1-5.2zM8.7 5.9a2.6 2.6 0 1 0 .1 5.2 2.6 2.6 0 0 0-.1-5.2z", c: C.candy, fill: "rgba(251,102,229,0.2)" },
-    { d: "M12 7.8a1.8 1.8 0 1 0 .1 3.6 1.8 1.8 0 0 0-.1-3.6z", c: C.sun, fill: "rgba(255,199,44,0.55)" },
-    { d: "M12 14.1v6.6M12 17.4c-2 0-3.4-1.3-3.6-3.1 2-.4 3.4.8 3.6 3.1z", c: C.leaf },
-  ],
-  tree: [
-    { d: "M12 3.2c-3.7 0-6.7 2.6-6.7 5.9 0 3.3 3 5.6 6.7 5.6s6.8-2.3 6.8-5.6c0-3.3-3.1-5.9-6.8-5.9z", c: C.leaf, fill: "rgba(58,174,58,0.22)" },
-    { d: "M10.5 14.4v6.2M13.5 14.3v6.3M9.2 20.7h5.6", c: C.cocoa },
-  ],
-  snake: [
-    { d: "M4.4 19.9C9 19.9 8.5 15 12.8 15c3.5 0 3.5-4.1 0-4.1-2.7 0-3.5-1.2-3.5-2.9 0-2 1.9-3.1 3.7-3.3", c: C.leaf, w: 2.4 },
-    { d: "M14.6 2a2.6 2.6 0 1 0 .1 5.2 2.6 2.6 0 0 0-.1-5.2z", c: C.leaf, fill: "rgba(58,174,58,0.24)" },
-    { d: "M14.9 3.9h.05", c: C.ink, w: 2.2 },
-    { d: "M17.2 4.7h2.3M19.5 4.7 21 3.6M19.5 4.7 21 5.8", c: C.cherry, w: 1.7 },
-  ],
-  rainbow: [
-    { d: "M3.1 20.3a8.9 8.9 0 0 1 17.8 0", c: C.cherry, w: 2.5 },
-    { d: "M6.4 20.3a5.6 5.6 0 0 1 11.2 0", c: C.sun, w: 2.5 },
-    { d: "M9.7 20.3a2.3 2.3 0 0 1 4.6 0", c: C.lagoon, w: 2.5 },
-  ],
-  balloon: [
-    { d: "M12 2.8c-3.2 0-5.6 2.5-5.6 5.6 0 3.6 3.6 6.5 5.6 7.8 2-1.3 5.6-4.2 5.6-7.8 0-3.1-2.4-5.6-5.6-5.6z", c: C.orange, fill: "rgba(255,122,26,0.22)" },
-    { d: "M10.8 16.2h2.4L12 17.8z", c: C.orange },
-    { d: "M12 17.9c0 2 1.9 1.6 1.9 3.6", c: C.cocoa, w: 1.8 },
-    { d: "M9.3 6.6c.4-1.4 1.4-2.2 2.7-2.3", c: C.sun, w: 1.7 },
-  ],
-  rocket: [
-    { d: "M12 2.3c2.8 2.6 4.3 5.9 4.3 9.5l-1.7 4.7H9.4L7.7 11.8c0-3.6 1.5-6.9 4.3-9.5z", c: C.ocean, fill: "rgba(47,111,228,0.18)" },
-    { d: "M7.8 11.6 4.7 15l.7 3.7 2.7-2.3M16.2 11.6l3.1 3.4-.7 3.7-2.7-2.3", c: C.ocean },
-    { d: "M12 7.3a2.1 2.1 0 1 0 .1 4.2 2.1 2.1 0 0 0-.1-4.2z", c: C.lagoon, fill: "rgba(0,194,185,0.4)" },
-    { d: "M10 16.7c.3 2.1.9 3.6 2 5 1-1.4 1.6-2.9 1.9-5", c: C.orange },
-  ],
-  heart: [
-    { d: "M12 20.4S3.2 15.2 3.2 9.2c0-2.8 2.2-5 4.9-5 1.9 0 3.2 1.1 3.9 2.4.7-1.3 2-2.4 3.9-2.4 2.7 0 4.9 2.2 4.9 5 0 6-8.8 11.2-8.8 11.2z", c: C.cherry, fill: "rgba(230,59,46,0.24)" },
-    { d: "M7.6 8c-.1 1 .2 2 .9 2.8", c: C.cream, w: 1.6 },
-  ],
-  house: [
-    { d: "M5.2 11.6v8.9h13.6v-8.9", c: C.cocoa },
-    { d: "M3.1 12.2 12 4.1l9 8.1", c: C.cherry, w: 2.5 },
-    { d: "M9.8 20.4v-5.3h4.3v5.3", c: C.cocoa, fill: "rgba(122,74,33,0.16)" },
-    { d: "M15.4 13.4h2.4v2.4h-2.4z", c: C.sun, fill: "rgba(255,199,44,0.5)" },
-  ],
-  mystery: [
-    { d: "M6.4 14.7c-2-4.3.8-9 5.4-9.2 4.7-.2 7.6 3.6 6.7 7.8-.7 3.2-3.2 5.4-6.5 5.4-2.8 0-5-1.5-5.6-4z", c: C.grape, fill: "rgba(139,70,199,0.18)" },
-    { d: "M10.1 12h.05M14 11.9h.05", c: C.ink, w: 2.4 },
-    { d: "M10.3 14.7c1.2 1.3 2.9 1.3 4.1 0", c: C.ink, w: 1.8 },
-    { d: "M12 5V2.3M18.7 6.7 20.4 5M5.3 6.7 3.6 5", c: C.sun, w: 1.9 },
-  ],
-};
-
-function doodlePaths(kindId: string, mono?: string) {
-  const parts = DOODLES[kindId] ?? DOODLES.mystery;
-  return parts.map((p, i) => (
+/** A creature's paths, for drawing inside an SVG we are already inside. */
+function doodlePaths(name: string) {
+  return doodleParts(name).map((p, i) => (
     <path
       key={i}
       d={p.d}
-      fill={mono ? "none" : p.fill ?? "none"}
-      stroke={mono ?? p.c ?? C.ink}
+      fill={p.fill ?? "none"}
+      stroke={p.c ?? C.ink}
       strokeWidth={p.w ?? 2.1}
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -169,19 +82,56 @@ function doodlePaths(kindId: string, mono?: string) {
   ));
 }
 
-/** A creature drawn at any size. `mono` re-inks it in one colour, for wax. */
-function Doodle({ kindId, size = 48, mono }: { kindId: string; size?: number; mono?: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      style={{ display: "block", overflow: "visible" }}
-    >
-      {doodlePaths(kindId, mono)}
-    </svg>
-  );
+/* ── how much room one card gets ─────────────────────────────────────────── */
+// A roster can be four creatures or fifteen. Rather than let fifteen become a
+// wall the child has to scroll past, the cards give up a little size once the
+// set gets long — still well over a 44px target, still the same drawn card.
+
+type CardSize = "lg" | "md" | "sm";
+
+const CARD: Record<CardSize, { min: number; art: number; pad: string; col: string }> = {
+  lg: { min: 96, art: 46, pad: "0.5rem 0.3rem", col: "6rem" },
+  md: { min: 80, art: 38, pad: "0.4rem 0.15rem", col: "4.9rem" },
+  // a landscape phone has barely any height; a third row peeks out to say
+  // "keep going"
+  sm: { min: 68, art: 32, pad: "0.25rem 0.15rem", col: "4.6rem" },
+};
+
+/** The lettering size on a card. The column widths are measured in it. */
+const labelSize = (size: CardSize, wide?: boolean) =>
+  wide || size === "lg" ? "var(--fs-sm)" : "calc(var(--fs-sm) * 0.92)";
+
+/* "Stegosaurus" does not fit where "Cat" does, and a name broken across two
+   lines is no use to a child still learning to read them. So the columns are
+   measured in the lettering itself: the longest word in the set, at roughly
+   0.62em a letter in Baloo, decides how many cards fit across. */
+function widestWord(labels: string[]): number {
+  let n = 0;
+  for (const label of labels) {
+    const hyphen = label.includes("-") ? 1 : 0;
+    for (const word of label.split(/[\s-]+/)) n = Math.max(n, word.length + hyphen);
+  }
+  return n;
+}
+
+/* ── does the choice list run past its box? ──────────────────────────────── */
+
+function useScrollMore<T extends HTMLElement>(key: unknown) {
+  const ref = useRef<T>(null);
+  const [more, setMore] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const read = () => setMore(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+    read();
+    el.addEventListener("scroll", read, { passive: true });
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => { el.removeEventListener("scroll", read); ro.disconnect(); };
+    // `key` carries the phase as well as the count: the box only exists while
+    // the set is open, so the listener has to be hung on it again each time
+  }, [key]);
+  return [ref, more] as const;
 }
 
 /* ── measuring, so a drawn edge lands on the real pixel box ──────────────── */
@@ -347,14 +297,22 @@ function KindBadge({ kindId, reduced, compact }: { kindId: string; reduced: bool
 /* ── one drawn card in the "what did you draw?" set ──────────────────────── */
 
 function KindCard({
-  kind, active, wide, dense, onPick,
-}: { kind: CreatureKind; active: boolean; wide?: boolean; dense?: boolean; onPick: () => void }) {
+  kind, active, wide, note, size = "lg", onPick,
+}: {
+  kind: CreatureKind;
+  active: boolean;
+  wide?: boolean;
+  note?: string;
+  size?: CardSize;
+  onPick: () => void;
+}) {
   const [ref, box] = useBox<HTMLButtonElement>();
   const tone = toneOf(kind.id);
   const seed = seedOf(kind.id);
   const tilt = ((seed % 5) - 2) * 0.7;
   const label = kind.id === "mystery" ? "Something else!" : kind.label;
   const mono = active ? onWax(tone) : undefined;
+  const s = CARD[size];
 
   return (
     <button
@@ -363,12 +321,13 @@ function KindCard({
       onClick={onPick}
       aria-pressed={active}
       aria-label={kind.id === "mystery" ? "Something else — a mystery creature" : kind.label}
-      className={`ink-btn relative isolate ${wide ? "flex items-center gap-3 text-left" : "flex flex-col items-center justify-center gap-1"}`}
+      data-picked={active ? "true" : undefined}
+      className={`ink-btn relative isolate ${
+        wide ? "w-full flex items-center gap-3 text-left" : "flex flex-col items-center justify-center gap-1"
+      }`}
       style={{
-        // a landscape phone has barely any height; the cards get shorter so two
-        // full rows fit and a third peeks out to say "keep going"
-        minHeight: wide ? 74 : dense ? 68 : 96,
-        padding: wide ? "0.5rem 0.9rem" : dense ? "0.25rem 0.3rem" : "0.5rem 0.35rem",
+        minHeight: wide ? (size === "sm" ? 62 : 72) : s.min,
+        padding: wide ? "0.5rem 0.9rem" : s.pad,
         gridColumn: wide ? "1 / -1" : undefined,
       }}
     >
@@ -385,18 +344,25 @@ function KindCard({
       </span>
 
       <span className="relative z-10 shrink-0">
-        <Doodle kindId={kind.id} size={wide ? 44 : dense ? 34 : 46} mono={mono} />
+        <Doodle name={kind.id} size={wide ? 44 : s.art} mono={mono} />
       </span>
-      <span className={`relative z-10 ${wide ? "flex-1" : "text-center px-1"}`}>
+      <span className={`relative z-10 min-w-0 ${wide ? "flex-1" : "text-center w-full"}`}>
         <span
           className="block font-display font-extrabold leading-tight"
-          style={{ color: mono ?? C.ink, fontSize: "var(--fs-sm)", textShadow: mono && mono === C.cream ? "0 2px 0 rgba(45,41,38,0.32)" : undefined }}
+          style={{
+            color: mono ?? C.ink,
+            fontSize: labelSize(size, wide),
+            textShadow: mono && mono === C.cream ? "0 2px 0 rgba(45,41,38,0.32)" : undefined,
+          }}
         >
           {label}
         </span>
-        {wide && (
-          <span className="block type-fine" style={{ color: mono ? (mono === C.cream ? "rgba(255,250,240,0.9)" : "rgba(45,41,38,0.7)") : "var(--ink-soft)" }}>
-            a mystery creature — that counts!
+        {note && (
+          <span
+            className="block type-fine"
+            style={{ color: mono ? (mono === C.cream ? "rgba(255,250,240,0.9)" : "rgba(45,41,38,0.7)") : "var(--ink-soft)" }}
+          >
+            {note}
           </span>
         )}
       </span>
@@ -458,7 +424,9 @@ function PaperMarks() {
 
 /* ════════════════════════════════════════════════════════════════════════ */
 
-export default function MagicReveal({ strokes, result, name, photo, onShuffleName, onConfirm, onRedraw }: Props) {
+export default function MagicReveal({
+  strokes, result, name, photo, worldId, onShuffleName, onConfirm, onRedraw,
+}: Props) {
   const isPhoto = Boolean(photo);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -473,6 +441,33 @@ export default function MagicReveal({ strokes, result, name, photo, onShuffleNam
   const fibre = useMemo(() => paperTile(), []);
   const kind = kindById(kindId);
   const tone = toneOf(kindId);
+
+  /* What this world offers. A reef asks "fish or starfish?", a galaxy "rocket
+     or Mars?" — one list of everything would be a phone book. */
+  const roster = useMemo(() => rosterFor(worldId), [worldId]);
+
+  /* "Something else" always closes the roster and always gets its own card, so
+     it comes out of the grid; the rest keep the guess at the front, because
+     nine times in ten the guess is the answer and the child just taps it. */
+  const { cards, mystery } = useMemo(() => {
+    const escape = roster.find((k) => k.id === "mystery") ?? kindById("mystery");
+    const named = roster.filter((k) => k.id !== "mystery");
+    const guessed = result.kindId;
+    const inRoster = named.find((k) => k.id === guessed);
+    // a guess this world does not stock still deserves a card — it is the one
+    // already ticked, and a ticked card you cannot see is a puzzle
+    const stray = !inRoster && guessed !== "mystery" && kindById(guessed).id === guessed
+      ? kindById(guessed)
+      : undefined;
+    const first = inRoster ?? stray;
+    const rest = named.filter((k) => k.id !== first?.id);
+    return { cards: first ? [first, ...rest] : rest, mystery: escape };
+  }, [roster, result.kindId]);
+
+  /* nine cards or fifteen: the set gives up size before it gives up the screen */
+  const cardSize: CardSize = short ? "sm" : cards.length > 6 ? "md" : "lg";
+  const colMin = `max(${CARD[cardSize].col}, ${(widestWord(cards.map((k) => k.label)) * 0.62 + 0.5).toFixed(2)}em)`;
+  const [gridRef, more] = useScrollMore<HTMLDivElement>(`${phase}:${cards.length}`);
 
   // scan sweep — 2s, then the drawing wakes up
   useEffect(() => {
@@ -566,6 +561,16 @@ export default function MagicReveal({ strokes, result, name, photo, onShuffleNam
     ro.observe(wrap);
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, [strokes, phase, photo, reduced]);
+
+  /* whatever is already ticked should be in sight the moment the set opens */
+  useEffect(() => {
+    if (phase !== "pick") return;
+    const box = gridRef.current;
+    const card = box?.querySelector<HTMLElement>('[data-picked="true"]');
+    if (!box || !card) return;
+    const top = card.offsetTop - box.clientHeight / 2 + card.offsetHeight / 2;
+    box.scrollTo({ top: Math.max(0, top), behavior: reduced ? "auto" : "smooth" });
+  }, [phase, reduced, gridRef]);
 
   /* torn paper confetti — real bits of coloured stock, not emoji */
   const confetti = useMemo(() => {
@@ -769,6 +774,10 @@ export default function MagicReveal({ strokes, result, name, photo, onShuffleNam
 
         {/* ── decision panel ── */}
         <div className="reveal-panel">
+          {/* the tick is a drawn mark; this is the same news, out loud */}
+          <span className="sr-only" role="status" aria-live="polite">
+            {phase === "scan" ? "" : `Chosen: ${kind.id === "mystery" ? "Something else" : kind.label}`}
+          </span>
           {phase === "guess" && (
             <InkCard seed={12} className="anim-rise-in max-w-md mx-auto text-center px-3 pt-3 pb-3">
               <div className={short ? "flex items-center gap-4 text-left" : ""}>
@@ -852,8 +861,17 @@ export default function MagicReveal({ strokes, result, name, photo, onShuffleNam
           )}
 
           {phase === "pick" && (
-            <InkCard seed={34} className="anim-rise-in max-w-lg mx-auto px-2 pt-2 pb-2">
-              <div className="flex items-center gap-2 px-1">
+            /* The card is a column with one elastic row: the choices. Whatever
+               is left after the heading, the mystery card and "draw it again"
+               is what the set gets — so a fifteen-creature roster shortens the
+               scroll rather than pushing the buttons off the screen. */
+            <InkCard
+              seed={34}
+              className="anim-rise-in max-w-lg mx-auto px-2 pt-2 pb-2 flex flex-col"
+              contentClassName="flex flex-col min-h-0"
+              style={{ maxHeight: short ? "100%" : "min(70dvh, 34rem)" }}
+            >
+              <div className="flex items-center gap-2 px-1 shrink-0">
                 {!isPhoto && (
                   <InkButton
                     shape="ellipse"
@@ -870,48 +888,84 @@ export default function MagicReveal({ strokes, result, name, photo, onShuffleNam
                 {!isPhoto && <span className="shrink-0" style={{ width: 48 }} aria-hidden="true" />}
               </div>
 
-              <div className="relative mt-1">
+              <div className="relative mt-1 min-h-0 flex">
                 <div
+                  ref={gridRef}
                   role="group"
                   aria-label="Creature choices"
-                  className="grid gap-2 p-2 overflow-y-auto no-scrollbar"
+                  className="grid gap-2 p-2 overflow-y-auto no-scrollbar w-full font-display"
                   style={{
-                    gridTemplateColumns: "repeat(auto-fill, minmax(6rem, 1fr))",
-                    // in landscape the panel is already short; keep the scroll
-                    // inside the grid so the card itself never scrolls too
-                    maxHeight: short ? "min(50dvh, 22rem)" : "min(56dvh, 30rem)",
+                    // the em here is the card lettering, so the columns hold
+                    // "Stegosaurus" at whatever size the screen is using
+                    fontSize: labelSize(cardSize),
+                    gridTemplateColumns: `repeat(auto-fill, minmax(${colMin}, 1fr))`,
+                    // the only part of the card allowed to shrink, and the only
+                    // part allowed to scroll: the panel itself never does
+                    flex: "0 1 auto",
+                    minHeight: 0,
                     overscrollBehavior: "contain",
                     WebkitOverflowScrolling: "touch",
                   }}
                 >
-                  {NAMED.map((k) => (
-                    <KindCard key={k.id} kind={k} active={k.id === kindId} dense={short} onPick={() => choose(k.id)} />
+                  {cards.map((k) => (
+                    <KindCard
+                      key={k.id}
+                      kind={k}
+                      active={k.id === kindId}
+                      size={cardSize}
+                      onPick={() => choose(k.id)}
+                    />
                   ))}
-
-                  <div style={{ gridColumn: "1 / -1" }} className="flex items-center gap-2 pt-1">
-                    <span className="type-fine shrink-0">not there?</span>
-                    <span className="flex-1">
-                      <Scribble color="rgba(86,62,121,0.3)" height={8} seed={14} />
-                    </span>
-                  </div>
-
-                  <KindCard kind={MYSTERY} active={MYSTERY.id === kindId} wide onPick={() => choose(MYSTERY.id)} />
                 </div>
                 {/* the page keeps going below */}
                 <div
                   aria-hidden="true"
                   className="absolute left-0 right-0 bottom-0 pointer-events-none"
-                  style={{ height: 26, background: `linear-gradient(to top, ${C.paper}, rgba(255,253,247,0))` }}
+                  style={{
+                    height: 32,
+                    opacity: more ? 1 : 0,
+                    transition: reduced ? undefined : "opacity 180ms linear",
+                    background: `linear-gradient(to top, ${C.paper} 12%, rgba(255,253,247,0))`,
+                  }}
                 />
               </div>
 
-              <button
-                onClick={onRedraw}
-                className="type-label mt-1 w-full min-h-tap flex items-center justify-center gap-2"
-              >
-                <Icon name="undo" size={18} color="var(--ink-soft)" />
-                <span className="underline">Draw it again</span>
-              </button>
+              {/* "something else" is a real answer, not a failure: it keeps a
+                  card of its own width, and it sits outside the scroller so a
+                  fifteen-creature roster can never bury it */}
+              {!short && (
+                <div className="flex items-center gap-2 px-2 pt-1 shrink-0">
+                  <span className="type-fine shrink-0">not there?</span>
+                  <span className="flex-1">
+                    <Scribble color="rgba(86,62,121,0.3)" height={8} seed={14} />
+                  </span>
+                </div>
+              )}
+
+              {/* a landscape phone is 360px tall on a good day: down there the
+                  escape hatch and the way out share one line, so the choices
+                  keep the rows they would otherwise have lost */}
+              <div className={`px-2 pt-1 shrink-0 flex gap-2 ${short ? "items-stretch" : "flex-col"}`}>
+                <span className={short ? "flex-1 min-w-0" : "block"}>
+                  <KindCard
+                    kind={mystery}
+                    active={mystery.id === kindId}
+                    wide
+                    size={cardSize}
+                    note="a mystery creature — that counts!"
+                    onPick={() => choose(mystery.id)}
+                  />
+                </span>
+                <button
+                  onClick={onRedraw}
+                  className={`type-label min-h-tap flex items-center justify-center gap-2 ${
+                    short ? "shrink-0 px-2" : "w-full mt-1"
+                  }`}
+                >
+                  <Icon name="undo" size={18} color="var(--ink-soft)" />
+                  <span className="underline">Draw it again</span>
+                </button>
+              </div>
             </InkCard>
           )}
         </div>
