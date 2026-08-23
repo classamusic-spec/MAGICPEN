@@ -585,7 +585,7 @@ function HeroCard({
 /* ── results bits ────────────────────────────────────────────────────────── */
 
 /** The score counts itself up — isolated so the whole card doesn't re-render. */
-const ScoreCountUp = memo(function ScoreCountUp({ target, ms = 950 }: { target: number; ms?: number }) {
+const ScoreCountUp = memo(function ScoreCountUp({ target, big = true, ms = 950 }: { target: number; big?: boolean; ms?: number }) {
   const [v, setV] = useState(() => (reduced() ? target : 0));
   useEffect(() => {
     if (reduced() || target <= 0) { setV(target); return; }
@@ -600,7 +600,7 @@ const ScoreCountUp = memo(function ScoreCountUp({ target, ms = 950 }: { target: 
     return () => cancelAnimationFrame(raf);
   }, [target, ms]);
   return (
-    <span aria-hidden="true" className="font-display font-black tabular-nums leading-none" style={{ color: INK, fontSize: "var(--fs-4xl)" }}>
+    <span aria-hidden="true" className="font-display font-black tabular-nums leading-none" style={{ color: INK, fontSize: big ? "var(--fs-4xl)" : "var(--fs-3xl)" }}>
       {v}
     </span>
   );
@@ -1000,6 +1000,7 @@ export default function MiniGame({
   }, [stage, hero]);
 
   const stars = finalScore >= 150 ? 3 : finalScore >= 80 ? 2 : finalScore > 0 ? 1 : 0;
+  const starPx = compact ? 40 : 54;
 
   /* results: stars land one at a time */
   useEffect(() => {
@@ -1107,17 +1108,17 @@ export default function MiniGame({
               <InkCard seed={29} weight={3.2} radius={24}>
                 <Tape seed={2} style={{ width: 76, height: 24, top: -12, left: 18, transform: "rotate(-8deg)" }} />
                 <Tape seed={4} style={{ width: 76, height: 24, top: -12, right: 18, transform: "rotate(7deg)" }} />
-                <div className="p-4 pt-5 text-center">
+                <div className={`text-center ${compact ? "p-3 pt-4" : "p-4 pt-5"}`}>
                   <div className="grid place-items-center mb-1">
-                    <DrawnBox w={54} h={54} shape="ellipse" seed={45} tone="#563e79" weight={3.2}>
-                      <Icon name="pause" size={24} color={CREAM} weight={2.8} />
+                    <DrawnBox w={compact ? 42 : 54} h={compact ? 42 : 54} shape="ellipse" seed={45} tone="#563e79" weight={3.2}>
+                      <Icon name="pause" size={compact ? 19 : 24} color={CREAM} weight={2.8} />
                     </DrawnBox>
                   </div>
                   <div className="inline-block">
-                    <h2 className="ink-title" style={{ fontSize: "var(--fs-2xl)" }}>Paused</h2>
+                    <h2 className="ink-title" style={{ fontSize: compact ? "var(--fs-xl)" : "var(--fs-2xl)" }}>Paused</h2>
                     <Scribble color="var(--sun)" height={9} seed={7} />
                   </div>
-                  <div className="flex items-center justify-center gap-3 mt-1 mb-3">
+                  <div className={`flex items-center justify-center gap-3 mt-1 ${compact ? "mb-2" : "mb-3"}`}>
                     <span className="flex items-center gap-1">
                       <WaxGlyph name="star" size={16} tone="#ffc72c" />
                       <span className="ink-hand tabular-nums" style={{ fontSize: "var(--fs-xs)" }}>{hud.score}</span>
@@ -1134,18 +1135,18 @@ export default function MiniGame({
                     seed={63}
                     onClick={resume}
                     className="w-full mg-focus"
-                    style={{ height: 58, padding: "0 14px", marginBottom: 8 }}
+                    style={{ height: compact ? 46 : 58, padding: "0 14px", marginBottom: 8 }}
                   >
                     <Icon name="play" size={22} color={CREAM} fill={CREAM} />
                     <span className="font-display font-black ink-on-wax" style={{ fontSize: "var(--fs-lg)" }}>Keep playing</span>
                   </InkButton>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <InkButton seed={81} onClick={() => { sfxTap(); start(); }} className="mg-focus" style={{ height: 50, padding: "0 8px" }}>
+                    <InkButton seed={81} onClick={() => { sfxTap(); start(); }} className="mg-focus" style={{ height: compact ? 44 : 50, padding: "0 8px" }}>
                       <Icon name="undo" size={18} color="var(--plum)" weight={2.4} />
                       <span className="font-display font-extrabold" style={{ fontSize: "var(--fs-sm)", color: "var(--plum)" }}>Restart</span>
                     </InkButton>
-                    <InkButton seed={97} onClick={() => { sfxTap(); quitRound(); }} className="mg-focus" style={{ height: 50, padding: "0 8px" }}>
+                    <InkButton seed={97} onClick={() => { sfxTap(); quitRound(); }} className="mg-focus" style={{ height: compact ? 44 : 50, padding: "0 8px" }}>
                       <Icon name="gamepad" size={18} color="var(--plum)" weight={2.4} />
                       <span className="font-display font-extrabold" style={{ fontSize: "var(--fs-sm)", color: "var(--plum)" }}>Games</span>
                     </InkButton>
@@ -1155,7 +1156,7 @@ export default function MiniGame({
                     seed={113}
                     onClick={() => { sfxTap(); quitRound(); onBack(); }}
                     className="w-full mg-focus"
-                    style={{ height: 48, padding: "0 10px", marginTop: 8 }}
+                    style={{ height: compact ? 44 : 48, padding: "0 10px", marginTop: 8 }}
                   >
                     <Icon name="home" size={18} color="var(--ink-soft)" weight={2.4} />
                     <span className="font-display font-bold" style={{ fontSize: "var(--fs-sm)", color: "var(--ink-soft)" }}>
@@ -1195,7 +1196,11 @@ export default function MiniGame({
             </div>
           </header>
 
-          <div className="flex-1 overflow-y-auto mg-scroll flex flex-col" style={{ ...padX, paddingBottom: 6 }}>
+          <div className="flex-1 overflow-y-auto mg-scroll" style={{ ...padX, paddingBottom: 6 }}>
+            {/* one column on a phone; on a tablet the games and the hero
+                picker sit side by side so the page has no dead middle */}
+            <div className="mx-auto w-full max-w-[56rem] min-h-full flex flex-col md:grid md:grid-cols-2 md:gap-x-6 md:items-start">
+            <div>
             <div className="inline-block mb-2 landshort:mb-2.5">
               <h2 className="ink-title" style={{ fontSize: "var(--fs-lg)" }}>Choose a game</h2>
               <div className="landshort:hidden"><Scribble color="var(--sun)" height={9} seed={12} /></div>
@@ -1221,10 +1226,13 @@ export default function MiniGame({
               ))}
             </div>
 
+            </div>
+
+            <div className="contents md:block">
             {/* On a tall screen the child's own drawing gets the spare room:
                 their hero, taped into the page, ready for the game they picked. */}
             {hero && (
-              <div className="hidden tall:block mt-4" aria-hidden="true">
+              <div className="hidden tall:block mt-4 md:mt-0" aria-hidden="true">
                 <div style={{ transform: "rotate(-1.1deg)" }}>
                   <InkCard seed={(seedOf(hero.id) % 700) + 7} radius={20} className="p-2.5">
                     <Tape
@@ -1249,7 +1257,7 @@ export default function MiniGame({
             )}
 
             {creatures.length > 0 ? (
-              <div className="mt-auto pt-1">
+              <div className="mt-auto pt-1 md:mt-0">
                 <div className="inline-block mt-5 landshort:mt-2 mb-0.5">
                   <h2 className="ink-title flex items-baseline gap-2" style={{ fontSize: "var(--fs-lg)" }}>
                     Pick your hero
@@ -1292,6 +1300,8 @@ export default function MiniGame({
                 </InkCard>
               </div>
             )}
+            </div>
+            </div>
           </div>
 
           <footer className="shrink-0 pt-2 landshort:pt-1" style={{ ...padX, paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
@@ -1320,12 +1330,16 @@ export default function MiniGame({
           className="h-full ink-paper overflow-y-auto mg-scroll grid place-items-center"
           style={{ ...padX, paddingTop: "max(14px, env(safe-area-inset-top))", paddingBottom: "max(14px, env(safe-area-inset-bottom))" }}
         >
-          <div className="mg-sheet w-full max-w-sm" style={{ paddingTop: 12 }}>
+          <div className={`mg-sheet w-full ${compact ? "max-w-[34rem]" : "max-w-sm"}`} style={{ paddingTop: 12 }}>
             <div style={{ transform: "rotate(-0.8deg)" }}>
-              <InkCard seed={57} weight={3.2} radius={26} className="p-4 pt-6 sm:p-5 sm:pt-7 text-center">
+              <InkCard seed={57} weight={3.2} radius={26} className={`text-center ${compact ? "p-3 pt-5" : "p-4 pt-6 sm:p-5 sm:pt-7"}`}>
                 <Tape seed={1} style={{ width: 70, height: 22, top: -16, left: -10, transform: "rotate(-14deg)" }} />
                 <Tape seed={3} style={{ width: 70, height: 22, top: -16, right: -10, transform: "rotate(12deg)" }} />
 
+                {/* landscape has half the height and twice the width: the run
+                    itself goes left, what to do next goes right */}
+                <div className={compact ? "grid grid-cols-2 gap-5 items-center" : ""}>
+                <div>
                 <div className="flex items-center justify-center gap-2">
                   <Icon
                     name={endReason === "hearts" ? "heartEmpty" : "clock"}
@@ -1333,7 +1347,7 @@ export default function MiniGame({
                     color="var(--plum)"
                     weight={2.5}
                   />
-                  <h2 className="ink-title" style={{ fontSize: "var(--fs-2xl)" }}>
+                  <h2 className="ink-title" style={{ fontSize: compact ? "var(--fs-xl)" : "var(--fs-2xl)" }}>
                     {endReason === "hearts" ? "Out of hearts!" : "Time's up!"}
                   </h2>
                 </div>
@@ -1354,14 +1368,14 @@ export default function MiniGame({
                       }}
                     >
                       {i < stars
-                        ? <WaxGlyph name="star" size={i === 1 ? 62 : 54} tone="#ffc72c" weight={2.4} />
-                        : <Icon name="starEmpty" size={i === 1 ? 62 : 54} color={INK} weight={2.2} style={{ opacity: 0.22 }} />}
+                        ? <WaxGlyph name="star" size={starPx + (i === 1 ? 8 : 0)} tone="#ffc72c" weight={2.4} />
+                        : <Icon name="starEmpty" size={starPx + (i === 1 ? 8 : 0)} color={INK} weight={2.2} style={{ opacity: 0.22 }} />}
                     </span>
                   ))}
                 </div>
 
                 <div className="inline-block mt-1">
-                  <ScoreCountUp target={finalScore} />
+                  <ScoreCountUp target={finalScore} big={!compact} />
                   <Scribble color="var(--teal)" height={10} seed={9} />
                 </div>
                 <p className="sr-only" role="status">You scored {finalScore} points.</p>
@@ -1369,6 +1383,8 @@ export default function MiniGame({
                   {hero.name} the {kind.label} · {meta.title}
                 </div>
 
+                </div>
+                <div>
                 {newBest ? (
                   <div className="relative mt-3 grid place-items-center">
                     <span className="absolute left-1 top-0 mg-twinkle" aria-hidden="true" style={{ animationDelay: ".2s" }}>
@@ -1378,15 +1394,15 @@ export default function MiniGame({
                       <Icon name="sparkle" size={16} color="#c2740a" fill="#ffc72c" weight={1.6} />
                     </span>
                     <div className="mg-rosette">
-                      <DrawnBox w={202} h={56} seed={77} tone="#ffc72c" radius={26} weight={3.4}>
-                        <Icon name="trophy" size={24} color={INK} weight={2.5} />
-                        <span className="font-display font-black" style={{ fontSize: 19, color: INK, letterSpacing: ".01em" }}>
+                      <DrawnBox w={compact ? 176 : 202} h={compact ? 48 : 56} seed={77} tone="#ffc72c" radius={24} weight={3.4}>
+                        <Icon name="trophy" size={compact ? 21 : 24} color={INK} weight={2.5} />
+                        <span className="font-display font-black" style={{ fontSize: compact ? 17 : 19, color: INK, letterSpacing: ".01em" }}>
                           NEW BEST!
                         </span>
                       </DrawnBox>
                     </div>
                     {prevBest > 0 && (
-                      <div className="ink-hand mt-1.5 relative inline-block" style={{ fontSize: "var(--fs-2xs)" }}>
+                      <div className="ink-hand mt-2.5 relative inline-block" style={{ fontSize: "var(--fs-2xs)" }}>
                         <span style={{ opacity: 0.75 }}>was {prevBest}</span>
                         <svg
                           aria-hidden="true"
@@ -1418,7 +1434,7 @@ export default function MiniGame({
                     seed={101}
                     onClick={() => { sfxTap(); start(); }}
                     className="w-full mg-focus"
-                    style={{ height: 60, padding: "0 14px" }}
+                    style={{ height: compact ? 50 : 60, padding: "0 14px" }}
                   >
                     <Icon name="undo" size={23} color={CREAM} weight={2.6} />
                     <span className="font-display font-black ink-on-wax" style={{ fontSize: "var(--fs-xl)" }}>Play again!</span>
@@ -1428,25 +1444,35 @@ export default function MiniGame({
                       seed={119}
                       onClick={() => { sfxTap(); setBests(loadBest()); setStage("choose"); }}
                       className="mg-focus"
-                      style={{ height: 52, padding: "0 8px" }}
+                      style={{ height: compact ? 44 : 52, padding: compact ? "0 5px" : "0 8px" }}
                     >
-                      <Icon name="gamepad" size={19} color="var(--plum)" weight={2.4} />
-                      <span className="font-display font-extrabold truncate" style={{ fontSize: "var(--fs-sm)", color: "var(--plum)" }}>
-                        Another game
+                      <Icon name="gamepad" size={compact ? 17 : 19} color="var(--plum)" weight={2.4} />
+                      {/* the label has to survive a half-width landscape column
+                          next to its icon — a pre-reader needs both */}
+                      <span
+                        className="font-display font-extrabold truncate"
+                        style={{ fontSize: compact ? "var(--fs-xs)" : "var(--fs-sm)", color: "var(--plum)" }}
+                      >
+                        {compact ? "New game" : "Another game"}
                       </span>
                     </InkButton>
                     <InkButton
                       seed={131}
                       onClick={() => { sfxTap(); onBack(); }}
                       className="mg-focus"
-                      style={{ height: 52, padding: "0 8px" }}
+                      style={{ height: compact ? 44 : 52, padding: compact ? "0 5px" : "0 8px" }}
                     >
-                      <Icon name="home" size={19} color="var(--plum)" weight={2.4} />
-                      <span className="font-display font-extrabold truncate" style={{ fontSize: "var(--fs-sm)", color: "var(--plum)" }}>
+                      <Icon name="home" size={compact ? 17 : 19} color="var(--plum)" weight={2.4} />
+                      <span
+                        className="font-display font-extrabold truncate"
+                        style={{ fontSize: compact ? "var(--fs-xs)" : "var(--fs-sm)", color: "var(--plum)" }}
+                      >
                         My world
                       </span>
                     </InkButton>
                   </div>
+                </div>
+                </div>
                 </div>
               </InkCard>
             </div>
