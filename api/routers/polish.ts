@@ -97,20 +97,16 @@ async function generateArt(
   return url;
 }
 
-// Gateway credentials (server-side only). Priority: env vars (portal-injected
-// DEFAULT_AI_* or local KIMI_*); on auth failure the job retries with the
-// environment fallback key so preview/deploy keeps working.
-const FALLBACK_AI_KEY =
-  "sk-kimi-usjJ4Fwfogo3Y5vTWFnM8pLAvND27pFDWyeB9I3UqAQenO28HlVYaLBirejuHrQh";
-const FALLBACK_AI_BASE = "https://agent-gw.kimi.com/coding";
+// Gateway credentials — server-side only, and only from the environment.
+// There is deliberately no hardcoded fallback: a key committed to source is a
+// key that leaks. With nothing configured, polish reports "unavailable" and the
+// crayon creature simply stays, which is a supported state everywhere.
+const DEFAULT_AI_BASE = "https://agent-gw.kimi.com/coding";
 
 function aiCreds(): { key: string; base: string } {
-  const key =
-    process.env.KIMI_API_KEY || process.env.DEFAULT_AI_API_KEY || FALLBACK_AI_KEY;
+  const key = process.env.KIMI_API_KEY || process.env.DEFAULT_AI_API_KEY || "";
   const raw =
-    process.env.KIMI_BASE_URL ||
-    process.env.DEFAULT_AI_BASE_URL ||
-    FALLBACK_AI_BASE;
+    process.env.KIMI_BASE_URL || process.env.DEFAULT_AI_BASE_URL || DEFAULT_AI_BASE;
   return { key, base: raw.replace(/\/v1\/?$/, "").replace(/\/$/, "") };
 }
 
@@ -125,28 +121,81 @@ async function attempt(
 }
 
 async function runJob(jobId: string, hash: string, png: Buffer, label: string, worldId: string) {
-  const primary = aiCreds();
   try {
-    await attempt(jobId, hash, png, label, worldId, primary);
+    await attempt(jobId, hash, png, label, worldId, aiCreds());
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const authFail = /(401|403)/.test(msg) && primary.key !== FALLBACK_AI_KEY;
-    if (authFail) {
-      try {
-        await attempt(jobId, hash, png, label, worldId, { key: FALLBACK_AI_KEY, base: FALLBACK_AI_BASE });
-        return;
-      } catch (err2) {
-        lastError = err2 instanceof Error ? err2.message : String(err2);
-      }
-    } else {
-      lastError = msg;
-    }
+    lastError = err instanceof Error ? err.message : String(err);
     console.warn(`[polish] job ${jobId} failed:`, lastError);
     jobs.set(jobId, { status: "failed", createdAt: Date.now() });
   }
 }
 
+/* ── best-effort rate limit ───────────────────────────────────────────────
+   Generation is billable and this runs on a public URL. Serverless instances
+   do not share memory, so this caps a burst per instance rather than globally
+   — a speed bump, not a guarantee. A real limit needs a shared store. */
+const hits: number[] = [];
+const RATE_WINDOW = 60_000;
+const RATE_MAX = 20;
+function rateLimited(): boolean {
+  const now = Date.now();
+  while (hits.length && now - hits[0] > RATE_WINDOW) hits.shift();
+  if (hits.length >= RATE_MAX) return true;
+  hits.push(now);
+  return false;
+}
+
+/** Shared input shape for both the polling and the one-shot paths. */
+const polishInput = z.object({
+  jobId: z.string().min(6).max(64),
+  image: z.string().max(8_000_000), // data URL, PNG
+  label: z.string().min(1).max(40),
+  worldId: z.string().min(1).max(20),
+});
+
+/** Decode the sketch and derive its cache key, or null if it is not a PNG. */
+function decode(input: z.infer<typeof polishInput>) {
+  const m = input.image.match(/^data:image\/png;base64,(.+)$/);
+  if (!m) return null;
+  const png = Buffer.from(m[1], "base64");
+  const hash = createHash("sha256")
+    .update(png).update(input.label).update(input.worldId).digest("hex");
+  return { png, hash };
+}
+
 export const polishRouter = createRouter({
+  /**
+   * One-shot polish: does the upload and the generation inside a single
+   * request and returns the finished art.
+   *
+   * The older start/status pair keeps job state in memory, which only works on
+   * a long-lived server — on serverless each request can land on a fresh
+   * instance, so the client polls for a job that no longer exists. This path
+   * carries no state between requests, at the cost of a slow call (~40s), so
+   * the caller needs a matching timeout.
+   */
+  run: publicQuery
+    .input(polishInput)
+    .mutation(async ({ input }) => {
+      if (!aiCreds().key) return { status: "unavailable" as JobStatus };
+      if (rateLimited()) return { status: "failed" as JobStatus };
+      const d = decode(input);
+      if (!d) return { status: "failed" as JobStatus };
+      const cached = cache.get(d.hash);
+      if (cached) return { status: "ready" as JobStatus, url: cached };
+      try {
+        const creds = aiCreds();
+        const refUrl = await uploadSketch(creds.base, creds.key, d.png);
+        const url = await generateArt(creds.base, creds.key, refUrl, input.label, input.worldId);
+        cache.set(d.hash, url);
+        return { status: "ready" as JobStatus, url };
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        console.warn("[polish] run failed:", lastError);
+        return { status: "failed" as JobStatus };
+      }
+    }),
+
   start: publicQuery
     .input(
       z.object({

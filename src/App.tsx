@@ -45,7 +45,25 @@ export default function App() {
     const done = () => setPolishingIds((prev) => { const n = new Set(prev); n.delete(jobId); return n; });
     setPolishingIds((prev) => new Set(prev).add(jobId));
     console.info("[polish] started for", creature.name);
-    client.polish.start
+    /* One-shot first: it is the only path that survives a serverless host,
+       where the start/status job map does not outlive the request. If the
+       server is older (no `run`), fall back to fire-and-poll. */
+    client.polish.run
+      .mutate({ jobId, image, label, worldId: worldIdRef.current })
+      .then((res) => {
+        if (res.status === "ready" && res.url) {
+          const artUrl = proxyArtUrl(res.url);
+          console.info("[polish] ready for", creature.name);
+          setCreatures((prev) => prev.map((c) => (c.id === jobId ? { ...c, artUrl } : c)));
+          done();
+          return;
+        }
+        console.info("[polish]", res.status, "for", creature.name);
+        done();
+      })
+      .catch(() => pollingFallback());
+
+    const pollingFallback = () => client.polish.start
       .mutate({ jobId, image, label, worldId: worldIdRef.current })
       .then(() => {
         const t0 = Date.now();
