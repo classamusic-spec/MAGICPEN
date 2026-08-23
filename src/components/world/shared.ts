@@ -2,6 +2,8 @@
 // Every world module gets the same set of primitives so the four worlds feel
 // like one art-directed game rather than four separate canvas doodles.
 
+import { daylight, warmth } from "@/lib/daily";
+
 export interface ThemeFrame {
   ctx: CanvasRenderingContext2D;
   W: number;
@@ -86,7 +88,66 @@ let frameAcc = 0;
 let frameCount = 0;
 
 /** Feed every frame's dt; the toolkit auto-drops detail if the device chugs. */
+/* ── the time of day ──────────────────────────────────────────────────────────
+   Every world reads the same clock, so at bedtime the whole app dims together
+   instead of one world going dark while the next stays at noon. Sampled once
+   per frame rather than per draw call: `Date` is cheap but not free, and the
+   answer cannot change inside a frame. */
+
+let dayK = 1;      // 0 = deep night, 1 = full midday
+let dayWarm = 0;   // 1 at golden hour, 0 at noon and midnight
+let dayAt = -1e9;
+
+/** Refresh the cached clock. Called by `sampleFrame`; worlds never call it. */
+function sampleClock(now: number) {
+  if (now - dayAt < 20_000) return;   // the sky does not move that fast
+  dayAt = now;
+  dayK = daylight();
+  dayWarm = warmth();
+}
+
+/** How lit the world should be, 0..1. Worlds tint by this, never by the hour. */
+export const dayLight = () => dayK;
+/** Golden-hour cast, 0..1 — warm at dawn and dusk, neutral at noon and night. */
+export const dayWarmth = () => dayWarm;
+
+/**
+ * The night wash, as a paintable colour. Worlds lay this over their finished
+ * scene so the whole app agrees on what evening looks like. Returns null in
+ * broad daylight so the common case costs nothing.
+ */
+export function nightTint(): { fill: string; alpha: number } | null {
+  const k = 1 - dayK;
+  if (k < 0.02) return null;
+  return { fill: "#101a3a", alpha: k * 0.42 };
+}
+
+/** Lay the evening over a finished scene. Cheap, and a no-op at midday. */
+export function applyNight(ctx: CanvasRenderingContext2D, W: number, H: number) {
+  const n = nightTint();
+  if (!n) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "multiply";
+  ctx.globalAlpha = n.alpha;
+  ctx.fillStyle = n.fill;
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+  // a little cool bloom back in, so night reads as moonlit rather than muddy
+  if (n.alpha > 0.2) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = (n.alpha - 0.2) * 0.28;
+    const g = ctx.createRadialGradient(W * 0.72, H * 0.16, 0, W * 0.72, H * 0.16, Math.max(W, H) * 0.7);
+    g.addColorStop(0, "#9fb8ff");
+    g.addColorStop(1, "rgba(159,184,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+}
+
 export function sampleFrame(dt: number) {
+  sampleClock(performance.now());
   frameAcc += dt;
   frameCount++;
   if (frameCount >= 90) {
