@@ -12,12 +12,23 @@ export interface Stroke {
 }
 
 export type BehaviorKind =
-  | "swim"     // fish, octopus, turtle, mystery sea life
-  | "drive"    // cars, boats that scoot along the seabed
-  | "fly"      // birds, butterflies, rockets in water = glide
-  | "float"    // balloons, bubbles, jellyfish drift
+  | "swim"     // fish, turtles — cruise with a tail wiggle
+  | "drive"    // cars, tractors — scoot along the ground
+  | "fly"      // birds, butterflies, rockets — free flight
+  | "float"    // balloons, bubbles — drift upward and bob
   | "twinkle"  // stars, suns — hover and shimmer
   | "grow"     // flowers, trees — rooted, swaying
+  /* ── motion styles that belong to a particular kind of thing ── */
+  | "orbit"    // planets — circle a slow invisible centre
+  | "jet"      // jellyfish, octopus — squeeze, surge, then drift
+  | "scuttle"  // crabs — sideways skitter with a pause
+  | "stomp"    // big dinosaurs — heavy steps that shake the ground
+  | "waddle"   // chickens, ducks, penguins — rock side to side
+  | "graze"    // cows, sheep, horses — amble, dip the head, chew
+  | "hover"    // UFOs — hold station, bob, then slide somewhere new
+  | "streak"   // comets, shooting stars — dash across and come round again
+  | "erupt"    // volcanoes — rooted, puffing, occasionally spectacular
+  | "sway"     // palm trees, seaweed — rooted, arcing in a current
   | "crawl"    // snakes, worms, crabs
   | "bounce";  // generic critter
 
@@ -104,6 +115,9 @@ export interface WritingWorld {
    Stored in the pixel space it was drawn in (dw×dh) plus a ground line, so the
    renderer can scale it to any screen and stand creatures on the ground. */
 
+/** What a painted region of a dream world *is*, which decides what lives there. */
+export type RegionKind = "sky" | "water" | "ground";
+
 export interface DreamWorld {
   /** Bumped on every save, so cached bakes know to redraw. */
   rev: number;
@@ -114,4 +128,11 @@ export interface DreamWorld {
   ground: number;
   /** The child's background, in draw-canvas pixels. */
   strokes: Stroke[];
+  /**
+   * Optional region mask: which parts of the world are sky, water and ground.
+   * A REGION_W x REGION_H grid encoded one character per cell — see lib/regions.
+   * Absent on worlds painted before regions existed; the renderer then falls
+   * back to the flat `ground` line, so old worlds keep working untouched.
+   */
+  regions?: string;
 }
