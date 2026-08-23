@@ -172,6 +172,23 @@ const DrawnBox = memo(function DrawnBox({
   );
 });
 
+/** Live media-query state — landscape phones get a compacted select screen. */
+function useMedia(query: string): boolean {
+  const [on, setOn] = useState(
+    () => typeof window !== "undefined" && !!window.matchMedia?.(query).matches,
+  );
+  useEffect(() => {
+    const m = window.matchMedia?.(query);
+    if (!m) return;
+    const f = () => setOn(m.matches);
+    f();
+    m.addEventListener("change", f);
+    return () => m.removeEventListener("change", f);
+  }, [query]);
+  return on;
+}
+const SHORT_LANDSCAPE = "(orientation: landscape) and (max-height: 560px)";
+
 /** Measure a fluid element so a drawn edge can be laid over its real box. */
 function useBox<T extends HTMLElement>() {
   const ref = useRef<T>(null);
@@ -249,6 +266,7 @@ const SHELL_CSS = `
 .mg-scroll::-webkit-scrollbar-thumb{background:rgba(86,62,121,.3);border-radius:99px}
 .mg-scroll::-webkit-scrollbar-track{background:transparent}
 .mg-clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.mg-clamp3{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .mg-tap{min-width:var(--tap);min-height:var(--tap)}
 .mg-press{-webkit-tap-highlight-color:transparent;transition:transform var(--dur-1) var(--ease-spring),filter var(--dur-1) ease}
 .mg-press:active:not(:disabled){transform:translateY(2px) scale(.985);filter:brightness(.97)}
@@ -413,7 +431,7 @@ const Hud = memo(function Hud({
         </div>
 
         <div className="flex items-center gap-2">
-          <div key={hurtSeq} className={hurtSeq > 0 ? "mg-shake" : ""} style={{ transform: "rotate(-1.5deg)" }}>
+          <div key={`h${hurtSeq}`} className={hurtSeq > 0 ? "mg-shake" : ""} style={{ transform: "rotate(-1.5deg)" }}>
             <DrawnBox w={92} h={36} seed={54} shadow={false}>
               {[0, 1, 2].map((i) => (
                 <span key={i} className={hurtSeq > 0 && i === hearts ? "mg-heartbreak" : ""} style={{ display: "block" }}>
@@ -426,7 +444,7 @@ const Hud = memo(function Hud({
             </DrawnBox>
           </div>
           {combo > 1 && (
-            <div key={combo} className="mg-pop">
+            <div key={`x${combo}`} className="mg-pop">
               <DrawnBox w={56} h={36} seed={71} tone="#fb66e5" shadow={false} style={{ transform: "rotate(2.5deg)" }}>
                 <span className="font-display font-black leading-none ink-on-wax" style={{ fontSize: 16 }}>×{combo}</span>
               </DrawnBox>
@@ -455,10 +473,10 @@ const Hud = memo(function Hud({
 /* ── select-screen cards ─────────────────────────────────────────────────── */
 
 function GameCard({
-  id, title, how, index, selected, best, onPick,
+  id, title, how, index, selected, best, compact, onPick,
 }: {
   id: string; title: string; how: string; index: number;
-  selected: boolean; best: number; onPick: () => void;
+  selected: boolean; best: number; compact: boolean; onPick: () => void;
 }) {
   const [ref, box] = useBox<HTMLButtonElement>();
   const tone = toneFor(id, index);
@@ -476,13 +494,13 @@ function GameCard({
     >
       <InkShape w={box.w} h={box.h} seed={seed} weight={3.1} radius={18} fill={{ kind: "paper" }} />
       {selected && <ChosenRing w={box.w} h={box.h} seed={seed} />}
-      <div className="relative z-10 flex items-center gap-3 p-2.5">
-        <DrawnBox w={62} h={62} seed={seed + 7} tone={tone} radius={17} shadow={false} weight={3}>
-          <Emblem id={id} size={34} color={fg} />
+      <div className={`relative z-10 flex items-center gap-3 ${compact ? "p-2" : "p-3"}`}>
+        <DrawnBox w={compact ? 54 : 72} h={compact ? 54 : 72} seed={seed + 7} tone={tone} radius={compact ? 15 : 19} shadow={false} weight={3}>
+          <Emblem id={id} size={compact ? 30 : 40} color={fg} />
         </DrawnBox>
         <div className="min-w-0 flex-1">
           <div className="ink-title truncate" style={{ fontSize: "var(--fs-md)" }}>{title}</div>
-          <div className="mg-clamp2 ink-hand" style={{ fontSize: "var(--fs-2xs)", lineHeight: 1.28 }}>{how}</div>
+          <div className={`${compact ? "mg-clamp2" : "mg-clamp3"} ink-hand`} style={{ fontSize: "var(--fs-2xs)", lineHeight: 1.3 }}>{how}</div>
           {best > 0 && (
             <div className="mt-1 flex items-center gap-1.5">
               <Icon name="trophy" size={14} color="var(--plum)" weight={2.5} />
@@ -511,21 +529,23 @@ function GameCard({
   );
 }
 
-const HERO_W = 106;
-const HERO_H = 134;
+const HERO_W = 100;
+const HERO_H = 124;
 
 function HeroCard({
-  c, label, selected, onPick, btnRef, index,
+  c, label, selected, onPick, btnRef, index, compact,
 }: {
   c: Creature; label: string; selected: boolean; onPick: () => void;
-  btnRef?: React.Ref<HTMLButtonElement>; index: number;
+  btnRef?: React.Ref<HTMLButtonElement>; index: number; compact: boolean;
 }) {
   const seed = seedOf(c.id + c.name);
   const r = hand(seed);
   const tilt = (r() - 0.5) * 5.4;
   const tapeRot = (r() - 0.5) * 26;
+  const W = compact ? 78 : HERO_W;
+  const H = compact ? 86 : HERO_H;
   return (
-    <div className="shrink-0 snap-center" style={{ paddingTop: 12, paddingBottom: 4 }}>
+    <div className="shrink-0 snap-center" style={{ paddingTop: 11, paddingBottom: 2 }}>
       <div className="mg-drop" style={{ animationDelay: `${Math.min(index, 8) * 45}ms` }}>
         <button
           ref={btnRef}
@@ -534,20 +554,20 @@ function HeroCard({
           aria-label={`Play as ${c.name} the ${label}`}
           onClick={onPick}
           className="ink-pinned mg-pin mg-press mg-focus relative isolate block"
-          style={{ ["--tilt" as string]: `${tilt.toFixed(2)}deg`, width: HERO_W, height: HERO_H, padding: 0, border: 0, background: "none", cursor: "pointer" }}
+          style={{ ["--tilt" as string]: `${tilt.toFixed(2)}deg`, width: W, height: H, padding: 0, border: 0, background: "none", cursor: "pointer" }}
         >
-          <InkShape w={HERO_W} h={HERO_H} seed={seed} weight={3} radius={9} fill={{ kind: "paper" }} />
-          {selected && <ChosenRing w={HERO_W} h={HERO_H} seed={seed} pad={6} />}
+          <InkShape w={W} h={H} seed={seed} weight={3} radius={9} fill={{ kind: "paper" }} />
+          {selected && <ChosenRing w={W} h={H} seed={seed} pad={6} />}
           <Tape
             seed={seed % 5}
-            style={{ width: 54, height: 19, top: -9, left: (HERO_W - 54) / 2, transform: `rotate(${tapeRot.toFixed(1)}deg)` }}
+            style={{ width: compact ? 42 : 50, height: 18, top: -9, left: (W - (compact ? 42 : 50)) / 2, transform: `rotate(${tapeRot.toFixed(1)}deg)` }}
           />
           <div className="relative z-10 h-full w-full grid grid-rows-[1fr_auto] gap-1 px-2 pt-3 pb-2">
             <div className="grid place-items-center overflow-hidden [&>canvas]:max-h-full [&>canvas]:max-w-full">
               <Thumb c={c} />
             </div>
             <div className="min-w-0">
-              <div className="ink-title truncate text-center" style={{ fontSize: 12.5, lineHeight: 1.1 }}>{c.name}</div>
+              <div className="ink-title truncate text-center" style={{ fontSize: compact ? 11 : 12.5, lineHeight: 1.1 }}>{c.name}</div>
               <div className="ink-hand truncate text-center" style={{ fontSize: 10, lineHeight: 1.2 }}>{label}</div>
             </div>
           </div>
@@ -686,6 +706,8 @@ export default function MiniGame({
   const [prevBest, setPrevBest] = useState(0);
   const [endReason, setEndReason] = useState<"time" | "hearts">("time");
   const [bests, setBests] = useState<Record<string, number>>(() => loadBest());
+  /* a 740×360 phone in landscape has ~360px of column: everything compacts */
+  const compact = useMedia(SHORT_LANDSCAPE);
   const heroCv = useHeroCanvas(hero);
 
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -714,7 +736,10 @@ export default function MiniGame({
     fxRef.current = newFxState();
     juiceRef.current.reset();
     ptr.current = { down: false, x: 0.5, y: 0.5 };
-    sceneT.current = 0;
+    // the backdrop clock is a wall clock: it must not rewind to zero between
+    // rounds (the world painters ease several features in off `t`, and some of
+    // them are only well-defined once the scene has been running)
+    sceneT.current = performance.now() / 1000;
     countRef.current = null;
     pausedRef.current = false;
     setCountLabel(null);
@@ -959,12 +984,19 @@ export default function MiniGame({
     if (paused) resumeBtnRef.current?.focus();
   }, [paused]);
 
-  /* bring the chosen hero into view when the picker appears */
+  /* Centre the chosen hero in its rail — by moving the rail itself, never
+     scrollIntoView: that also scrolls the page, and on a short screen it
+     yanks the game list out of sight the moment the picker mounts. */
+  const railRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (stage !== "choose") return;
-    heroSelRef.current?.scrollIntoView({
-      inline: "center", block: "nearest", behavior: reduced() ? "auto" : "smooth",
-    });
+    const btn = heroSelRef.current;
+    const rail = railRef.current;
+    if (!btn || !rail) return;
+    const b = btn.getBoundingClientRect();
+    const r = rail.getBoundingClientRect();
+    const left = rail.scrollLeft + (b.left - r.left) - (r.width - b.width) / 2;
+    rail.scrollTo({ left, behavior: reduced() ? "auto" : "smooth" });
   }, [stage, hero]);
 
   const stars = finalScore >= 150 ? 3 : finalScore >= 80 ? 2 : finalScore > 0 ? 1 : 0;
@@ -1035,7 +1067,7 @@ export default function MiniGame({
 
       {/* hit reaction wash */}
       {stage === "play" && hurtSeq > 0 && (
-        <div key={hurtSeq} className="mg-wash absolute inset-0 z-10 pointer-events-none" />
+        <div key={`w${hurtSeq}`} className="mg-wash absolute inset-0 z-10 pointer-events-none" />
       )}
 
       {/* ── count-in + coaching hint ── */}
@@ -1047,7 +1079,7 @@ export default function MiniGame({
       {hintUp && (
         <div className="absolute inset-x-0 top-[62%] z-20 flex justify-center pointer-events-none" style={padX}>
           <div className="mg-hint mg-rim max-w-[94%]">
-            <InkCard seed={83} weight={2.9} lifted={false}>
+            <InkCard seed={83} weight={2.9} radius={14} lifted={false}>
               <div className="flex items-start gap-2 px-3 py-2">
                 <span className="shrink-0 mt-0.5">
                   <Icon name="sparkle" size={17} color="#c2740a" fill="#ffc72c" weight={1.8} />
@@ -1072,7 +1104,7 @@ export default function MiniGame({
         >
           <div className="mg-sheet w-full max-w-[19rem] max-h-full overflow-y-auto mg-scroll" style={{ paddingTop: 14 }}>
             <div style={{ transform: "rotate(-1.2deg)" }}>
-              <InkCard seed={29} weight={3.2}>
+              <InkCard seed={29} weight={3.2} radius={24}>
                 <Tape seed={2} style={{ width: 76, height: 24, top: -12, left: 18, transform: "rotate(-8deg)" }} />
                 <Tape seed={4} style={{ width: 76, height: 24, top: -12, right: 18, transform: "rotate(7deg)" }} />
                 <div className="p-4 pt-5 text-center">
@@ -1140,7 +1172,7 @@ export default function MiniGame({
       {/* ── game select ── */}
       {stage === "choose" && (
         <div className="h-full ink-paper flex flex-col" style={{ paddingTop: "max(10px, env(safe-area-inset-top))" }}>
-          <header className="shrink-0 flex items-center gap-3 pb-2" style={padX}>
+          <header className="shrink-0 flex items-center gap-3 pb-2 landshort:pb-1" style={padX}>
             <InkButton
               shape="ellipse"
               seed={15}
@@ -1164,14 +1196,14 @@ export default function MiniGame({
           </header>
 
           <div className="flex-1 overflow-y-auto mg-scroll flex flex-col" style={{ ...padX, paddingBottom: 6 }}>
-            <div className="inline-block mb-2">
+            <div className="inline-block mb-2 landshort:mb-2.5">
               <h2 className="ink-title" style={{ fontSize: "var(--fs-lg)" }}>Choose a game</h2>
-              <Scribble color="var(--sun)" height={9} seed={12} />
+              <div className="landshort:hidden"><Scribble color="var(--sun)" height={9} seed={12} /></div>
             </div>
             <div
               role="radiogroup"
               aria-label="Choose a game"
-              className="grid gap-3.5"
+              className="grid gap-3.5 landshort:gap-2.5"
               style={{ gridTemplateColumns: "repeat(auto-fit, minmax(215px, 1fr))" }}
             >
               {games.map((gm, i) => (
@@ -1183,26 +1215,55 @@ export default function MiniGame({
                   index={i}
                   selected={i === gameIdx}
                   best={bests[gm.id] ?? 0}
+                  compact={compact}
                   onPick={() => { setGameIdx(i); sfxTap(); }}
                 />
               ))}
             </div>
 
+            {/* On a tall screen the child's own drawing gets the spare room:
+                their hero, taped into the page, ready for the game they picked. */}
+            {hero && (
+              <div className="hidden tall:block mt-4" aria-hidden="true">
+                <div style={{ transform: "rotate(-1.1deg)" }}>
+                  <InkCard seed={(seedOf(hero.id) % 700) + 7} radius={20} className="p-2.5">
+                    <Tape
+                      seed={seedOf(hero.name) % 5}
+                      style={{ width: 72, height: 22, top: -14, left: 18, transform: "rotate(-11deg)" }}
+                    />
+                    <div className="flex items-center gap-3">
+                      <div className="shrink-0 grid place-items-center overflow-hidden [&>canvas]:max-h-full [&>canvas]:max-w-full" style={{ width: 86, height: 86 }}>
+                        <Thumb c={hero} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="ink-hand" style={{ fontSize: "var(--fs-2xs)" }}>your hero</div>
+                        <div className="ink-title truncate" style={{ fontSize: "var(--fs-lg)" }}>{hero.name}</div>
+                        <div className="ink-hand" style={{ fontSize: "var(--fs-xs)", lineHeight: 1.25 }}>
+                          is ready for {meta.title}!
+                        </div>
+                      </div>
+                    </div>
+                  </InkCard>
+                </div>
+              </div>
+            )}
+
             {creatures.length > 0 ? (
-              <div className="mt-auto pt-2">
-                <div className="inline-block mt-5 mb-0.5">
+              <div className="mt-auto pt-1">
+                <div className="inline-block mt-5 landshort:mt-2 mb-0.5">
                   <h2 className="ink-title flex items-baseline gap-2" style={{ fontSize: "var(--fs-lg)" }}>
                     Pick your hero
                     <span className="ink-hand" style={{ fontSize: "var(--fs-2xs)" }}>
                       {creatures.length} {creatures.length === 1 ? "friend" : "friends"}
                     </span>
                   </h2>
-                  <Scribble color="var(--pink)" height={9} seed={22} />
+                  <div className="landshort:hidden"><Scribble color="var(--pink)" height={9} seed={22} /></div>
                 </div>
                 <div
+                  ref={railRef}
                   role="radiogroup"
                   aria-label="Pick your hero"
-                  className="flex gap-3.5 overflow-x-auto mg-scroll snap-x -mx-2 px-2"
+                  className="flex gap-3.5 landshort:gap-2.5 overflow-x-auto mg-scroll snap-x -mx-2 px-2"
                 >
                   {creatures.map((c, i) => (
                     <HeroCard
@@ -1211,6 +1272,7 @@ export default function MiniGame({
                       index={i}
                       label={kindById(c.kindId).label}
                       selected={hero?.id === c.id}
+                      compact={compact}
                       btnRef={hero?.id === c.id ? heroSelRef : undefined}
                       onPick={() => { setHero(c); sfxTap(); }}
                     />
@@ -1219,7 +1281,7 @@ export default function MiniGame({
               </div>
             ) : (
               <div className="my-4" style={{ transform: "rotate(-1deg)" }}>
-                <InkCard seed={35} className="p-4 text-center">
+                <InkCard seed={35} radius={20} className="p-4 text-center">
                   <div className="grid place-items-center mb-1.5">
                     <DrawnBox w={52} h={52} shape="ellipse" seed={51} tone="#ffc72c" weight={3}>
                       <Icon name="pencil" size={24} color={INK} weight={2.4} />
@@ -1232,7 +1294,7 @@ export default function MiniGame({
             )}
           </div>
 
-          <footer className="shrink-0 pt-2" style={{ ...padX, paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
+          <footer className="shrink-0 pt-2 landshort:pt-1" style={{ ...padX, paddingBottom: "max(10px, env(safe-area-inset-bottom))" }}>
             <div className={hero && heroCv ? "mg-breathe" : ""}>
               <InkButton
                 tone="#3aae3a"
@@ -1240,7 +1302,7 @@ export default function MiniGame({
                 onClick={start}
                 disabled={!hero || !heroCv}
                 className="w-full mg-focus"
-                style={{ height: 60, padding: "0 16px" }}
+                style={{ height: compact ? 52 : 60, padding: "0 16px" }}
               >
                 <Icon name="play" size={24} color={CREAM} fill={CREAM} />
                 <span className="font-display font-black truncate ink-on-wax" style={{ fontSize: "var(--fs-xl)" }}>
@@ -1260,9 +1322,9 @@ export default function MiniGame({
         >
           <div className="mg-sheet w-full max-w-sm" style={{ paddingTop: 12 }}>
             <div style={{ transform: "rotate(-0.8deg)" }}>
-              <InkCard seed={57} weight={3.2} className="p-4 sm:p-5 text-center">
-                <Tape seed={1} style={{ width: 84, height: 26, top: -13, left: 22, transform: "rotate(-7deg)" }} />
-                <Tape seed={3} style={{ width: 84, height: 26, top: -13, right: 22, transform: "rotate(6deg)" }} />
+              <InkCard seed={57} weight={3.2} radius={26} className="p-4 pt-6 sm:p-5 sm:pt-7 text-center">
+                <Tape seed={1} style={{ width: 70, height: 22, top: -16, left: -10, transform: "rotate(-14deg)" }} />
+                <Tape seed={3} style={{ width: 70, height: 22, top: -16, right: -10, transform: "rotate(12deg)" }} />
 
                 <div className="flex items-center justify-center gap-2">
                   <Icon
