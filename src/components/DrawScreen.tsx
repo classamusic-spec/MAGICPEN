@@ -8,19 +8,21 @@ import { InkButton, InkCard, Scribble } from "@/components/ink/Ink";
 import { usePrefersReducedMotion } from "@/components/ink/motion";
 import { Icon } from "@/components/ink/Icons";
 
-/* The crayon box. `short` is what's printed on the paper wrapper; `name` is
-   what a screen reader says, so a colour is never identified by colour alone. */
+/* The crayon box. `short` is what's printed on the paper wrapper — kept to
+   five or six letters so the whole word still reads once the crayon's blunt
+   end is down in the box; `name` is what a screen reader says, so a colour is
+   never identified by colour alone. */
 const CRAYONS = [
   { c: "#e63b2e", name: "Cherry red", short: "CHERRY" },
   { c: "#ff7a1a", name: "Orange", short: "ORANGE" },
-  { c: "#ffc72c", name: "Sunshine yellow", short: "SUNSHINE" },
+  { c: "#ffc72c", name: "Sunshine yellow", short: "SUNNY" },
   { c: "#3aae3a", name: "Leaf green", short: "LEAF" },
   { c: "#00c2b9", name: "Lagoon", short: "LAGOON" },
   { c: "#2f6fe4", name: "Ocean blue", short: "OCEAN" },
   { c: "#8b46c7", name: "Grape", short: "GRAPE" },
   { c: "#fb66e5", name: "Candy pink", short: "CANDY" },
   { c: "#7a4a21", name: "Cocoa brown", short: "COCOA" },
-  { c: "#2d2926", name: "Licorice black", short: "LICORICE" },
+  { c: "#2d2926", name: "Licorice black", short: "BLACK" },
 ];
 
 const SIZES = [
@@ -79,8 +81,11 @@ function crayonGeo(seed: number): CrayonGeo {
     `L${mid - flat / 2} ${base} Z`;
   const ring = `M${x0 + 0.4} ${base} Q${mid} ${base + 1.4} ${x1 - 0.4} ${base - 0.3}`;
 
-  const wy0 = base + 8 + r() * 2.4;
-  const wy1 = CH - 16 + j(1.4);
+  // The label has to read while the crayon's blunt end is down in the box, so
+  // the wrapper is printed on the upper barrel and the bare wax below it is
+  // what the cardboard swallows.
+  const wy0 = base + 6 + r() * 2.2;
+  const wy1 = CH - 26 + j(1.4);
   const wx0 = x0 - 1.6;
   const wx1 = x1 + 1.6;
   const wrap =
@@ -110,7 +115,7 @@ function crayonGeo(seed: number): CrayonGeo {
     hiBarrel, loBarrel, hiWrap,
     labelY: (wy0 + wy1) / 2,
     labelX: (wx0 + wx1) / 2,
-    labelLen: wy1 - wy0 - bh * 2 - 8,
+    labelLen: wy1 - wy0 - bh * 2 - 5,
     tilt: j(4.5),
   };
   geoCache.set(seed, geo);
@@ -182,8 +187,8 @@ function CrayonArt({ color, short, seed, lifted }: {
           style={{
             fontFamily: '"Baloo 2", "Nunito", ui-rounded, system-ui, sans-serif',
             fontWeight: 800,
-            fontSize: 7,
-            letterSpacing: 0.4,
+            fontSize: 6.6,
+            letterSpacing: 0.25,
           }}
         >
           {short}
@@ -362,9 +367,11 @@ function useBox<T extends HTMLElement>() {
     const el = ref.current;
     if (!el) return;
     const read = () => {
-      const r = el.getBoundingClientRect();
-      const w = Math.round(r.width);
-      const h = Math.round(r.height);
+      // offsetWidth/Height, not getBoundingClientRect: the screen entrance
+      // animation rotates the page in 3D and a warped rect would size the
+      // cardboard to the projection instead of the real box.
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
       setBox((p) => (p.w === w && p.h === h ? p : { w, h }));
     };
     read();
@@ -398,7 +405,7 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
 
   const land = useLandscapeRail();
   const reduced = usePrefersReducedMotion();
-  const [railRef, railBox] = useBox<HTMLDivElement>();
+  const [boxRef, boxBox] = useBox<HTMLDivElement>();
 
   // parent snaps a paper drawing → lift it off the paper → magic reveal
   const onPickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -566,41 +573,49 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
         {erasing ? "Rubbing out" : current.name}
       </p>
 
-      <div className="dw-sizes" role="radiogroup" aria-label="Crayon thickness">
-        {SIZES.map((s, i) => {
-          const active = size === s.px && !erasing;
-          return (
-            <InkButton
-              key={s.px}
-              role="radio"
-              aria-checked={active}
-              aria-label={`${s.label} line`}
-              title={`${s.label} line`}
-              onClick={() => pickSize(s.px)}
-              seed={140 + i * 17}
-              radius={12}
-              className="dw-size-btn"
-              style={{ width: MARK_W + 10, height: MARK_H + 20 }}
-            >
-              <SizeMark px={s.px} color={erasing ? "#a99e93" : color} w={MARK_W} h={MARK_H} />
-              {active && <PickRing w={MARK_W + 14} h={MARK_H + 22} color={color} seed={200 + i * 9} />}
-            </InkButton>
-          );
-        })}
-      </div>
+      {/* thicknesses and the eraser travel together: when the row has to wrap
+          it is the colour name that takes its own line, never one lone tool */}
+      <div className="dw-toolgroup">
+        <div className="dw-sizes" role="radiogroup" aria-label="Crayon thickness">
+          {SIZES.map((s, i) => {
+            const active = size === s.px && !erasing;
+            return (
+              <InkButton
+                key={s.px}
+                role="radio"
+                aria-checked={active}
+                aria-label={`${s.label} line`}
+                title={`${s.label} line`}
+                onClick={() => pickSize(s.px)}
+                seed={140 + i * 17}
+                radius={12}
+                className="dw-size-btn"
+                style={{ width: MARK_W + 10, height: MARK_H + 20 }}
+              >
+                <SizeMark px={s.px} color={erasing ? "#a99e93" : color} w={MARK_W} h={MARK_H} />
+                {active && <PickRing w={MARK_W + 14} h={MARK_H + 22} color={color} seed={200 + i * 9} />}
+              </InkButton>
+            );
+          })}
+        </div>
 
-      <InkButton
-        onClick={() => { setErasing(!erasing); sfxTap(); }}
-        aria-pressed={erasing}
-        aria-label={erasing ? "Eraser is on. Turn it off." : "Turn on the eraser"}
-        tone={erasing ? "#ff6b6b" : undefined}
-        seed={erasing ? 91 : 27}
-        radius={13}
-        className={`dw-eraser ${erasing ? "is-on" : ""}`}
-        style={{ width: TOOL + 8, height: MARK_H + 20 }}
-      >
-        <Icon name="eraser" size={22} color={erasing ? "#fffaf0" : "var(--ink)"} />
-      </InkButton>
+        <InkButton
+          onClick={() => { setErasing(!erasing); sfxTap(); }}
+          aria-pressed={erasing}
+          aria-label={erasing ? "Eraser is on. Turn it off." : "Turn on the eraser"}
+          tone={erasing ? "#ff6b6b" : undefined}
+          seed={erasing ? 91 : 27}
+          radius={13}
+          className={`dw-eraser ${erasing ? "dw-on" : ""}`}
+          style={{ width: TOOL + 8, height: MARK_H + 20 }}
+        >
+          <Icon name="eraser" size={22} color={erasing ? "#fffaf0" : "var(--ink)"} />
+          {/* the same circled-it-with-a-crayon language as the thickness picks —
+              never the app-wide `.is-on` sticker ring, which is the generic
+              treatment this screen exists to get rid of */}
+          {erasing && <PickRing w={TOOL + 24} h={MARK_H + 34} color="var(--coral)" seed={317} />}
+        </InkButton>
+      </div>
     </>
   );
 
@@ -781,7 +796,7 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
 
         {/* ── the crayon box ──────────────────────────────────────────── */}
         <div className="dw-tools">
-          <div className="dw-rail" ref={railRef}>
+          <div className="dw-rail">
             <div
               className="dw-rail-scroll no-scrollbar"
               role="radiogroup"
@@ -816,10 +831,13 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
                 );
               })}
             </div>
-            <div className="dw-box-front" aria-hidden="true">
+            {/* the cardboard is sized by CSS and measured back, so the front
+                panel always reaches the bottom of the box and no crayon end
+                pokes out below it */}
+            <div className="dw-box-front" ref={boxRef} aria-hidden="true">
               <BoxFront
-                w={land ? 20 : Math.max(4, railBox.w)}
-                h={land ? Math.max(4, railBox.h) : 26}
+                w={Math.max(4, boxBox.w)}
+                h={Math.max(4, boxBox.h)}
                 axis={land ? "y" : "x"}
               />
             </div>
@@ -891,6 +909,9 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
 
 const DW_CSS = `
 .dw-grid {
+  /* one knob for how big the crayons are drawn; the box, its lip shadow and
+     the rail headroom all scale off it */
+  --cs: 1;
   display: grid;
   height: 100%;
   min-height: 0;
@@ -944,24 +965,27 @@ const DW_CSS = `
 .dw-rail-scroll {
   display: flex; gap: 5px; align-items: flex-end;
   overflow-x: auto; overflow-y: hidden;
-  padding: 17px 6px 0;
+  padding: calc(17px * var(--cs)) 6px 0;
   scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
 }
 .dw-rail-scroll > * { scroll-snap-align: center; }
 .dw-box-front {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 34px;
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: calc(28px * var(--cs));
   pointer-events: none; z-index: 4; overflow: hidden;
 }
 /* the crayons descend into the box, so the box throws a shadow up onto them */
 .dw-rail::before {
-  content: ""; position: absolute; left: 0; right: 0; bottom: 32px; height: 9px;
+  content: ""; position: absolute; left: 0; right: 0;
+  bottom: calc(28px * var(--cs) - 3px); height: calc(9px * var(--cs));
   background: linear-gradient(to bottom, rgba(58,38,16,0), rgba(58,38,16,0.18));
   pointer-events: none; z-index: 3;
 }
 /* there are more crayons than fit: fade the open end of the box */
 .dw-rail::after {
-  content: ""; position: absolute; right: 0; top: 14px; bottom: 30px; width: 18px;
+  content: ""; position: absolute; right: 0;
+  top: calc(14px * var(--cs)); bottom: calc(26px * var(--cs)); width: 18px;
   background: linear-gradient(to right, rgba(253,243,227,0), rgba(253,243,227,0.92));
   pointer-events: none; z-index: 3;
 }
@@ -972,8 +996,11 @@ const DW_CSS = `
   transition: transform var(--dur-2) var(--ease-spring);
   animation: dw-tumble var(--dur-3) var(--ease-out) both;
 }
-.dw-crayon-slot { display: block; width: ${CW}px; height: ${CH}px; position: relative; }
-.dw-crayon-art { position: absolute; left: 0; top: 0; }
+.dw-crayon-slot {
+  display: block; position: relative;
+  width: calc(${CW}px * var(--cs)); height: calc(${CH}px * var(--cs));
+}
+.dw-crayon-art { position: absolute; left: 0; top: 0; transform: scale(var(--cs)); transform-origin: 0 0; }
 @media (hover: hover) {
   .dw-crayon:hover { filter: brightness(1.04); }
 }
@@ -981,14 +1008,20 @@ const DW_CSS = `
 
 /* Wraps rather than truncates: the size buttons and eraser are fixed 48px
    targets, so on a 320px screen there is no room left for the colour name on
-   the same line — it takes its own line instead of collapsing to "O..". */
+   the same line — it takes its own line instead of collapsing to "O..". The
+   tools are one flex item (.dw-toolgroup) so the break can only ever fall
+   between the name and the tools, never mid-tray. */
 .dw-toolrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .dw-current {
-  flex: 1 1 6rem; min-width: 6rem;
-  font-size: var(--fs-2xs); line-height: 1.15;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  flex: 1 1 4.6rem; min-width: 4.6rem;
+  font-size: var(--fs-2xs); line-height: 1.12;
+  /* two lines rather than an ellipsis: "Sunshine yellow" has to survive a
+     narrow column, and clamping keeps the row's height steady either way */
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; overflow-wrap: anywhere;
   padding-left: 2px;
 }
+.dw-toolgroup { display: flex; align-items: center; gap: 6px; flex: none; }
 .dw-sizes { display: flex; align-items: center; gap: 4px; flex: none; }
 .dw-size-btn { padding: 0 !important; }
 .dw-eraser { padding: 0 !important; flex: none; }
@@ -1025,35 +1058,68 @@ const DW_CSS = `
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   column-gap: var(--sp-3);
+  row-gap: var(--sp-2);
 }
-.dw-land .dw-tools { width: 108px; min-width: 108px; height: 100%; min-height: 0; gap: 0; }
+.dw-land .dw-tools { width: 96px; min-width: 96px; height: 100%; min-height: 0; gap: 0; }
 .dw-land .dw-rail { flex: 1 1 auto; min-height: 0; }
 .dw-land .dw-rail-scroll {
   flex-direction: column; align-items: flex-start; height: 100%;
   overflow-x: hidden; overflow-y: auto;
-  padding: 4px 0 4px 20px;
+  /* no left padding: the crayons start at the box wall so the cardboard
+     covers their blunt ends and only the sharpened half sticks out */
+  padding: 4px 0 26px;
   scroll-snap-type: y proximity;
 }
 .dw-land .dw-box-front { left: 0; right: auto; top: 0; bottom: 0; width: 28px; height: auto; }
 .dw-land .dw-rail::before {
-  left: 26px; right: auto; top: 0; bottom: 0; width: 9px; height: auto;
-  background: linear-gradient(to right, rgba(58,38,16,0.2), rgba(58,38,16,0));
+  left: 25px; right: auto; top: 0; bottom: 0; width: 9px; height: auto;
+  background: linear-gradient(to right, rgba(58,38,16,0.22), rgba(58,38,16,0));
 }
-.dw-land .dw-rail::after { display: none; }
+/* there are more crayons than fit down the side: fade the open end */
+.dw-land .dw-rail::after {
+  left: 30px; right: 0; top: auto; bottom: 0; width: auto; height: 30px;
+  background: linear-gradient(to bottom, rgba(253,243,227,0), rgba(253,243,227,0.88));
+}
 .dw-land .dw-crayon { padding: 2px 0; }
-.dw-land .dw-crayon-slot { width: ${CH}px; height: ${CW}px; }
+.dw-land .dw-crayon-slot { width: calc(${CH}px * var(--cs)); height: calc(${CW}px * var(--cs)); }
 .dw-land .dw-crayon-art {
   left: 50%; top: 50%;
   margin-left: ${-CW / 2}px; margin-top: ${-CH / 2}px;
-  transform: rotate(90deg);
+  transform: rotate(90deg) scale(var(--cs)); transform-origin: 50% 50%;
 }
 .dw-land .dw-toolrow-top { flex: 1 1 auto; min-width: 0; justify-content: flex-start; }
-.dw-land .dw-current { flex: 0 1 auto; max-width: 92px; padding: 0 2px; }
+/* the base rule reserves room for the name to wrap onto a line of its own on a
+   320px phone; there is no second line up here, so let it shrink instead */
+.dw-land .dw-current { flex: 0 1 auto; min-width: 0; max-width: 96px; padding: 0 2px; }
 .dw-land .dw-canvasarea { padding-top: 10px; }
 .dw-land .dw-prompt { top: 22px; left: 16px; right: 16px; }
 .dw-land .dw-prompt-text { font-size: var(--fs-lg); }
 .dw-land .dw-hint { top: 34%; }
-.dw-land .dw-hero { min-height: var(--tap-lg); font-size: var(--fs-lg); }
+.dw-land .dw-hero { min-height: 50px; font-size: var(--fs-lg); }
+.dw-land .dw-hero-idle { font-size: var(--fs-sm); }
+.dw-land .dw-go-rays { top: -7px; bottom: -7px; height: calc(100% + 14px); }
+
+/* ── a tablet: the same box, held closer ──
+   Guarded on height as well as width so a landscape phone (which is wide but
+   short, and runs the rail layout above) never picks this up. */
+@media (min-width: 700px) and (min-height: 620px) {
+  .dw-grid { --cs: 1.34; }
+  .dw-toolrow { justify-content: center; gap: var(--sp-3); }
+  .dw-current {
+    flex: 0 1 auto; min-width: 0; max-width: 16rem;
+    font-size: var(--fs-xs); padding-left: 0;
+  }
+  .dw-sizes { gap: 8px; }
+  .dw-toolgroup { gap: 12px; }
+  .dw-canvasarea { padding-top: 14px; }
+  .dw-icon-btn { width: 56px !important; height: 56px !important; }
+  .dw-top { gap: 10px; }
+}
+@media (min-width: 820px) and (min-height: 620px) {
+  /* only once every crayon is certain to fit: centring a scroller that
+     overflows would put its first crayon out of reach */
+  .dw-rail-scroll { justify-content: center; gap: 10px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .dw-crayon, .dw-prompt, .dw-prompt-in { transition: none; animation: none; }

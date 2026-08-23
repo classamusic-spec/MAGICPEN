@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Stroke, RecognitionResult, CreatureKind } from "@/lib/types";
 import { drawStrokeFull, strokesBounds } from "@/lib/crayon";
 import { CREATURE_KINDS, kindById } from "@/lib/creatures";
@@ -20,11 +20,10 @@ interface Props {
 
 type Phase = "scan" | "guess" | "pick";
 
-/* mystery last: "something else" is a real answer, not a failure */
-const PICKABLE = [
-  ...CREATURE_KINDS.filter((k) => k.id !== "mystery"),
-  ...CREATURE_KINDS.filter((k) => k.id === "mystery"),
-];
+/* mystery last, and on its own: "something else" is a real answer, not a
+   failure, so it gets a card of its own width rather than a slot in the grid */
+const NAMED = CREATURE_KINDS.filter((k) => k.id !== "mystery");
+const MYSTERY = CREATURE_KINDS.find((k) => k.id === "mystery") ?? CREATURE_KINDS[CREATURE_KINDS.length - 1];
 
 /* ── the crayon box ──────────────────────────────────────────────────────── */
 
@@ -348,8 +347,8 @@ function KindBadge({ kindId, reduced, compact }: { kindId: string; reduced: bool
 /* ── one drawn card in the "what did you draw?" set ──────────────────────── */
 
 function KindCard({
-  kind, active, wide, onPick,
-}: { kind: CreatureKind; active: boolean; wide?: boolean; onPick: () => void }) {
+  kind, active, wide, dense, onPick,
+}: { kind: CreatureKind; active: boolean; wide?: boolean; dense?: boolean; onPick: () => void }) {
   const [ref, box] = useBox<HTMLButtonElement>();
   const tone = toneOf(kind.id);
   const seed = seedOf(kind.id);
@@ -366,8 +365,10 @@ function KindCard({
       aria-label={kind.id === "mystery" ? "Something else — a mystery creature" : kind.label}
       className={`ink-btn relative isolate ${wide ? "flex items-center gap-3 text-left" : "flex flex-col items-center justify-center gap-1"}`}
       style={{
-        minHeight: wide ? 74 : 96,
-        padding: wide ? "0.5rem 0.9rem" : "0.5rem 0.35rem",
+        // a landscape phone has barely any height; the cards get shorter so two
+        // full rows fit and a third peeks out to say "keep going"
+        minHeight: wide ? 74 : dense ? 68 : 96,
+        padding: wide ? "0.5rem 0.9rem" : dense ? "0.25rem 0.3rem" : "0.5rem 0.35rem",
         gridColumn: wide ? "1 / -1" : undefined,
       }}
     >
@@ -384,7 +385,7 @@ function KindCard({
       </span>
 
       <span className="relative z-10 shrink-0">
-        <Doodle kindId={kind.id} size={wide ? 44 : 46} mono={mono} />
+        <Doodle kindId={kind.id} size={wide ? 44 : dense ? 34 : 46} mono={mono} />
       </span>
       <span className={`relative z-10 ${wide ? "flex-1" : "text-center px-1"}`}>
         <span
@@ -614,11 +615,32 @@ export default function MagicReveal({ strokes, result, name, photo, onShuffleNam
 
   const title = kind.id === "mystery" ? "MYSTERY!" : `${kind.label.toUpperCase()}!`;
 
+  /* Landscape puts the page and the panel side by side. Who deserves the room
+     changes with the phase: while we're reading, nothing else is on screen, so
+     give the whole width to the drawing; while you're choosing, the choices
+     need it more than the thumbnail does. On tall screens the composition is
+     centred instead of stretched across a tablet. */
+  const gridStyle: React.CSSProperties = short
+    ? {
+        gridTemplateColumns:
+          phase === "scan" ? "minmax(0, 1fr) 0px"
+          : phase === "pick" ? "minmax(0, 13.5rem) minmax(0, 1fr)"
+          : "minmax(0, 1fr) minmax(0, 20rem)",
+      }
+    : { maxWidth: "min(100%, 44rem)", marginInline: "auto" };
+
+  /* The sheet gives ground as the screen fills up, but on a tall tablet it is
+     allowed to be properly big instead of a stamp adrift in cream. */
+  const stageMaxHeight =
+    phase === "pick" ? "min(100%, max(11rem, 30dvh))"
+    : phase === "guess" ? "min(100%, max(21rem, 46dvh))"
+    : "min(100%, max(30rem, 38dvh))";
+
   return (
     <div className="screen ink-paper relative overflow-hidden">
       <PaperMarks />
 
-      <div className="reveal-grid pad-x pad-t pad-b relative z-10">
+      <div className="reveal-grid pad-x pad-t pad-b relative z-10" style={gridStyle}>
         {/* ── heading + the pen reading the page ── */}
         <div className="reveal-head text-center">
           <h1 className={`ink-title ${phase === "scan" ? "type-title" : "type-h2"}`} aria-live="polite">
@@ -638,7 +660,7 @@ export default function MagicReveal({ strokes, result, name, photo, onShuffleNam
               maxWidth: "min(100%, 28rem)",
               // the sheet shrinks right down while you are choosing, so the
               // choices get the room they need
-              maxHeight: phase === "pick" ? "min(100%, 11rem)" : phase === "guess" ? "min(100%, 21rem)" : "min(100%, 34rem)",
+              maxHeight: stageMaxHeight,
             }}
           >
             {awake && (
@@ -855,29 +877,25 @@ export default function MagicReveal({ strokes, result, name, photo, onShuffleNam
                   className="grid gap-2 p-2 overflow-y-auto no-scrollbar"
                   style={{
                     gridTemplateColumns: "repeat(auto-fill, minmax(6rem, 1fr))",
-                    maxHeight: "min(56dvh, 30rem)",
+                    // in landscape the panel is already short; keep the scroll
+                    // inside the grid so the card itself never scrolls too
+                    maxHeight: short ? "min(50dvh, 22rem)" : "min(56dvh, 30rem)",
                     overscrollBehavior: "contain",
                     WebkitOverflowScrolling: "touch",
                   }}
                 >
-                  {PICKABLE.map((k) => (
-                    <Fragment key={k.id}>
-                      {k.id === "mystery" && (
-                        <div style={{ gridColumn: "1 / -1" }} className="flex items-center gap-2 pt-1">
-                          <span className="type-fine shrink-0">not there?</span>
-                          <span className="flex-1">
-                            <Scribble color="rgba(86,62,121,0.3)" height={8} seed={14} />
-                          </span>
-                        </div>
-                      )}
-                      <KindCard
-                        kind={k}
-                        active={k.id === kindId}
-                        wide={k.id === "mystery"}
-                        onPick={() => choose(k.id)}
-                      />
-                    </Fragment>
+                  {NAMED.map((k) => (
+                    <KindCard key={k.id} kind={k} active={k.id === kindId} dense={short} onPick={() => choose(k.id)} />
                   ))}
+
+                  <div style={{ gridColumn: "1 / -1" }} className="flex items-center gap-2 pt-1">
+                    <span className="type-fine shrink-0">not there?</span>
+                    <span className="flex-1">
+                      <Scribble color="rgba(86,62,121,0.3)" height={8} seed={14} />
+                    </span>
+                  </div>
+
+                  <KindCard kind={MYSTERY} active={MYSTERY.id === kindId} wide onPick={() => choose(MYSTERY.id)} />
                 </div>
                 {/* the page keeps going below */}
                 <div

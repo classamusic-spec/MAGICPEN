@@ -185,12 +185,11 @@ function PackCard({
               seed={index * 11 + 61}
               radius={18}
               lifted={false}
-              className="mt-2 flex items-center justify-center gap-1.5 py-1.5 ink-title text-fs-md"
+              className="mt-2 py-1.5 ink-title text-fs-md"
+              contentClassName="flex items-center justify-center gap-1.5 ink-on-wax"
             >
-              <span className="flex items-center justify-center gap-1.5 ink-on-wax">
-                <Icon name="play" size={17} color="#fffaf0" fill="#fffaf0" />
-                Play
-              </span>
+              <Icon name="play" size={17} color="#fffaf0" fill="#fffaf0" />
+              Play
             </InkCard>
           )}
         </div>

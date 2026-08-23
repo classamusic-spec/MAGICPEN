@@ -183,6 +183,13 @@ export function InkButton({
 }
 
 export interface InkCardProps extends React.HTMLAttributes<HTMLDivElement> {
+  /**
+   * Classes for the *content* wrapper. Reach for this whenever the card needs
+   * to lay its children out (grid, flex, text-align): `className` styles the
+   * outer box, whose only child is the wrapper, so a grid set there sizes the
+   * wrapper rather than the children.
+   */
+  contentClassName?: string;
   tone?: string;
   shape?: "rect" | "ellipse";
   weight?: number;
@@ -191,10 +198,16 @@ export interface InkCardProps extends React.HTMLAttributes<HTMLDivElement> {
   lifted?: boolean;
 }
 
-/** A sheet of paper with a drawn edge — the container for everything. */
+/**
+ * A sheet of paper with a drawn edge — the container for everything.
+ *
+ * The drawn outline is an SVG sized to the outer box, so children live in a
+ * wrapper stacked above it. That wrapper is the card's only direct child:
+ * layout classes belong on `contentClassName`, not `className`.
+ */
 export function InkCard({
   tone, shape = "rect", weight = 3, seed = 21, radius, lifted = true,
-  className = "", children, ...rest
+  className = "", contentClassName = "", children, ...rest
 }: InkCardProps) {
   const [measureRef, box] = useMeasure<HTMLDivElement>();
   return (
@@ -209,7 +222,7 @@ export function InkCard({
         lifted={lifted}
         fill={tone ? { kind: "wax", color: tone } : { kind: "paper" }}
       />
-      <div className="relative z-10">{children}</div>
+      <div className={`relative z-10 ${contentClassName}`}>{children}</div>
     </div>
   );
 }
