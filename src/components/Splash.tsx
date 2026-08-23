@@ -89,9 +89,11 @@ function LivingSea({ still, rush, onDrawn }: { still: boolean; rush: number; onD
   const t0Ref = useRef(0);
   const drawnRef = useRef(false);
   // keep the callback out of the effect deps: a fresh `onDrawn` each render
-  // would otherwise restart the whole draw-on every time the parent re-renders
+  // would otherwise restart the whole draw-on every time the parent re-renders.
+  // The rAF loop reads `.current` asynchronously, so a post-render effect is
+  // soon enough to keep it fresh.
   const onDrawnRef = useRef(onDrawn);
-  onDrawnRef.current = onDrawn;
+  useEffect(() => { onDrawnRef.current = onDrawn; }, [onDrawn]);
 
   useEffect(() => {
     const cv = ref.current;
