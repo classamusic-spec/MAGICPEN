@@ -23,6 +23,7 @@ import { saveCreatures } from "@/lib/storage";
 import { InkButton, InkCard, InkShape, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon, type IconName } from "@/components/ink/Icons";
 import { hand, paperTile, roughRect, seedOf, tornEdge } from "@/lib/ink";
+import { newLag, lagWeight, updateLag, applyLag, type Lag } from "@/lib/secondary";
 import { drawCrayonStroke } from "@/lib/crayon";
 
 /* per-world wrapper colors + empty-state copy */
@@ -165,6 +166,14 @@ interface RT {
   home: RegionKind;
   /** Its own depth along the ground, so a row of animals is not one flat line. */
   foot: number;
+  /* ── what trails ──
+     Secondary motion: one `Lag` made at spawn and mutated in place for the
+     life of the creature (see lib/secondary — it allocates nothing per frame).
+     `lagW` is how much this behaviour is allowed to trail, resolved once. */
+  lag: Lag;
+  lagW: number;
+  /** Seconds between this one's blinks — near enough shared, never in step. */
+  blinkP: number;
 }
 
 /** Behaviours whose artwork turns to face the way it is travelling. */
@@ -187,6 +196,39 @@ const GROUNDED = new Set([
 const HUD_CLEAR = 214;
 /** How far below the middle of the artwork those feet are. */
 const FOOT = 0.45;
+/** Things with roots. They can shiver and look up; they do not hop or spin. */
+const ROOTED = new Set(["grow", "erupt", "sway"]);
+
+/* ── blinking ────────────────────────────────────────────────────────────────
+   A creature whose eyes never close reads as a stuffed toy. These sprites are
+   single baked canvases with no eyes to address, so the nearest honest thing is
+   to squeeze the upper region for a moment — shorter and a touch wider, which
+   is what a face actually does as the lids come down. The seam sits *inside*
+   the sprite and both slices meet exactly on it, with one source row of
+   overlap, so nothing tears. `k` is 0 for all but ~120ms at a time, and at 0
+   this is one plain `drawImage` — the common path costs nothing. */
+const BLINK_CUT = 0.56;      // where a head stops being a head, near enough
+function drawBlink(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLCanvasElement,
+  dx: number, dy: number, dw: number, dh: number,
+  k: number,
+): void {
+  if (k <= 0.02) { ctx.drawImage(img, dx, dy, dw, dh); return; }
+  const iw = img.width, ih = img.height;
+  if (iw < 2 || ih < 2) { ctx.drawImage(img, dx, dy, dw, dh); return; }
+  const sq = k * 0.17;
+  const sy = ih * BLINK_CUT;              // the seam, in source pixels
+  const my = dy + dh * BLINK_CUT;         // the seam, on the canvas
+  const th = dh * BLINK_CUT * (1 - sq);   // the squeezed head
+  const tw = dw * (1 + sq * 0.4);         // …which bulges a little as it goes
+  ctx.drawImage(img, 0, 0, iw, sy, dx - (tw - dw) / 2, my - th, tw, th);
+  const o = Math.min(1, sy);              // one source row of overlap: no seam
+  ctx.drawImage(
+    img, 0, sy - o, iw, ih - sy + o,
+    dx, my - (dh / ih) * o, dw, dh * (1 - BLINK_CUT) + (dh / ih) * o,
+  );
+}
 
 /** Set up the state machine for one motion style. Runs once, at spawn. */
 function styleSpawn(rt: RT, b: string) {
@@ -623,6 +665,7 @@ export default function WorldScene({
         ax: x, ay: y, tx: x, ty: y,
         sq: 0, roll: 0, dip: 0,
         reg, bandT, bandB, home: want, foot,
+        lag: newLag(), lagW: lagWeight(b), blinkP: 3.1 + rnd() * 1.7,
       };
       rt.next = rt.t;
       styleSpawn(rt, b);

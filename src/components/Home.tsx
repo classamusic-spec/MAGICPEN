@@ -321,11 +321,20 @@ export default function Home({
   onPlayWorld,
   onDraw,
   onWrite,
+  idea,
+  welcome,
+  onDrawIdea,
 }: {
   creatures: Creature[];
   onPlayWorld: (worldId: string) => void;
   onDraw: () => void;
   onWrite: (worldId: WritingWorldId) => void;
+  /** Today's drawing idea — the same all day, different tomorrow. */
+  idea?: string;
+  /** A warm line for a child who has been away — it already carries the streak
+   *  when there is one to mention, so nothing else on the page repeats it. */
+  welcome?: string | null;
+  onDrawIdea?: () => void;
 }) {
   const [grownUps, setGrownUps] = useState<WorldPack | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -358,6 +367,52 @@ export default function Home({
           <p className="ink-hand text-fs-sm -mt-1">draw it · it lives</p>
           <span className="block mx-auto w-40 max-w-[60%]"><Scribble seed={12} height={10} /></span>
         </header>
+
+        {/* ── coming back: a warm hello, and something new to draw today ──
+            No countdown, no expiring reward, nothing lost by staying away —
+            just a reason to open it that is different from yesterday's. */}
+        {welcome && (
+          <p
+            role="status"
+            className="ink-title text-fs-md text-center mt-2 anim-pop-in"
+            style={{ color: "var(--plum)" }}
+          >
+            {welcome}
+          </p>
+        )}
+
+        {idea && onDrawIdea && (
+          <section className="mt-3 enter" style={{ "--i": 0 } as React.CSSProperties} aria-labelledby="today-h">
+            <h2 id="today-h" className="visually-hidden">Today's drawing idea</h2>
+            <button
+              onClick={() => { sfxHappy(); onDrawIdea(); }}
+              aria-label={`Today's idea: draw ${idea}. Tap to start drawing it.`}
+              className="ink-pinned block w-full text-left"
+            >
+              <InkCard
+                seed={91}
+                radius={18}
+                className="px-3 py-2.5"
+                contentClassName="flex items-center gap-3"
+              >
+                <span aria-hidden="true" className="shrink-0 anim-sparkle">
+                  <Icon name="sparkle" size={26} color="var(--sun)" fill="var(--sun)" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="ink-hand block text-fs-2xs">today's idea</span>
+                  <span className="ink-title block text-fs-lg leading-tight truncate">Draw {idea}!</span>
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="shrink-0 grid place-items-center rounded-full"
+                  style={{ width: 34, height: 34, background: "var(--sun)", border: "2.5px solid var(--ink)" }}
+                >
+                  <Icon name="pencil" size={18} />
+                </span>
+              </InkCard>
+            </button>
+          </section>
+        )}
 
         {/* ── the one thing to do ── */}
         <section className="mt-3 enter" style={{ "--i": 1 } as React.CSSProperties} aria-labelledby="hero-h">

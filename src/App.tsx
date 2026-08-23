@@ -3,6 +3,7 @@ import type { Creature, DreamWorld, RecognitionResult, Screen, Stroke, WritingWo
 import { recognize } from "@/lib/recognizer";
 import { kindById, rosterFor, WORLD_PACKS } from "@/lib/creatures";
 import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid, loadDream, saveDream } from "@/lib/storage";
+import { markVisit, dailyIdea, welcomeBack, type Visit } from "@/lib/daily";
 import { trpc } from "@/providers/trpc";
 import { bakeSketchPNG, proxyArtUrl } from "@/lib/polish";
 import { doodlePNG } from "@/lib/doodleArt";
@@ -31,6 +32,13 @@ export default function App() {
      world offers that world's things; drawing from the sketchbook offers the
      everyday set, because the child has not picked a world yet. */
   const [drawWorld, setDrawWorld] = useState<string>("dream");
+  /* The visit is recorded once per app start. It writes, so it must not happen
+     in a render body that React may run twice. */
+  const [visit] = useState<Visit>(() => markVisit());
+  const [idea] = useState<string>(() => dailyIdea());
+  /* Set when the child taps today's idea, so the draw screen asks for that
+     instead of a random suggestion. Cleared when they leave the draw screen. */
+  const [ideaPrompt, setIdeaPrompt] = useState<string | null>(null);
   const [creatures, setCreatures] = useState<Creature[]>(() => loadCreatures());
   const [draft, setDraft] = useState<Stroke[]>([]);
   const [photoDraft, setPhotoDraft] = useState<string | null>(null);
@@ -128,11 +136,12 @@ export default function App() {
   }, [draft, drawWorld]);
 
   const prompt = useMemo(() => {
-    const pack = WORLD_PACKS.find((p) => p.id === worldId) ?? WORLD_PACKS[0];
+    if (ideaPrompt) return ideaPrompt;
+    const pack = WORLD_PACKS.find((p) => p.id === drawWorld) ?? WORLD_PACKS[0];
     const p = pack.prompts;
     return p[Math.floor(Math.random() * p.length)];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen === "draw"]);
+  }, [screen === "draw", ideaPrompt, drawWorld]);
 
   const handleDrawn = (strokes: Stroke[]) => {
     setDraft(strokes);
@@ -216,7 +225,10 @@ export default function App() {
               setWorldId(id);
               setScreen("world");
             }}
-            onDraw={() => { setDrawWorld("dream"); setScreen("draw"); }}
+            onDraw={() => { setIdeaPrompt(null); setDrawWorld("dream"); setScreen("draw"); }}
+            idea={idea}
+            welcome={welcomeBack(visit)}
+            onDrawIdea={() => { setIdeaPrompt(idea); setDrawWorld("dream"); setScreen("draw"); }}
             onWrite={(id) => { setWriteWorld(id); setScreen("write"); }}
           />
         )}
@@ -248,7 +260,7 @@ export default function App() {
             dream={dream}
             polishingIds={polishingIds}
             onBack={() => { setNewId(null); setScreen("home"); }}
-            onDrawMore={() => { setNewId(null); setDrawWorld(worldId); setScreen("draw"); }}
+            onDrawMore={() => { setNewId(null); setIdeaPrompt(null); setDrawWorld(worldId); setScreen("draw"); }}
             onPlayGame={() => { setNewId(null); setScreen("game"); }}
             onRepaint={() => setScreen("paintworld")}
           />
