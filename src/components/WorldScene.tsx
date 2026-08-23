@@ -858,9 +858,27 @@ export default function WorldScene({
       const my = 142;
       const srcAR = src.width / src.height;
       const dstAR = mw / mh;
+      /* Aim the crop at the child's drawings rather than at the middle of the
+         screen. A tall phone survives as a band about a quarter of its height,
+         and dead centre routinely lands in empty water between the creatures —
+         an empty souvenir. So slide a window of the crop's size over the
+         creature positions and keep the fullest one, then centre on that group.
+         rt.x/rt.y are normalised, so this is independent of backing-store scale. */
+      const clamp = (v: number, hi: number) => Math.min(hi, Math.max(0, v));
+      const aim = (pick: (r: RT) => number, span: number, extent: number) => {
+        const ps = [...rtRef.current.values()].map((r) => pick(r) * extent).sort((a, b) => a - b);
+        if (!ps.length) return (extent - span) / 2;
+        let bestN = 0, bestC = extent / 2;
+        for (let i = 0; i < ps.length; i++) {
+          let j = i;
+          while (j + 1 < ps.length && ps[j + 1] - ps[i] <= span) j++;
+          if (j - i + 1 > bestN) { bestN = j - i + 1; bestC = (ps[i] + ps[j]) / 2; }
+        }
+        return clamp(bestC - span / 2, extent - span);
+      };
       let sw = src.width, sh = src.height, sx = 0, sy = 0;
-      if (srcAR > dstAR) { sw = src.height * dstAR; sx = (src.width - sw) / 2; }
-      else { sh = src.width / dstAR; sy = (src.height - sh) / 2; }
+      if (srcAR > dstAR) { sw = src.height * dstAR; sx = aim((r) => r.x, sw, src.width); }
+      else { sh = src.width / dstAR; sy = aim((r) => r.y, sh, src.height); }
 
       ctx.save();
       ctx.translate(CW / 2, my + mh / 2);
@@ -1335,7 +1353,10 @@ export default function WorldScene({
 
               {sheet.mode === "roster" && (
                 <div
-                  className="overflow-y-auto hud-scroll hud-fade-edge pt-2 pb-2 px-1 grid gap-3.5 content-start"
+                  /* the gap has to clear two hand-drawn edges, not one: a rough
+                     border bows a few px outside its own box, so tiles set 14px
+                     apart visually collide. */
+                  className="overflow-y-auto hud-scroll hud-fade-edge pt-2 pb-2 px-1.5 grid gap-5 content-start"
                   style={{ gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", maxHeight: "min(58vh, 400px)" }}
                 >
                   {view.map((c, i) => {
@@ -1346,11 +1367,17 @@ export default function WorldScene({
                       <button
                         key={c.id}
                         onClick={() => openDetail(c)}
-                        className="hud-tilt hud-focus relative"
+                        className="hud-tilt hud-focus relative w-full min-w-0"
                         style={{ "--tilt": `${tilt.toFixed(2)}deg` } as React.CSSProperties}
                         aria-label={`Open ${c.name} the ${k.label}`}
                       >
-                        <InkCard className="p-1.5 pt-3 grid place-items-center gap-0.5" seed={s % 900} weight={2.6}>
+                        {/* Plain block flow, not a grid: InkCard wraps its children
+                            in a div of its own, so a centring grid here sized that
+                            wrapper to its widest child — `w-full` on the labels then
+                            resolved against their own text, never truncated, and a
+                            long kind name ("Mystery Creature") pushed the tile out
+                            over its neighbours. */}
+                        <InkCard className="p-1.5 pt-3 text-center" seed={s % 900} weight={2.6}>
                           <Tape
                             seed={i + 1}
                             style={{ width: 52, height: 19, top: -9, left: "50%", marginLeft: -26, transform: `rotate(${(tilt * -2.4).toFixed(1)}deg)` }}
@@ -1358,8 +1385,10 @@ export default function WorldScene({
                           <div className="h-16 grid place-items-center">
                             <CreatureThumb creature={c} sprite={spritesRef.current.get(c.id)?.frames[0] ?? null} size={62} tick={artTick} />
                           </div>
-                          <div className="ink-title truncate w-full text-center" style={{ fontSize: 11, color: "var(--ink)" }}>{c.name}</div>
-                          <div className="ink-hand truncate w-full text-center" style={{ fontSize: 10 }}>{k.label}</div>
+                          {/* px-2: the ink edge bows inward, so a label that fills
+                              the padding box exactly still crosses the line */}
+                          <div className="ink-title truncate px-2 mt-0.5" style={{ fontSize: 11, color: "var(--ink)" }}>{c.name}</div>
+                          <div className="ink-hand truncate px-2" style={{ fontSize: 10 }}>{k.label}</div>
                         </InkCard>
                         {polishRef.current.has(c.id) && !c.artUrl && (
                           <span className="absolute -top-1.5 -right-1 z-30">
@@ -1422,7 +1451,7 @@ export default function WorldScene({
                       disabled={!nameDraft.trim() || nameDraft.trim() === detail.name}
                     >
                       <Icon name="check" size={20} color="#fff6e6" weight={2.6} />
-                      <span className="ink-on-wax font-display font-extrabold" style={{ fontSize: "var(--fs-md)" }}>Save</span>
+                      <span className="ink-on-wax font-display font-extrabold whitespace-nowrap" style={{ fontSize: "var(--fs-md)" }}>Save</span>
                     </InkButton>
                   </div>
 
@@ -1439,7 +1468,7 @@ export default function WorldScene({
                       }}
                     >
                       <Icon name="sparkle" size={20} color="#2d2926" fill="#ffc72c" weight={2} />
-                      <span className="ink-title" style={{ fontSize: "var(--fs-md)" }}>Say hi</span>
+                      <span className="ink-title whitespace-nowrap" style={{ fontSize: "var(--fs-md)" }}>Say hi</span>
                     </InkButton>
                     <InkButton
                       tone={TONE.play.wax}
@@ -1449,7 +1478,7 @@ export default function WorldScene({
                       onClick={() => { sfxHappy(); onPlayGame(); }}
                     >
                       <Icon name="gamepad" size={20} color="#fff6e6" weight={2.2} />
-                      <span className="ink-on-wax font-display font-extrabold" style={{ fontSize: "var(--fs-md)" }}>Play</span>
+                      <span className="ink-on-wax font-display font-extrabold whitespace-nowrap" style={{ fontSize: "var(--fs-md)" }}>Play</span>
                     </InkButton>
                   </div>
 
@@ -1521,11 +1550,11 @@ function ReleaseConfirm({
         <div className="grid grid-cols-2 gap-2">
           <InkButton seed={31} className="hud-focus" style={{ height: 50 }} onClick={onKeep}>
             <Icon name="heart" size={20} color="#2d2926" fill="#3aae3a" weight={2} />
-            <span className="ink-title" style={{ fontSize: "var(--fs-md)" }}>Keep!</span>
+            <span className="ink-title whitespace-nowrap" style={{ fontSize: "var(--fs-md)" }}>Keep!</span>
           </InkButton>
           <InkButton tone={TONE.go.wax} seed={97} className="hud-focus" style={{ height: 50 }} onClick={onRelease}>
             <Icon name="globe" size={20} color="#fff6e6" weight={2.2} />
-            <span className="ink-on-wax font-display font-extrabold" style={{ fontSize: "var(--fs-md)" }}>Let go</span>
+            <span className="ink-on-wax font-display font-extrabold whitespace-nowrap" style={{ fontSize: "var(--fs-md)" }}>Let go</span>
           </InkButton>
         </div>
       </div>
