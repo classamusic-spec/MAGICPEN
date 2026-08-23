@@ -175,6 +175,12 @@ const layers = new Map<string, Layer>();
  * Draw `paint` into an offscreen canvas keyed by `key` + `variant`, then blit.
  * Static art (starfields, coral beds, mountain ranges) costs one paint instead
  * of thousands of path ops per frame — this is what buys the extra detail.
+ *
+ * **Never put `quality()` in the `variant`.** The tier is adaptive: it drops
+ * when a device is warm and climbs back when it cools, so a bake keyed on it
+ * re-paints every time the device changes its mind — which is precisely when
+ * the device could least afford it. Scale detail *inside* `paint` with
+ * `detail()` instead, and let the bake key describe only the geometry.
  */
 export function cachedLayer(
   ctx: CanvasRenderingContext2D,
