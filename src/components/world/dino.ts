@@ -125,6 +125,30 @@ function makePal(k: number, w: number): Pal {
 
 let PAL: Pal = makePal(0.3, 0.6);
 
+/**
+ * The handful of colour strings the live pass needs. Rebuilt only when the
+ * palette changes, because building `rgba(...)` strings inside the draw loop
+ * allocates on every frame and hands the collector work it should never have.
+ */
+interface LivePal {
+  flyer: string; rim: string; rimNeck: string; sauropod: string;
+  bush: string; bushLit: string; frond: string; steam: string;
+}
+function makeLive(P: Pal): LivePal {
+  const n = P.night;
+  return {
+    flyer: rgb(mix3(P.ridgeLo, [12, 8, 22], 0.5)),
+    rim: rgba(P.ember, 0.22 + P.w * 0.20),
+    rimNeck: rgba(P.ember, 0.34 + n * 0.16),
+    sauropod: rgb(mix3(P.midLo, [18, 12, 30], 0.45)),
+    bush: rgb(mix3(P.leaf, P.flrLo, 0.35)),
+    bushLit: rgba(P.ember, 0.13 + n * 0.09),
+    frond: rgba(mix3(P.flrLo, [6, 16, 12], 0.55), 0.94),
+    steam: `rgba(${P.steam[0] | 0},${P.steam[1] | 0},${P.steam[2] | 0},ALPHA)`,
+  };
+}
+let LIVE: LivePal = makeLive(PAL);
+
 /* ── shared geometry ─────────────────────────────────────────────────────── */
 
 const D = {
@@ -407,10 +431,14 @@ function paintDinoSky(c: CanvasRenderingContext2D, W: number, H: number, S: numb
     c.fillStyle = sg;
     c.fillRect(0, 0, W, fY + 3);
     if (P.w > 0.25 && P.k > 0.08) {
-      c.fillStyle = rgba(P.sun, 0.55 * P.w);
-      c.beginPath();
-      c.arc(sunX, sunY, D.U * 0.055, 0, Math.PI * 2);
-      c.fill();
+      // a soft-edged disc — a hard circle at this alpha reads as a lens flare
+      const dr2 = D.U * 0.058;
+      const dg = c.createRadialGradient(sunX, sunY, 0, sunX, sunY, dr2);
+      dg.addColorStop(0, rgba(P.sun, 0.50 * P.w));
+      dg.addColorStop(0.62, rgba(P.sun, 0.34 * P.w));
+      dg.addColorStop(1, rgba(P.sun, 0));
+      c.fillStyle = dg;
+      c.fillRect(sunX - dr2, sunY - dr2, dr2 * 2, dr2 * 2);
     }
   }
 
@@ -555,7 +583,8 @@ function paintVolcano(c: CanvasRenderingContext2D) {
   c.save();
   if (richFx()) c.filter = `blur(${(D.U * 0.022).toFixed(1)}px)`;
   c.fillStyle = vGrad(c, craterY, fY, [
-    [0, rgba(mix3(P.rockHi, P.sun, 0.45), 0.22 + P.w * 0.20)],
+    [0, rgba(mix3(P.rockHi, P.sun, 0.45 + P.w * 0.25), 0.22 + P.w * 0.34)],
+    [0.55, rgba(mix3(P.rockHi, P.sun, 0.45 + P.w * 0.25), 0.10 + P.w * 0.16)],
     [1, rgba(mix3(P.rockHi, P.sun, 0.45), 0)],
   ]);
   c.fill();
@@ -1284,7 +1313,7 @@ export function drawDino({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: 
   /* the hour, quantised so the bake only changes a handful of times a day */
   const k = dayLight(), warm = dayWarmth();
   const kB = Math.round(k * 8), wB = Math.round(warm * 6);
-  if (PAL.k !== kB / 8 || PAL.w !== wB / 6) PAL = makePal(kB / 8, wB / 6);
+  if (PAL.k !== kB / 8 || PAL.w !== wB / 6) { PAL = makePal(kB / 8, wB / 6); LIVE = makeLive(PAL); }
   const night = PAL.night;
   // Deliberately NOT keyed on the quality tier: the tier flips as the device
   // warms up, and re-baking two full-screen supersampled layers on every flip
@@ -1293,7 +1322,7 @@ export function drawDino({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: 
   const variant = `${Math.round(fY)}|${kB}|${wB}`;
 
   const air = slot(fx, "dino.air", () => ({ drift: 0 }));
-  air.drift += dt * (12 + wind * 22);
+  air.drift += dt * (12 + wind * 22) * mo;
 
   /* eruption cycle: rumble → burst → drifting embers → fading glow */
   const er = slot(fx, "dino.erupt", () => ({ next: 22, k: 0, burst: false }));
@@ -1374,7 +1403,7 @@ export function drawDino({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: 
     ctx.save();
     ctx.translate(ptx, pty);
     ctx.rotate(beat * 0.05);
-    ctx.fillStyle = rgb(mix3(PAL.ridgeLo, [12, 8, 22], 0.5));
+    ctx.fillStyle = LIVE.flyer;
     for (const side of [-1, 1]) {
       const tipY = -ps * (0.55 * up) + ps * (0.45 * down);
       ctx.beginPath();
@@ -1384,14 +1413,14 @@ export function drawDino({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: 
       ctx.quadraticCurveTo(side * ps * 0.28, ps * 0.1, 0, 0);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = rgba(PAL.ember, 0.22 + PAL.w * 0.20);
+      ctx.strokeStyle = LIVE.rim;
       ctx.lineWidth = Math.max(1, ps * 0.035);
       ctx.beginPath();
       ctx.moveTo(0, 0);
       ctx.quadraticCurveTo(side * ps * 0.7, -ps * 0.42 + tipY * 0.5, side * ps * 1.5, tipY);
       ctx.stroke();
     }
-    ctx.fillStyle = rgb(mix3(PAL.ridgeLo, [12, 8, 22], 0.5));
+    ctx.fillStyle = LIVE.flyer;
     ctx.beginPath();
     ctx.ellipse(0, ps * 0.06, ps * 0.34, ps * 0.16, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -1425,7 +1454,7 @@ export function drawDino({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: 
     const step = Math.sin(t * 1.5 * mo);
     ctx.save();
     ctx.translate(dx4, fY + 4 + step * ds * 0.015);
-    ctx.fillStyle = rgb(mix3(PAL.midLo, [18, 12, 30], 0.45));
+    ctx.fillStyle = LIVE.sauropod;
     ctx.beginPath();
     ctx.ellipse(0, -ds * 0.6, ds * 0.9, ds * 0.45, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -1444,7 +1473,7 @@ export function drawDino({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: 
     ctx.quadraticCurveTo(-ds * 1.5, -ds * 0.4, -ds * 0.85, -ds * 0.4);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = rgba(PAL.ember, 0.34 + night * 0.16);
+    ctx.strokeStyle = LIVE.rimNeck;
     ctx.lineWidth = Math.max(1.2, ds * 0.022);
     ctx.lineCap = "round";
     ctx.beginPath();
@@ -1468,7 +1497,7 @@ export function drawDino({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: 
     for (let i = 0; i < nAsh; i++) {
       // packed towards the vent so the plume leaves the crater as a column and
       // only comes apart higher up, instead of showing as separate blobs
-      const p = Math.pow((t * 0.06 * (still ? 0.5 : 1) + i / nAsh) % 1, 1.45);
+      const p = Math.pow((t * 0.06 * (still ? 0.34 : 1) + i / nAsh) % 1, 1.45);
       const rise = Math.pow(p, 0.82);
       const px = D.vX + rise * rise * (U * 0.10 + wind * U * 0.52) + noise1(t * 0.3 + i * 3.1, 5) * U * 0.03;
       const py = D.craterY + D.vH * 0.03 - rise * fY * 0.62;
@@ -1478,14 +1507,14 @@ export function drawDino({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: 
     }
 
     /* steam leaving the hot ground and the spring — it rises, the wind takes it */
-    const steamCol = `rgba(${PAL.steam[0] | 0},${PAL.steam[1] | 0},${PAL.steam[2] | 0},ALPHA)`;
+    const steamCol = LIVE.steam;
     const steam = puffSprite("dino.steam", steamCol);
     const nSteam = Math.max(4, detail(9));
     for (let i = 0; i < nSteam; i++) {
       const src = i % 3;
       const sx0 = src === 0 ? D.poolX : src === 1 ? D.ventX - D.ventW * 0.45 : D.ventX + D.ventW * 0.45;
       const sy0 = src === 0 ? D.poolY - D.poolR * 0.1 : D.ventY;
-      const p = ((t * 0.075 * (still ? 0.5 : 1) + i * 0.137) % 1);
+      const p = ((t * 0.075 * (still ? 0.34 : 1) + i * 0.137) % 1);
       const rise = Math.pow(p, 0.72);
       // a fat column at the ground that comes apart as it climbs — steam, not sparks
       const sw = U * (0.075 + rise * 0.30) * (0.75 + ((i * 37) % 11) / 22);
@@ -1515,7 +1544,7 @@ export function drawDino({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: 
   const rust = slot(fx, "dino.rustle", () => ({ next: 6, which: 0, k: 0 }));
   if (t > rust.next) { rust.next = t + (still ? 16 : 9); rust.which = (rust.which + 1) % 3; rust.k = 1; }
   if (rust.k > 0) rust.k = Math.max(0, rust.k - dt * 0.9);
-  const bushCol = rgb(mix3(PAL.leaf, PAL.flrLo, 0.35));
+  const bushCol = LIVE.bush;
   for (let i = 0; i < 3; i++) {
     const bx2 = W * (0.30 + i * 0.22);
     const by2 = fY + gh * (0.22 + (i % 2) * 0.18);
@@ -1532,7 +1561,7 @@ export function drawDino({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: 
       ctx.ellipse(Math.cos(a) * bs * 0.6, Math.sin(a) * bs * 0.35, bs * 0.42, bs * 0.3, a, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = rgba(PAL.ember, 0.13 + night * 0.09);
+    ctx.fillStyle = LIVE.bushLit;
     ctx.beginPath();
     ctx.ellipse(-bs * 0.35, -bs * 0.3, bs * 0.4, bs * 0.14, -0.4, 0, Math.PI * 2);
     ctx.fill();
@@ -1566,7 +1595,7 @@ export function drawDino({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: 
      only cost more */
   const fLen = U * 0.50;
   const blurPx = richFx() ? 6 : 0;
-  const fc = rgba(mix3(PAL.flrLo, [6, 16, 12], 0.55), 0.94);
+  const fc = LIVE.frond;
   const fs1 = frondSprite("dino.frondA", fLen, 0.85, fc, Math.max(3, U * 0.02), blurPx);
   const gust = wind * 0.11 * mo;
   const s1 = Math.sin(t * 0.55 * mo) * gust, s2 = Math.sin(t * 0.43 * mo + 1.7) * gust;
@@ -1577,7 +1606,8 @@ export function drawDino({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: 
   applyNight(ctx, W, H);
 
   /* ── everything hot, drawn after the night so the fire survives it ── */
-  const pulse = 0.70 + Math.sin(t * (still ? 0.8 : 1.7)) * 0.13 + Math.sin(t * 0.61 + 1.2) * 0.06 + erupt * 0.6;
+  const pulse = 0.70 + (Math.sin(t * (still ? 0.6 : 1.7)) * 0.13 + Math.sin(t * 0.61 + 1.2) * 0.06) * mo
+    + erupt * 0.6;
   const hotK = 0.30 + night * 0.70;   // the fire dominates once the sun is gone
   const hotPuff = puffSprite("dino.hot", HOT);
   const firePuff = puffSprite("dino.fire", FIRE);
