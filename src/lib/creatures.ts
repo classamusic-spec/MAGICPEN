@@ -86,6 +86,16 @@ export const WORLD_PACKS: WorldPack[] = [
     gradient: "linear-gradient(160deg,#065f46 0%,#10b981 55%,#fbbf24 100%)",
     prompts: ["a T-rex", "a long-neck", "a pterodactyl", "a volcano", "a palm tree", "a dino egg"],
   },
+  {
+    id: "dream",
+    name: "My World",
+    tagline: "Draw your OWN world!",
+    emoji: "✨",
+    price: null,
+    locked: false,
+    gradient: "linear-gradient(160deg,#fca5f1 0%,#a78bfa 52%,#7dd3fc 100%)",
+    prompts: ["anything you like", "your house", "a rainbow", "a garden", "the sky", "a castle"],
+  },
 ];
 
 /** Behavior → arrival copy, per world. */

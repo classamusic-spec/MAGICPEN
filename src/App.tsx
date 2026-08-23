@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Creature, RecognitionResult, Screen, Stroke, WritingWorldId } from "@/lib/types";
+import type { Creature, DreamWorld, RecognitionResult, Screen, Stroke, WritingWorldId } from "@/lib/types";
 import { recognize } from "@/lib/recognizer";
 import { kindById, WORLD_PACKS } from "@/lib/creatures";
-import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid } from "@/lib/storage";
+import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid, loadDream, saveDream } from "@/lib/storage";
 import { trpc } from "@/providers/trpc";
 import { bakeSketchPNG, proxyArtUrl } from "@/lib/polish";
 import { doodlePNG } from "@/lib/doodleArt";
@@ -13,6 +13,7 @@ import MagicReveal from "@/components/MagicReveal";
 import WorldScene from "@/components/WorldScene";
 import MiniGame from "@/components/MiniGame";
 import WriteWorld from "@/components/WriteWorld";
+import PaintWorld from "@/components/PaintWorld";
 
 function pickName(kindId: string, taken: Set<string>): string {
   const pool = kindById(kindId).names;
@@ -25,6 +26,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>(hasSeenIntro() ? "home" : "splash");
   const [worldId, setWorldId] = useState<string>("ocean");
   const [writeWorld, setWriteWorld] = useState<WritingWorldId>("letters");
+  const [dream, setDream] = useState<DreamWorld | null>(() => loadDream());
   const [creatures, setCreatures] = useState<Creature[]>(() => loadCreatures());
   const [draft, setDraft] = useState<Stroke[]>([]);
   const [photoDraft, setPhotoDraft] = useState<string | null>(null);
@@ -186,7 +188,7 @@ export default function App() {
   const enterClass =
     screen === "world"
       ? "screen-enter-dive"
-      : screen === "draw" || screen === "reveal" || screen === "write"
+      : screen === "draw" || screen === "reveal" || screen === "write" || screen === "paintworld"
         ? "screen-enter-rise"
         : "screen-enter-fade";
 
@@ -199,7 +201,11 @@ export default function App() {
         {screen === "home" && (
           <Home
             creatures={creatures}
-            onPlayWorld={(id) => { setWorldId(id); setScreen("world"); }}
+            onPlayWorld={(id) => {
+              if (id === "dream" && !dream) { setScreen("paintworld"); return; }
+              setWorldId(id);
+              setScreen("world");
+            }}
             onDraw={() => setScreen("draw")}
             onWrite={(id) => { setWriteWorld(id); setScreen("write"); }}
           />
@@ -228,10 +234,25 @@ export default function App() {
             creatures={creatures}
             newId={newId}
             worldId={worldId}
+            dream={dream}
             polishingIds={polishingIds}
             onBack={() => { setNewId(null); setScreen("home"); }}
             onDrawMore={() => { setNewId(null); setScreen("draw"); }}
             onPlayGame={() => { setNewId(null); setScreen("game"); }}
+            onRepaint={() => setScreen("paintworld")}
+          />
+        )}
+        {screen === "paintworld" && (
+          <PaintWorld
+            initial={dream}
+            onBack={() => setScreen(dream ? "world" : "home")}
+            onDone={(d) => {
+              saveDream(d);
+              setDream(d);
+              setWorldId("dream");
+              setNewId(null);
+              setScreen("world");
+            }}
           />
         )}
         {screen === "write" && (

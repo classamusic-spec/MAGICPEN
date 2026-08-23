@@ -7,10 +7,10 @@
 // artwork underneath it.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { Creature } from "@/lib/types";
+import type { Creature, DreamWorld } from "@/lib/types";
 import { kindById, BEHAVIOR_COPY, WORLD_PACKS } from "@/lib/creatures";
 import { sfxBubble, sfxPop, sfxSplash, sfxTap, setMuted, isMuted, sfxHappy, sfxMagic } from "@/lib/audio";
-import { drawOcean, drawSpace, drawFarm, drawDino, newFxState, floorRatio } from "./world/themes";
+import { drawOcean, drawSpace, drawFarm, drawDino, drawDream, newFxState, floorRatio } from "./world/themes";
 import { sampleFrame, clearLayers } from "./world/shared";
 import { artSprite, onArtLoaded, stickerizeImage } from "@/lib/polish";
 import { bakeCrayonSprite, type Sprite } from "@/lib/sprites";
@@ -22,12 +22,14 @@ import { drawCrayonStroke } from "@/lib/crayon";
 
 /* per-world wrapper colors + empty-state copy */
 const WORLD_BG: Record<string, string> = {
+  dream: "#eaf1ff",
   ocean: "#0a4d8f",
   space: "#151040",
   farm: "#6ec3f7",
   dino: "#2d1b4e",
 };
 const WORLD_EMPTY: Record<string, string> = {
+  dream: "Your world is ready — draw something to bring it to life!",
   ocean: "Your reef is waiting…",
   space: "Your galaxy is waiting…",
   farm: "Your meadow is waiting…",
@@ -241,16 +243,20 @@ export default function WorldScene({
   creatures,
   newId,
   worldId,
+  dream,
   polishingIds,
   onBack,
   onDrawMore,
   onPlayGame,
   onRenameCreature,
   onDeleteCreature,
+  onRepaint,
 }: {
   creatures: Creature[];
   newId: string | null;
   worldId: string;
+  /** The child's painted world, when `worldId === "dream"`. */
+  dream?: DreamWorld | null;
   polishingIds?: Set<string>;
   onBack: () => void;
   onDrawMore: () => void;
@@ -258,6 +264,8 @@ export default function WorldScene({
   /** Optional: let the app own creature edits. Falls back to local + storage. */
   onRenameCreature?: (id: string, name: string) => void;
   onDeleteCreature?: (id: string) => void;
+  /** Dream world only: reopen the easel to repaint the background. */
+  onRepaint?: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -293,7 +301,9 @@ export default function WorldScene({
   polishRef.current = polishingIds ?? new Set();
   const worldRef = useRef(worldId);
   worldRef.current = worldId;
-  const floorR = floorRatio(worldId);
+  const dreamRef = useRef(dream);
+  dreamRef.current = dream;
+  const floorR = worldId === "dream" && dream ? dream.ground : floorRatio(worldId);
   const floorRef = useRef(floorR);
   floorRef.current = floorR;
 
@@ -468,7 +478,8 @@ export default function WorldScene({
 
       /* ── world theme (background + floor + ambience) ── */
       const frame = { ctx, W, H, t, floorY: seabedY() };
-      if (world === "space") drawSpace(frame, fxRef.current, dt);
+      if (world === "dream") drawDream(frame, fxRef.current, dt, dreamRef.current ?? null);
+      else if (world === "space") drawSpace(frame, fxRef.current, dt);
       else if (world === "farm") drawFarm(frame, fxRef.current, dt);
       else if (world === "dino") drawDino(frame, fxRef.current, dt);
       else drawOcean(frame, fxRef.current, dt);
@@ -1135,6 +1146,15 @@ export default function WorldScene({
                 <PaperFibre inset={6} radius={22} />
                 <div className="relative grid gap-1">
                   {([
+                    ...(worldId === "dream" && onRepaint
+                      ? [{
+                          key: "repaint",
+                          icon: "pencil" as IconName,
+                          text: "Redraw my world",
+                          onClick: () => { sfxTap(); setMenuOpen(false); onRepaint(); },
+                          disabled: false,
+                        }]
+                      : []),
                     {
                       key: "sound",
                       icon: (muted ? "soundOff" : "soundOn") as IconName,
@@ -1234,7 +1254,40 @@ export default function WorldScene({
       )}
 
       {/* ── empty state: an actual invitation ── */}
-      {view.length === 0 && (
+      {/* Dream world: the painted world IS the content, so a first-time visitor
+          gets a small bottom nudge instead of a full-screen card that would
+          hide the very thing they just made. */}
+      {view.length === 0 && worldId === "dream" && (
+        <div
+          className="absolute inset-x-0 bottom-0 z-10 grid justify-items-center pointer-events-none"
+          style={{ ...padX, paddingBottom: "max(16px, var(--safe-b))" }}
+        >
+          <div className="hud-fade-in hud-drop pointer-events-auto w-full" style={{ maxWidth: 360 }}>
+            <InkCard className="px-4 py-3 text-center" seed={seedOf(worldId)} weight={3.2}>
+              <PaperFibre inset={6} radius={22} />
+              <div className="relative flex items-center gap-3 text-left">
+                <span className="anim-float-y shrink-0"><Icon name="sparkle" size={30} color="var(--sun)" fill="var(--sun)" /></span>
+                <div className="min-w-0 flex-1">
+                  <p className="ink-title leading-tight" style={{ fontSize: "var(--fs-md)" }}>Your world is alive!</p>
+                  <p className="ink-hand" style={{ fontSize: "var(--fs-2xs)" }}>Now draw a friend to live in it.</p>
+                </div>
+                <InkButton
+                  tone={TONE.draw.wax}
+                  seed={57}
+                  className="shrink-0"
+                  style={{ height: 52, padding: "0 14px" }}
+                  onClick={() => { sfxHappy(); onDrawMore(); }}
+                >
+                  <Icon name="pencil" size={20} color="#fff6e6" weight={2.3} />
+                  <span className="ink-on-wax font-display font-extrabold whitespace-nowrap" style={{ fontSize: "var(--fs-sm)" }}>Draw</span>
+                </InkButton>
+              </div>
+            </InkCard>
+          </div>
+        </div>
+      )}
+
+      {view.length === 0 && worldId !== "dream" && (
         <div className="absolute inset-0 z-10 grid place-items-center p-4 pointer-events-none" style={padX}>
           <div className="hud-fade-in hud-drop pointer-events-auto w-full" style={{ maxWidth: 340 }}>
             <InkCard className="px-5 pt-7 pb-5 text-center" seed={seedOf(worldId)} weight={3.4}>

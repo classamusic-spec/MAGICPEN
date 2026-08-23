@@ -7,3 +7,4 @@ export { drawOcean } from "./ocean";
 export { drawSpace } from "./space";
 export { drawFarm } from "./farm";
 export { drawDino } from "./dino";
+export { drawDream } from "./dream";

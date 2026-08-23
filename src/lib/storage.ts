@@ -1,6 +1,6 @@
 // ─── Persistence (browser localStorage) ─────────────────────────────────────
 
-import type { Creature } from "./types";
+import type { Creature, DreamWorld } from "./types";
 
 const KEY = "magicpen.creatures.v1";
 const SEEN_KEY = "magicpen.seenIntro.v1";
@@ -87,4 +87,27 @@ export function saveWriting(key: string, stars: number): WritingProgress {
     try { localStorage.setItem(WRITE_KEY, JSON.stringify(all)); } catch { /* noop */ }
   }
   return all;
+}
+
+/* ── Dream World (the child's own painted world) ─────────────────────────────── */
+
+const DREAM_KEY = "magicpen.dreamworld.v1";
+
+export function loadDream(): DreamWorld | null {
+  try {
+    const raw = localStorage.getItem(DREAM_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as DreamWorld;
+    return d && Array.isArray(d.strokes) && d.strokes.length ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveDream(d: DreamWorld) {
+  try { localStorage.setItem(DREAM_KEY, JSON.stringify(d)); } catch { /* full / private mode */ }
+}
+
+export function hasDream(): boolean {
+  return loadDream() !== null;
 }

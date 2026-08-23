@@ -67,6 +67,7 @@ export type Screen =
   | "world"
   | "game"
   | "write"
+  | "paintworld"
   | "packs";
 
 export interface WorldPack {
@@ -96,4 +97,21 @@ export interface WritingWorld {
   gradient: string;
   /** Wax colour for this world's controls. */
   tone: string;
+}
+
+/* ── Dream World ──────────────────────────────────────────────────────────────
+   The blank world: the child paints their own background and it comes alive.
+   Stored in the pixel space it was drawn in (dw×dh) plus a ground line, so the
+   renderer can scale it to any screen and stand creatures on the ground. */
+
+export interface DreamWorld {
+  /** Bumped on every save, so cached bakes know to redraw. */
+  rev: number;
+  /** The draw canvas size the strokes were captured in (CSS px). */
+  dw: number;
+  dh: number;
+  /** Where the ground is, as a fraction 0..1 of the drawn height. */
+  ground: number;
+  /** The child's background, in draw-canvas pixels. */
+  strokes: Stroke[];
 }
