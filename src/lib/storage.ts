@@ -59,3 +59,32 @@ export function saveBest(worldId: string, score: number): boolean {
   try { localStorage.setItem(BEST_KEY, JSON.stringify(best)); } catch { /* noop */ }
   return true; // new record!
 }
+
+/* ── writing progress (Letter / Math / Word world) ───────────────────────────
+   One flat map of lesson key → best stars, e.g. "letter:A" → 3. Flat because
+   the pickers only ever ask "how did this one go", and a flat map survives new
+   lesson types without a migration. */
+
+const WRITE_KEY = "magicpen.writing.v1";
+
+export type WritingProgress = Record<string, number>;
+
+export function loadWriting(): WritingProgress {
+  try {
+    const raw = JSON.parse(localStorage.getItem(WRITE_KEY) ?? "{}") as unknown;
+    return raw && typeof raw === "object" ? (raw as WritingProgress) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Record an attempt. Only ever raises a score — a bad day never takes a star
+ *  away from a child. Returns the map so callers can re-render from it. */
+export function saveWriting(key: string, stars: number): WritingProgress {
+  const all = loadWriting();
+  if (stars > (all[key] ?? 0)) {
+    all[key] = stars;
+    try { localStorage.setItem(WRITE_KEY, JSON.stringify(all)); } catch { /* noop */ }
+  }
+  return all;
+}

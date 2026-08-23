@@ -1,6 +1,6 @@
 // ─── Creature catalog & world packs ─────────────────────────────────────────
 
-import type { CreatureKind, WorldPack } from "./types";
+import type { CreatureKind, WorldPack, WritingWorld } from "./types";
 
 export const CREATURE_KINDS: CreatureKind[] = [
   { id: "fish",      label: "Fish",      emoji: "🐟", behavior: "swim",   names: ["Bubbles", "Splash", "Finley", "Coral", "Wavy", "Ziggy"] },
@@ -20,8 +20,30 @@ export const CREATURE_KINDS: CreatureKind[] = [
   { id: "mystery",   label: "Mystery Creature", emoji: "✨", behavior: "swim", names: ["Doodle", "Squiggle", "Whatzit", "Scribble", "Zorp"] },
 ];
 
+/* Creatures born in Word World. They are deliberately NOT in CREATURE_KINDS:
+   that array is the set the sketch recognizer can guess, and it is rendered
+   verbatim as the "or is it a…?" chips on the reveal screen. Twenty-six chips
+   would drown that screen, and the recognizer cannot tell a duck from a hat
+   anyway — a written word can. `kindById` looks in both. */
+export const WORD_KINDS: CreatureKind[] = [
+  { id: "dog",   label: "Dog",   emoji: "", behavior: "bounce",  names: ["Rex", "Biscuit", "Pip", "Waggy", "Bandit"] },
+  { id: "cat",   label: "Cat",   emoji: "", behavior: "crawl",   names: ["Mittens", "Whiskers", "Nibbles", "Smudge"] },
+  { id: "bee",   label: "Bee",   emoji: "", behavior: "fly",     names: ["Buzz", "Honey", "Fuzzy", "Zip"] },
+  { id: "frog",  label: "Frog",  emoji: "", behavior: "bounce",  names: ["Hopper", "Ribbit", "Lily", "Splot"] },
+  { id: "duck",  label: "Duck",  emoji: "", behavior: "swim",    names: ["Quackers", "Puddle", "Waddle", "Beaky"] },
+  { id: "pig",   label: "Pig",   emoji: "", behavior: "bounce",  names: ["Truffle", "Snout", "Pinky", "Oink"] },
+  { id: "moon",  label: "Moon",  emoji: "", behavior: "twinkle", names: ["Luna", "Crescent", "Dozy", "Silver"] },
+  { id: "apple", label: "Apple", emoji: "", behavior: "grow",    names: ["Pip", "Crunch", "Rosy", "Core"] },
+  { id: "ball",  label: "Ball",  emoji: "", behavior: "bounce",  names: ["Bouncy", "Rolly", "Boing", "Spot"] },
+  { id: "hat",   label: "Hat",   emoji: "", behavior: "float",   names: ["Topper", "Flop", "Brim", "Tip"] },
+  { id: "bus",   label: "Bus",   emoji: "", behavior: "drive",   names: ["Rumble", "Doors", "Big Red", "Toot"] },
+  { id: "cake",  label: "Cake",  emoji: "", behavior: "grow",    names: ["Sprinkle", "Frosting", "Cherry", "Slice"] },
+];
+
+const ALL_KINDS = [...CREATURE_KINDS, ...WORD_KINDS];
+
 export const kindById = (id: string): CreatureKind =>
-  CREATURE_KINDS.find((k) => k.id === id) ?? CREATURE_KINDS[CREATURE_KINDS.length - 1];
+  ALL_KINDS.find((k) => k.id === id) ?? CREATURE_KINDS[CREATURE_KINDS.length - 1];
 
 export const WORLD_PACKS: WorldPack[] = [
   {
@@ -109,3 +131,37 @@ export const BEHAVIOR_COPY: Record<string, Record<string, { arrival: string }>> 
     bounce:  { arrival: "stomp-bounces onto the island" },
   },
 };
+
+/* ── writing worlds ──────────────────────────────────────────────────────────
+   Three worlds where the child makes marks on purpose rather than freely. They
+   share one tracing screen; only the content and the palette differ. */
+
+export const WRITING_WORLDS: WritingWorld[] = [
+  {
+    id: "letters",
+    name: "Letter World",
+    tagline: "Write your ABCs!",
+    teaches: "Letter shapes and first sounds, A to Z",
+    gradient: "linear-gradient(160deg,#8b46c7 0%,#c084fc 58%,#fbcfe8 100%)",
+    tone: "#8b46c7",
+  },
+  {
+    id: "numbers",
+    name: "Math World",
+    tagline: "Write numbers & sums!",
+    teaches: "Writing 0–9, counting, and single-digit sums",
+    gradient: "linear-gradient(160deg,#0369a1 0%,#00c2b9 58%,#bbf7d0 100%)",
+    tone: "#00838a",
+  },
+  {
+    id: "words",
+    name: "Word World",
+    tagline: "Write a word — watch it come alive!",
+    teaches: "Blending letters into three- and four-letter words",
+    gradient: "linear-gradient(160deg,#c2410c 0%,#f59e0b 55%,#fde68a 100%)",
+    tone: "#d1490b",
+  },
+];
+
+export const writingWorldById = (id: string): WritingWorld =>
+  WRITING_WORLDS.find((w) => w.id === id) ?? WRITING_WORLDS[0];

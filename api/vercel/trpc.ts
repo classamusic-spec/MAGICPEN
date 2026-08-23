@@ -31,10 +31,12 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       headers.set(k, Array.isArray(v) ? v.join(", ") : v);
     }
 
+    // `body` is a Buffer; Request accepts it at runtime on Node 18+, but the
+    // DOM BodyInit type is not in scope for the API tsconfig.
     const request = new Request(url, {
       method: req.method ?? "GET",
       headers,
-      body: body as unknown as BodyInit | undefined,
+      body: body as unknown as never,
     });
 
     const response = await fetchRequestHandler({

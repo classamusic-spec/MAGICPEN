@@ -45,6 +45,12 @@ export interface Creature {
   artUrl?: string;            // AI-polished artwork (public URL), undefined = crayon
   artTried?: boolean;         // polish was already requested (don't re-ask)
   photoData?: string;         // paper-photo drawing (transparent PNG data URL)
+  /** Born in Word World: its body is the doodle of this name, not `strokes`.
+   *  Kept as an id rather than a baked PNG so it costs a few bytes of storage
+   *  and stays sharp at any size. */
+  doodleId?: string;
+  /** The word the child wrote to summon it, e.g. "DOG". */
+  word?: string;
 }
 
 export interface RecognitionResult {
@@ -60,6 +66,7 @@ export type Screen =
   | "reveal"
   | "world"
   | "game"
+  | "write"
   | "packs";
 
 export interface WorldPack {
@@ -71,4 +78,22 @@ export interface WorldPack {
   locked: boolean;
   gradient: string;     // css gradient for card
   prompts: string[];    // suggested things to draw
+}
+
+/* ── writing worlds ──────────────────────────────────────────────────────────
+   Letters, numbers and words are a different kind of world: nothing lives in
+   them, you go there to *make* something. They share the tracing screen, so
+   they are described by data rather than by three near-identical components. */
+
+export type WritingWorldId = "letters" | "numbers" | "words";
+
+export interface WritingWorld {
+  id: WritingWorldId;
+  name: string;
+  tagline: string;
+  /** What a grown-up would call it, for the parent-facing line. */
+  teaches: string;
+  gradient: string;
+  /** Wax colour for this world's controls. */
+  tone: string;
 }

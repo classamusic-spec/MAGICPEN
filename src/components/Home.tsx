@@ -3,14 +3,18 @@
 // hero of this screen — mounted into the book with tape, not listed in boxes.
 
 import { useEffect, useRef, useState } from "react";
-import type { Creature, WorldPack } from "@/lib/types";
-import { WORLD_PACKS, kindById } from "@/lib/creatures";
+import type { Creature, WorldPack, WritingWorld, WritingWorldId } from "@/lib/types";
+import { WORLD_PACKS, WRITING_WORLDS, kindById } from "@/lib/creatures";
+import { LETTER_LESSONS, NUMBER_LESSONS, SUM_LESSONS, WORD_LESSONS } from "@/lib/writing";
+import { loadWriting } from "@/lib/storage";
 import { sfxTap, sfxHappy } from "@/lib/audio";
 import { artSprite, onArtLoaded } from "@/lib/polish";
 import { bakeCrayonSprite } from "@/lib/sprites";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
 import { Wordmark } from "@/components/ink/Wordmark";
+import { GlyphMark } from "@/components/ink/GlyphMark";
+import { Doodle } from "@/components/ink/Doodles";
 import { hand } from "@/lib/ink";
 
 /**
@@ -207,20 +211,128 @@ function PackCard({
   );
 }
 
+/* ── a writing world, previewed by what you make in it ──────────────────── */
+
+/** How many lessons each writing world holds, so a card can show progress. */
+const WRITING_TOTAL: Record<WritingWorldId, number> = {
+  letters: LETTER_LESSONS.length,
+  numbers: NUMBER_LESSONS.length + SUM_LESSONS.length,
+  words: WORD_LESSONS.length,
+};
+
+/** Which progress keys belong to which world. Keys are persisted — see storage. */
+const WRITING_PREFIX: Record<WritingWorldId, string[]> = {
+  letters: ["letter:"],
+  numbers: ["digit:", "sum:"],
+  words: ["word:"],
+};
+
+function writingDone(progress: Record<string, number>, id: WritingWorldId): number {
+  const pre = WRITING_PREFIX[id];
+  return Object.keys(progress).filter((k) => pre.some((p) => k.startsWith(p))).length;
+}
+
+/**
+ * The preview inside the torn window. It shows the *output*, not an icon: three
+ * letters in the very letterform the child will trace, and — for Word World —
+ * the whole promise of the feature, a written word turning into a creature.
+ */
+function WritingPreview({ id }: { id: WritingWorldId }) {
+  const cream = "#fffaf0";
+  if (id === "words") {
+    return (
+      <span className="flex items-center gap-1.5 relative">
+        {"DOG".split("").map((c, i) => (
+          <GlyphMark key={i} char={c} size={34} color={cream} weight={11} />
+        ))}
+        <Icon name="sparkle" size={20} color={cream} fill={cream} className="anim-sparkle" />
+        <span className="anim-float-y block"><Doodle name="dog" size={48} /></span>
+      </span>
+    );
+  }
+  const chars = id === "letters" ? ["A", "B", "C"] : ["1", "2", "3"];
+  return (
+    <span className="flex items-end gap-2.5 relative">
+      {chars.map((c, i) => (
+        <span key={c} className="anim-letter" style={{ animationDelay: `${i * 220}ms` }}>
+          <GlyphMark char={c} size={54} color={cream} weight={11} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function WritingCard({
+  world, index, done, onOpen,
+}: { world: WritingWorld; index: number; done: number; onOpen: () => void }) {
+  const total = WRITING_TOTAL[world.id];
+  return (
+    <button
+      onClick={() => { sfxHappy(); onOpen(); }}
+      aria-label={`${world.name}. ${world.tagline} ${done} of ${total} done.`}
+      className="ink-pinned block w-[min(72vw,17rem)] shrink-0 text-left"
+    >
+      <InkCard seed={index * 41 + 27} className="overflow-hidden" radius={16}>
+        <div className="relative m-2 mb-0 overflow-hidden" style={{ clipPath: tornWindow(index * 9 + 11) }}>
+          <div className="h-28 sm:h-32 grid place-items-center" style={{ background: world.gradient }}>
+            <span
+              aria-hidden="true"
+              className="absolute inset-0"
+              style={{ background: "radial-gradient(72% 58% at 50% 16%, rgba(255,255,255,0.4), rgba(255,255,255,0) 72%)" }}
+            />
+            <span aria-hidden="true" className="relative drop-shadow-lg"><WritingPreview id={world.id} /></span>
+          </div>
+        </div>
+
+        <div className="px-3 pb-3 pt-2">
+          <span className="ink-title block text-fs-lg">{world.name}</span>
+          <span className="ink-hand block text-fs-xs">{world.tagline}</span>
+          <InkCard
+            aria-hidden="true"
+            tone={world.tone}
+            seed={index * 19 + 5}
+            radius={18}
+            lifted={false}
+            className="mt-2 py-1.5 ink-title text-fs-md"
+            contentClassName="flex items-center justify-center gap-1.5 ink-on-wax"
+          >
+            <Icon name="pencil" size={17} color="#fffaf0" weight={2.4} />
+            Write
+          </InkCard>
+        </div>
+
+        {done > 0 && (
+          <span
+            className="absolute top-3 right-3 ink-title text-fs-2xs px-2 py-0.5 rounded-full"
+            style={{ background: "var(--sun)", border: "2.5px solid var(--ink)" }}
+          >
+            {done}/{total}
+          </span>
+        )}
+      </InkCard>
+    </button>
+  );
+}
+
 /* ── the page ────────────────────────────────────────────────────────────── */
 
 export default function Home({
   creatures,
   onPlayWorld,
   onDraw,
+  onWrite,
 }: {
   creatures: Creature[];
   onPlayWorld: (worldId: string) => void;
   onDraw: () => void;
+  onWrite: (worldId: WritingWorldId) => void;
 }) {
   const [grownUps, setGrownUps] = useState<WorldPack | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const recent = creatures.slice(-8).reverse();
+  // Read once per mount: the writing worlds write it, and coming back here
+  // remounts this screen.
+  const [writing] = useState(() => loadWriting());
   const isNew = creatures.length === 0;
   const homeWorld = WORLD_PACKS[0].id;
 
@@ -343,6 +455,26 @@ export default function Home({
                   count={!p.locked ? creatures.length : 0}
                   onPlay={() => onPlayWorld(p.id)}
                   onLocked={() => setGrownUps(p)}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* ── writing worlds ── */}
+        <section className="mt-6 enter" style={{ "--i": 4 } as React.CSSProperties} aria-labelledby="write-h">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 id="write-h" className="ink-title text-fs-xl">Writing school</h2>
+            <span className="ink-hand text-fs-2xs">letters, numbers &amp; words</span>
+          </div>
+          <ul className="flex gap-4 overflow-x-auto no-scrollbar pt-3 pb-2 -mx-1 px-1">
+            {WRITING_WORLDS.map((w, i) => (
+              <li key={w.id} className="enter-pop" style={{ "--i": i } as React.CSSProperties}>
+                <WritingCard
+                  world={w}
+                  index={i}
+                  done={writingDone(writing, w.id)}
+                  onOpen={() => onWrite(w.id)}
                 />
               </li>
             ))}

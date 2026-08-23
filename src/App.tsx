@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Creature, RecognitionResult, Screen, Stroke } from "@/lib/types";
+import type { Creature, RecognitionResult, Screen, Stroke, WritingWorldId } from "@/lib/types";
 import { recognize } from "@/lib/recognizer";
 import { kindById, WORLD_PACKS } from "@/lib/creatures";
 import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid } from "@/lib/storage";
 import { trpc } from "@/providers/trpc";
 import { bakeSketchPNG, proxyArtUrl } from "@/lib/polish";
+import { doodlePNG } from "@/lib/doodleArt";
 import Splash from "@/components/Splash";
 import Home from "@/components/Home";
 import DrawScreen from "@/components/DrawScreen";
 import MagicReveal from "@/components/MagicReveal";
 import WorldScene from "@/components/WorldScene";
 import MiniGame from "@/components/MiniGame";
+import WriteWorld from "@/components/WriteWorld";
 
 function pickName(kindId: string, taken: Set<string>): string {
   const pool = kindById(kindId).names;
@@ -22,6 +24,7 @@ function pickName(kindId: string, taken: Set<string>): string {
 export default function App() {
   const [screen, setScreen] = useState<Screen>(hasSeenIntro() ? "home" : "splash");
   const [worldId, setWorldId] = useState<string>("ocean");
+  const [writeWorld, setWriteWorld] = useState<WritingWorldId>("letters");
   const [creatures, setCreatures] = useState<Creature[]>(() => loadCreatures());
   const [draft, setDraft] = useState<Stroke[]>([]);
   const [photoDraft, setPhotoDraft] = useState<string | null>(null);
@@ -35,10 +38,15 @@ export default function App() {
 
   /* ── AI polish: quietly upgrade a creature's crayon art in the background ── */
   const startPolish = (creature: Creature) => {
-    let image: string;
+    let image: string | null;
     try {
-      image = creature.photoData ?? bakeSketchPNG(creature.strokes);
+      // A word creature has no strokes — its body is a doodle, so that is what
+      // the art model gets to redraw.
+      image = creature.doodleId
+        ? doodlePNG(creature.doodleId)
+        : creature.photoData ?? bakeSketchPNG(creature.strokes);
     } catch { return; }
+    if (!image) return;
     const jobId = creature.id;
     const label = kindById(creature.kindId).label.toLowerCase();
     const client = utils.client;
@@ -149,8 +157,38 @@ export default function App() {
     startPolish(creature);
   };
 
+  /* Word World's payoff: the word the child wrote becomes a creature and walks
+     straight into their world. It carries `doodleId` instead of strokes, so it
+     costs a handful of bytes to store and stays sharp at any size. */
+  const handleBorn = ({ word, doodle }: { word: string; doodle: string }) => {
+    const creature: Creature = {
+      id: uuid(),
+      kindId: doodle, // the word kinds are named after their doodles
+      name: pickName(doodle, takenNames),
+      strokes: [],
+      doodleId: doodle,
+      word,
+      createdAt: Date.now(),
+      wx: 0.5,
+      wy: 0.5,
+      dir: Math.random() > 0.5 ? 1 : -1,
+      speed: 0.03,
+      phase: Math.random() * 10,
+      scale: 0.8 + Math.random() * 0.35,
+      artTried: true,
+    };
+    setCreatures((prev) => [...prev.slice(-29), creature]);
+    setNewId(creature.id);
+    setScreen("world");
+    startPolish(creature);
+  };
+
   const enterClass =
-    screen === "world" ? "screen-enter-dive" : screen === "draw" || screen === "reveal" ? "screen-enter-rise" : "screen-enter-fade";
+    screen === "world"
+      ? "screen-enter-dive"
+      : screen === "draw" || screen === "reveal" || screen === "write"
+        ? "screen-enter-rise"
+        : "screen-enter-fade";
 
   return (
     <div className="h-full w-full overflow-hidden">
@@ -163,6 +201,7 @@ export default function App() {
             creatures={creatures}
             onPlayWorld={(id) => { setWorldId(id); setScreen("world"); }}
             onDraw={() => setScreen("draw")}
+            onWrite={(id) => { setWriteWorld(id); setScreen("write"); }}
           />
         )}
         {screen === "draw" && (
@@ -193,6 +232,13 @@ export default function App() {
             onBack={() => { setNewId(null); setScreen("home"); }}
             onDrawMore={() => { setNewId(null); setScreen("draw"); }}
             onPlayGame={() => { setNewId(null); setScreen("game"); }}
+          />
+        )}
+        {screen === "write" && (
+          <WriteWorld
+            world={writeWorld}
+            onBack={() => setScreen("home")}
+            onBorn={handleBorn}
           />
         )}
         {screen === "game" && (
