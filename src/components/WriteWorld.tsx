@@ -15,6 +15,7 @@ import { writingWorldById } from "@/lib/creatures";
 import {
   LETTER_LESSONS, NUMBER_LESSONS, SUM_LESSONS, WORD_LESSONS,
 } from "@/lib/writing";
+import { SHAPES, SHAPE_GLYPHS, SHAPE_BOX } from "@/lib/glyphs";
 import { loadWriting, saveWriting, nextLessonKey, type WritingProgress } from "@/lib/storage";
 import { sfxTap, sfxHappy } from "@/lib/audio";
 import { sayLine, sayLetter, sayWord, hush, canSpeak } from "@/lib/speech";
@@ -43,6 +44,9 @@ interface Lesson {
   rewardLine: string;
   /** Word World only: the word written, and the creature it becomes. */
   word?: string;
+  /** Shapes: the name of the shape traced, e.g. "circle". Its reward shows the
+   *  shape rather than a doodle, and it never counts or comes alive. */
+  shape?: string;
 }
 
 const say = (c: string) => c;
@@ -125,6 +129,34 @@ function wordLessons(): Lesson[] {
 
 /** How many digit lessons come before the sums, so the picker can split them. */
 const SUM_OFFSET = NUMBER_LESSONS.length;
+
+const SHAPE_HINT: Record<string, string> = {
+  circle: "round and round, back to the start",
+  square: "four straight sides, four corners",
+  triangle: "three straight sides",
+  star: "five points, without lifting your finger",
+  diamond: "a square, tilted on its point",
+  heart: "two bumps at the top, down to a point",
+};
+
+/** Shapes — the marks a hand learns to make before any letter. Traced like a
+ *  drawing (their own square box, no penmanship lines), never counted. */
+function shapeLessons(): Lesson[] {
+  return SHAPES.map((name) => ({
+    key: `shape:${name}`,
+    targets: [{ char: name, say: name, guide: SHAPE_GLYPHS[name], space: SHAPE_BOX }],
+    title: `Trace a ${name}`,
+    subtitle: SHAPE_HINT[name],
+    doodle: "",
+    count: 1,
+    rewardTitle: `A ${name}!`,
+    rewardLine: "You traced a whole shape.",
+    shape: name,
+  }));
+}
+
+/** Digits, then sums, then shapes — where the shapes begin. */
+const SHAPE_OFFSET = NUMBER_LESSONS.length + SUM_LESSONS.length;
 
 /* ── earned stars ────────────────────────────────────────────────────────── */
 
@@ -245,7 +277,11 @@ function Reward({ world, lesson, stars, hasNext, onNext, onPicker, onBorn }: {
           </span>
 
           <span className="grid place-items-center min-h-[7.5rem] py-1">
-            {lesson.count === 0 ? (
+            {lesson.shape ? (
+              <span className="anim-float-y block">
+                <GlyphMark char={lesson.shape} size={112} color={w.tone} weight={9} />
+              </span>
+            ) : lesson.count === 0 ? (
               <span className="ink-hand text-fs-lg opacity-70">nothing at all!</span>
             ) : many > 1 ? (
               <span className="flex flex-wrap justify-center gap-1.5 max-w-[16rem]">
@@ -365,7 +401,7 @@ export default function WriteWorld({ world, onBack, onBorn }: {
     () =>
       world === "letters"
         ? lowercase ? lowerLessons() : letterLessons()
-        : world === "numbers" ? numberLessons() : wordLessons(),
+        : world === "numbers" ? [...numberLessons(), ...shapeLessons()] : wordLessons(),
     [world, lowercase]
   );
 
@@ -535,7 +571,7 @@ export default function WriteWorld({ world, onBack, onBorn }: {
             </Section>
             <Section title="Sums" hint="write the answer">
               <ul className="grid gap-2.5 pt-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(8rem, 1fr))" }}>
-                {lessons.slice(SUM_OFFSET).map((l, i) => (
+                {lessons.slice(SUM_OFFSET, SHAPE_OFFSET).map((l, i) => (
                   <li key={l.key}>
                     <Tile
                       lesson={l}
@@ -547,6 +583,17 @@ export default function WriteWorld({ world, onBack, onBorn }: {
                       <span className="ink-title text-fs-xl py-1" style={{ color: w.tone }}>
                         {l.title.replace(" = ?", "")}
                       </span>
+                    </Tile>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+            <Section title="Shapes" hint="the first thing a hand learns to draw">
+              <ul className="grid gap-2.5 pt-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(4.3rem, 1fr))" }}>
+                {lessons.slice(SHAPE_OFFSET).map((l, i) => (
+                  <li key={l.key}>
+                    <Tile lesson={l} index={SHAPE_OFFSET + i} stars={progress[l.key] ?? 0} onPick={() => open(SHAPE_OFFSET + i)} wide>
+                      <GlyphMark char={l.shape ?? "circle"} size={38} color={w.tone} weight={7} />
                     </Tile>
                   </li>
                 ))}

@@ -5,7 +5,7 @@
 // different letterform, which is confusing at the age where the shape is the
 // whole lesson.
 
-import { ALL_GLYPHS, LOWER_GLYPHS, LOWER_BOX, GLYPH_BOX } from "@/lib/glyphs";
+import { ALL_GLYPHS, LOWER_GLYPHS, LOWER_BOX, GLYPH_BOX, SHAPE_GLYPHS, SHAPE_BOX } from "@/lib/glyphs";
 
 export function GlyphMark({
   char, size = 42, color = "var(--ink)", weight = 9, className, style,
@@ -18,12 +18,13 @@ export function GlyphMark({
   className?: string;
   style?: React.CSSProperties;
 }) {
-  // a lowercase letter is its own letterform in a taller box, so the tile shows
-  // exactly the shape the child will trace, tails and all
-  const lower = /^[a-z]$/.test(char) ? LOWER_GLYPHS[char] : undefined;
-  const g = lower ?? ALL_GLYPHS[char];
-  const boxW = GLYPH_BOX.w;
-  const boxH = lower ? LOWER_BOX.h : GLYPH_BOX.h;
+  // shapes and lowercase have their own boxes; the tile shows exactly the shape
+  // the child will trace
+  const shape = SHAPE_GLYPHS[char];
+  const lower = !shape && /^[a-z]$/.test(char) ? LOWER_GLYPHS[char] : undefined;
+  const g = shape ?? lower ?? ALL_GLYPHS[char];
+  const boxW = shape ? SHAPE_BOX.w : GLYPH_BOX.w;
+  const boxH = shape ? SHAPE_BOX.h : lower ? LOWER_BOX.h : GLYPH_BOX.h;
   if (!g) {
     return (
       <span aria-hidden="true" className={`ink-title ${className ?? ""}`} style={{ fontSize: size, ...style }}>

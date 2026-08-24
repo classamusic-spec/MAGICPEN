@@ -166,6 +166,55 @@ export const LOWERS = Object.keys(LOWER_GLYPHS);
 
 export const ALL_GLYPHS: Record<string, Glyph> = { ...LETTER_GLYPHS, ...DIGIT_GLYPHS };
 
+
+/* ── shapes ──────────────────────────────────────────────────────────────────
+   The first thing a hand learns to make on purpose, before any letter: a
+   circle, a square, a triangle. Pre-writing in the truest sense — a child who
+   can close a circle can begin an "a". They trace like a drawing (no baseline,
+   no cap height — those are facts about letters), in their own square box. */
+
+const SHAPE_BOX_H = 100;
+export const SHAPE_BOX = { w: 100, h: SHAPE_BOX_H };
+
+function starPts(cx: number, cy: number, ro: number, ri: number, pts = 5): Pt[] {
+  const out: Pt[] = [];
+  const off = -Math.PI / 2;
+  for (let i = 0; i <= pts * 2; i++) {
+    const a = off + (i * Math.PI) / pts;
+    const r = i % 2 ? ri : ro;
+    out.push(p(cx + Math.cos(a) * r, cy + Math.sin(a) * r));
+  }
+  return out;
+}
+
+/** A real heart, from the classic parametric curve, fitted to the box once. */
+function heartPts(): Pt[] {
+  const raw: [number, number][] = [];
+  const N = 64;
+  for (let i = 0; i <= N; i++) {
+    const t = -Math.PI / 2 + (i / N) * 2 * Math.PI;   // start at the bottom point
+    const x = 16 * Math.pow(Math.sin(t), 3);
+    const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+    raw.push([x, -y]);
+  }
+  let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+  for (const [x, y] of raw) { minx = Math.min(minx, x); maxx = Math.max(maxx, x); miny = Math.min(miny, y); maxy = Math.max(maxy, y); }
+  const sc = Math.min(78 / (maxx - minx), 80 / (maxy - miny));
+  const ox = 50 - ((minx + maxx) / 2) * sc, oy = 50 - ((miny + maxy) / 2) * sc;
+  return raw.map(([x, y]) => p(ox + x * sc, oy + y * sc));
+}
+
+export const SHAPE_GLYPHS: Record<string, Glyph> = {
+  circle: [arc(50, 50, 40, 40, -Math.PI / 2, 1.5 * Math.PI)],
+  square: [[p(15, 15), p(85, 15), p(85, 85), p(15, 85), p(15, 15)]],
+  triangle: [[p(50, 12), p(88, 84), p(12, 84), p(50, 12)]],
+  star: [starPts(50, 52, 40, 16, 5)],
+  diamond: [[p(50, 12), p(86, 50), p(50, 88), p(14, 50), p(50, 12)]],
+  heart: [heartPts()],
+};
+
+export const SHAPES = Object.keys(SHAPE_GLYPHS);
+
 export const LETTERS = Object.keys(LETTER_GLYPHS);
 export const DIGITS = Object.keys(DIGIT_GLYPHS);
 
