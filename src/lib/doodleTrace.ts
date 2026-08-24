@@ -121,24 +121,53 @@ export function doodleGuide(name: string): Glyph {
   // shown the guide one line at a time, and starting with the largest is both
   // how a person actually draws and the order that makes the picture readable
   // soonest.
-  lines.sort((a, b) => span(b) - span(a));
+  //
+  // Ranked by how much ink a mark takes, not by how much room it occupies. The
+  // two disagree more than you would think: a palm tree's trunk is one thin
+  // near-vertical line whose bounding box is almost nothing, and it is the last
+  // thing you would leave out of a palm tree.
+  lines.sort((a, b) => inkLength(b) - inkLength(a));
   cache.set(name, lines);
   return lines;
 }
 
-/** Rough size of a polyline: the diagonal of its bounding box. */
-function span(line: Pt[]): number {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const q of line) {
-    if (q.x < x0) x0 = q.x;
-    if (q.x > x1) x1 = q.x;
-    if (q.y < y0) y0 = q.y;
-    if (q.y > y1) y1 = q.y;
+/** How far a finger travels to draw this mark. */
+function inkLength(line: Pt[]): number {
+  let n = 0;
+  for (let i = 1; i < line.length; i++) {
+    n += Math.hypot(line[i].x - line[i - 1].x, line[i].y - line[i - 1].y);
   }
-  return Math.hypot(x1 - x0, y1 - y0);
+  return n;
 }
 
 /** True when this doodle has enough shape in it to be worth a lesson. */
 export function traceable(name: string): boolean {
   return doodleGuide(name).length > 0;
+}
+
+/**
+ * How many lines a child is ever asked to trace in one lesson.
+ *
+ * Not a rendering limit — a limit on patience. A turtle's full guide is fifteen
+ * separate marks once the shell pattern and the toes are counted, and a
+ * four-year-old asked to trace fifteen things in a row stops being a
+ * four-year-old who is drawing and becomes one who is being tested.
+ */
+export const LESSON_LINES = 6;
+
+/**
+ * Split a doodle into the part that is the lesson and the part that is not.
+ *
+ * `guide` is the handful of big shapes the child traces and is scored on — the
+ * shell, the head, the flippers. `detail` is everything smaller: the pattern on
+ * the shell, the toes, the smile. It is shown faintly the whole time and never
+ * asked for, so a child who wants to add it can and a child who does not has
+ * still drawn a turtle.
+ *
+ * `doodleGuide` already sorts biggest-first, which is both how a person draws
+ * and the order that makes the picture readable soonest, so the split is a cut.
+ */
+export function doodleLesson(name: string): { guide: Glyph; detail: Glyph } {
+  const all = doodleGuide(name);
+  return { guide: all.slice(0, LESSON_LINES), detail: all.slice(LESSON_LINES) };
 }
