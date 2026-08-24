@@ -52,12 +52,20 @@ function nearestSq(q: Pt, cloud: Pt[]): number {
 }
 
 /**
- * Map the child's strokes from canvas pixels into the glyph's 100×140 space,
- * using the box the guide was drawn in so the two are directly comparable.
+ * Map the child's strokes from canvas pixels into the guide's own space, using
+ * the box the guide was drawn in so the two are directly comparable.
+ *
+ * `space` defaults to the 100×140 letter box. A drawing lesson traces a doodle
+ * rather than a glyph, and passes its own box — everything downstream is in
+ * guide units, so the scoring below needs no idea which it is looking at.
  */
-export function toGlyphSpace(strokes: Stroke[], box: { x: number; y: number; w: number; h: number }): Pt[] {
-  const kx = GLYPH_BOX.w / box.w;
-  const ky = GLYPH_BOX.h / box.h;
+export function toGlyphSpace(
+  strokes: Stroke[],
+  box: { x: number; y: number; w: number; h: number },
+  space: { w: number; h: number } = GLYPH_BOX,
+): Pt[] {
+  const kx = space.w / box.w;
+  const ky = space.h / box.h;
   const pts: Pt[] = [];
   for (const s of strokes) {
     // densify in canvas space first, so a fast swipe is not a sparse line
