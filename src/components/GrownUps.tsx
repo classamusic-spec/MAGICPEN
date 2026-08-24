@@ -12,7 +12,7 @@
 // "look what they learned" moment — so it is worth making calm and real rather
 // than boastful.
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Creature } from "@/lib/types";
 import { loadWriting } from "@/lib/storage";
 import { peekVisit } from "@/lib/daily";
@@ -21,6 +21,8 @@ import { DRAW_LESSONS } from "@/lib/lessons";
 import { SHAPES } from "@/lib/glyphs";
 import { InkButton, InkCard, Scribble } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
+import ParentGate from "@/components/ParentGate";
+import { loadConsent, saveConsent } from "@/lib/consent";
 import { sfxTap } from "@/lib/audio";
 
 /** How many keys with a given prefix have earned at least one star. */
@@ -45,6 +47,21 @@ export default function GrownUps({ creatures, onBack }: {
 }) {
   const progress = useMemo(() => loadWriting(), []);
   const visit = useMemo(() => peekVisit(), []);
+
+  // The magic-dust decision. Held in state as well as storage so the page tells
+  // the truth the instant a grown-up changes it, with no reload.
+  const [consent, setConsent] = useState(() => loadConsent());
+  const [gateOpen, setGateOpen] = useState(false);
+  const dustOn = consent.aiArt === true;   // never asked reads as off
+
+  // Only one direction is guarded. Turning magic dust *off* makes the app more
+  // private, so it happens the moment it is asked for; turning it on is the
+  // choice that needs a grown-up, so it goes through the gate first.
+  const toggleDust = () => {
+    sfxTap();
+    if (dustOn) setConsent(saveConsent({ aiArt: false }));
+    else setGateOpen(true);
+  };
 
   const rows: Row[] = [
     { label: "Capital letters", done: tried(progress, "letter:"), total: LETTER_LESSONS.length, tone: "#8b46c7", unit: "letters" },
@@ -125,6 +142,57 @@ export default function GrownUps({ creatures, onBack }: {
           })}
         </div>
 
+        {/* ── magic dust: the one thing that leaves the device ──────────────
+            Written for a parent rather than for a child, and deliberately even-
+            handed: off is a perfectly good place to stay, so nothing here nags,
+            warns, or dresses "on" up as the finished state. */}
+        <InkCard seed={58} radius={18} className="mt-4 p-4" contentClassName="grid gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="ink-title text-fs-md">Magic dust</span>
+            <span
+              className="ink-title text-fs-xs shrink-0 px-3 py-1 rounded-full"
+              style={{
+                background: dustOn ? "#e3f5f2" : "rgba(45,41,38,0.06)",
+                border: `2.5px solid ${dustOn ? "#0e8a86" : "rgba(45,41,38,0.3)"}`,
+                color: dustOn ? "#0e8a86" : "var(--ink-soft)",
+              }}
+            >
+              {dustOn ? "On" : "Off"}
+            </span>
+          </div>
+          <span className="block w-24"><Scribble seed={31} height={8} /></span>
+
+          <p className="ink-hand text-fs-sm leading-relaxed">
+            Magic dust is the optional step that turns a crayon drawing into
+            polished artwork. To do it, that one drawing is sent over the
+            internet to an art service, which sends a picture back. It is the
+            only thing in Magic Pen that ever leaves this device — no name, no
+            account, nothing else. The crayon original is always kept, exactly
+            as it was drawn.
+          </p>
+
+          <InkButton
+            seed={64}
+            radius={16}
+            tone={dustOn ? "#0e8a86" : undefined}
+            onClick={toggleDust}
+            role="switch"
+            aria-checked={dustOn}
+            aria-label="Magic dust"
+            className="mt-1 w-full ink-title text-fs-md"
+            style={{ minHeight: "var(--tap-lg)" }}
+          >
+            {dustOn && <Icon name="check" size={20} color="#fffaf0" weight={2.6} />}
+            <span className={dustOn ? "ink-on-wax" : ""}>{dustOn ? "On" : "Off"}</span>
+          </InkButton>
+
+          <p className="ink-hand text-fs-xs opacity-80 leading-relaxed">
+            {dustOn
+              ? "Tap to turn it off. That takes effect straight away, and no drawing is sent anywhere again."
+              : "Tap to turn it on. We'll ask a grown-up a quick question first, so it can't be switched on by small hands."}
+          </p>
+        </InkCard>
+
         {/* the promise, said plainly to a parent */}
         <InkCard seed={77} radius={18} className="mt-4 p-4" contentClassName="grid gap-2">
           <span className="ink-title text-fs-md">The way it works</span>
@@ -137,10 +205,26 @@ export default function GrownUps({ creatures, onBack }: {
           <p className="ink-hand text-fs-xs opacity-80 leading-relaxed mt-1">
             No ads, no accounts, no data collected. Everything above is stored on
             this device only. The optional “magic-dust” artwork is the one thing
-            made online.
+            made online, and it is{" "}
+            {dustOn
+              ? "switched on right now — a drawing is sent away each time it's used."
+              : "switched off right now, so nothing at all leaves this device."}
           </p>
         </InkCard>
       </div>
+
+      {gateOpen && (
+        <ParentGate
+          title="Turn on magic dust?"
+          onPass={() => {
+            // Passing the gate is itself worth recording: it is the evidence
+            // that a grown-up, not the child, made this call.
+            setConsent(saveConsent({ aiArt: true, gatePassed: true }));
+            setGateOpen(false);
+          }}
+          onCancel={() => setGateOpen(false)}
+        />
+      )}
     </div>
   );
 }

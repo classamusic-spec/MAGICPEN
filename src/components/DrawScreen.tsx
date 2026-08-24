@@ -7,6 +7,7 @@ import { hand, paperTile, roughEllipse, roughRect, seedOf, shade, waxTile } from
 import { InkButton, InkCard, Scribble } from "@/components/ink/Ink";
 import { usePrefersReducedMotion } from "@/components/ink/motion";
 import { Icon } from "@/components/ink/Icons";
+import ParentGate from "@/components/ParentGate";
 
 /* The crayon box. `short` is what's printed on the paper wrapper — kept to
    five or six letters so the whole word still reads once the crayon's blunt
@@ -390,6 +391,11 @@ interface Props {
 }
 
 export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
+  /* The camera is the one control here a child must not reach alone. Its label
+     has always said "Grown-ups:", but a label is not a gate and the child this
+     is built for cannot read it — and a photograph of a paper drawing can
+     easily contain the child holding it. */
+  const [camGate, setCamGate] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
@@ -682,7 +688,7 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
             onChange={onPickPhoto}
           />
           <InkButton
-            onClick={() => { sfxTap(); fileRef.current?.click(); }}
+            onClick={() => { sfxTap(); setCamGate(true); }}
             disabled={photoBusy}
             aria-busy={photoBusy}
             shape="ellipse"
@@ -694,6 +700,14 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
           >
             <Icon name={photoBusy ? "clock" : "camera"} size={22} />
           </InkButton>
+
+          {camGate && (
+            <ParentGate
+              title="Open the camera?"
+              onPass={() => { setCamGate(false); fileRef.current?.click(); }}
+              onCancel={() => setCamGate(false)}
+            />
+          )}
         </div>
 
         {/* ── the sheet ───────────────────────────────────────────────── */}

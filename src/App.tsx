@@ -4,6 +4,7 @@ import { recognize } from "@/lib/recognizer";
 import { kindById, rosterFor, WORLD_PACKS } from "@/lib/creatures";
 import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid, loadDream, saveDream } from "@/lib/storage";
 import { markVisit, dailyIdea, welcomeBack, type Visit } from "@/lib/daily";
+import { mayUseAiArt } from "@/lib/consent";
 import { CARE_PER_DAY } from "@/lib/social";
 import { trpc } from "@/providers/trpc";
 import { bakeSketchPNG, proxyArtUrl } from "@/lib/polish";
@@ -137,6 +138,18 @@ export default function App() {
   const askedRef = useRef<Set<string>>(new Set());
 
   const startPolish = (creature: Creature) => {
+    /* ── the only door out of this device ─────────────────────────────────
+       Everything else Magic Pen does happens in this browser. This one
+       function sends a child's drawing — sometimes a *photograph* of their
+       paper drawing, which can contain the child — to an art service to be
+       re-rendered.
+
+       The check lives here, at the single chokepoint, and deliberately not at
+       the four call sites: a guard you have to remember to repeat is a guard
+       that eventually gets forgotten. Off unless a grown-up has explicitly
+       turned it on behind the parental gate (see lib/consent). */
+    if (!mayUseAiArt()) return;
+
     let image: string | null;
     try {
       // A word creature has no strokes — its body is a doodle, so that is what
@@ -151,7 +164,7 @@ export default function App() {
     const client = utils.client;
     const done = () => setPolishingIds((prev) => { const n = new Set(prev); n.delete(jobId); return n; });
     setPolishingIds((prev) => new Set(prev).add(jobId));
-    console.info("[polish] started for", creature.name);
+    console.info("[polish] started for a", label);
     /* One-shot first: it is the only path that survives a serverless host,
        where the start/status job map does not outlive the request. If the
        server is older (no `run`), fall back to fire-and-poll. */
@@ -160,12 +173,12 @@ export default function App() {
       .then((res) => {
         if (res.status === "ready" && res.url) {
           const artUrl = proxyArtUrl(res.url);
-          console.info("[polish] ready for", creature.name);
+          console.info("[polish] ready for a", label);
           setCreatures((prev) => prev.map((c) => (c.id === jobId ? { ...c, artUrl } : c)));
           done();
           return;
         }
-        console.info("[polish]", res.status, "for", creature.name);
+        console.info("[polish]", res.status, "for a", label);
         done();
       })
       .catch(() => pollingFallback());
@@ -182,12 +195,12 @@ export default function App() {
               if (st.status === "ready" && st.url) {
                 window.clearInterval(iv);
                 const artUrl = proxyArtUrl(st.url);
-                console.info("[polish] ready for", creature.name);
+                console.info("[polish] ready for a", label);
                 setCreatures((prev) => prev.map((c) => (c.id === jobId ? { ...c, artUrl } : c)));
                 done();
               } else if (st.status === "failed" || st.status === "unavailable") {
                 window.clearInterval(iv);
-                console.info("[polish]", st.status, "for", creature.name);
+                console.info("[polish]", st.status, "for a", label);
                 done();
               }
             })

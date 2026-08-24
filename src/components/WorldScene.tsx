@@ -22,6 +22,7 @@ import { bakeCrayonSprite, type Sprite } from "@/lib/sprites";
 import { saveCreatures } from "@/lib/storage";
 import { InkButton, InkCard, InkShape, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon, type IconName } from "@/components/ink/Icons";
+import ParentGate from "@/components/ParentGate";
 import { hand, paperTile, roughRect, seedOf, tornEdge } from "@/lib/ink";
 import { newLag, lagWeight, updateLag, applyLag, type Lag } from "@/lib/secondary";
 import { factFor } from "@/lib/facts";
@@ -643,6 +644,11 @@ export default function WorldScene({
   const [nameDraft, setNameDraft] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
   const [sharing, setSharing] = useState(false);
+  /* Sharing hands a picture to the OS share sheet — Messages, Mail, every
+     social app on the device — and the card carries the name the child typed
+     and, for a photographed drawing, the photo itself. That is a door out of
+     the app, so a grown-up opens it. */
+  const [shareGate, setShareGate] = useState(false);
   const [tip, setTip] = useState(true);
 
   /* local creature edits — used when the app doesn't hand us callbacks */
@@ -2607,7 +2613,7 @@ export default function WorldScene({
             seed={12}
             disabled={sharing}
             aria-label="Share a photo of your world"
-            onClick={() => void doShare()}
+            onClick={() => setShareGate(true)}
           />
           {view.length > 0 && (
             <HudBtn
@@ -2678,7 +2684,7 @@ export default function WorldScene({
                       key: "share",
                       icon: "camera" as IconName,
                       text: sharing ? "Making photo…" : "Share a photo",
-                      onClick: () => { setMenuOpen(false); void doShare(); },
+                      onClick: () => { setMenuOpen(false); setShareGate(true); },
                       disabled: sharing,
                     },
                     {
@@ -2870,6 +2876,14 @@ export default function WorldScene({
             </InkCard>
           </div>
         </div>
+      )}
+
+      {shareGate && (
+        <ParentGate
+          title="Share this drawing?"
+          onPass={() => { setShareGate(false); void doShare(); }}
+          onCancel={() => setShareGate(false)}
+        />
       )}
 
       {/* ── roster / detail sheet: the sketchbook their drawings live in ── */}
