@@ -24,6 +24,8 @@ import { InkButton, InkCard, InkShape, Scribble, Tape } from "@/components/ink/I
 import { Icon, type IconName } from "@/components/ink/Icons";
 import { hand, paperTile, roughRect, seedOf, tornEdge } from "@/lib/ink";
 import { newLag, lagWeight, updateLag, applyLag, type Lag } from "@/lib/secondary";
+import { factFor } from "@/lib/facts";
+import { sayLine, hush, canSpeak } from "@/lib/speech";
 import {
   BIG, SOCIAL, SCHOOL, SCHOOL2, SCARE2, drawnWidth, sepFor,
   W_SEP, W_COH, W_ALIGN, W_FLEE, W_PAL, STEER_CAP, FLEE_DECAY,
@@ -724,6 +726,18 @@ export default function WorldScene({
 
   const newCreature = useMemo(() => view.find((c) => c.id === newId) ?? null, [view, newId]);
   const detail = sheet?.mode === "detail" ? view.find((c) => c.id === sheet.id) ?? null : null;
+
+  /* Open a creature's card and it tells you one true thing about itself, out
+     loud — the worlds are full of science and the app can finally say it. A
+     beat lets the sheet settle; leaving the card takes the voice with it. */
+  useEffect(() => {
+    if (sheet?.mode !== "detail" || !detail) return;
+    const fact = factFor(detail.kindId);
+    if (!fact) return;
+    const t = window.setTimeout(() => sayLine(fact), 560);
+    return () => { window.clearTimeout(t); hush(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail?.id, sheet?.mode]);
 
   /* ── banner queue: arrivals and evolutions never clobber each other ────── */
   const [banner, setBanner] = useState<{ id: number; text: string; icon: IconName } | null>(null);
@@ -2985,6 +2999,30 @@ export default function WorldScene({
                     <p className="ink-hand text-center mt-4" style={{ fontSize: "var(--fs-sm)" }}>
                       {kindById(detail.kindId).label} · joined {new Date(detail.createdAt).toLocaleDateString()}
                     </p>
+                    {factFor(detail.kindId) && (
+                      <div
+                        className="mt-3 mx-auto text-center px-4 py-3 rounded-2xl"
+                        style={{ maxWidth: 320, background: "#fffaf0", border: "2.5px solid var(--ink)" }}
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <Icon name="sparkle" size={15} color="#2d2926" fill="#ffc72c" weight={2} />
+                          <span className="ink-title" style={{ fontSize: "var(--fs-xs)" }}>Did you know?</span>
+                          {canSpeak() && (
+                            <button
+                              onClick={() => { sfxTap(); const f = factFor(detail.kindId); if (f) sayLine(f); }}
+                              aria-label="Hear the fact again"
+                              className="hud-focus ml-1 grid place-items-center rounded-full"
+                              style={{ width: 26, height: 26, border: "2px solid var(--ink)", background: "#fff" }}
+                            >
+                              <Icon name="soundOn" size={14} />
+                            </button>
+                          )}
+                        </div>
+                        <p className="ink-hand mt-1.5" style={{ fontSize: "var(--fs-sm)", lineHeight: 1.4 }}>
+                          {factFor(detail.kindId)}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="hud-detail-form">
