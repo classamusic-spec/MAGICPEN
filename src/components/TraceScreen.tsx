@@ -31,6 +31,23 @@ export interface TraceTarget {
   char: string;
   /** Spoken/label form, e.g. "A" or "seven". Used in praise copy. */
   say?: string;
+  /**
+   * Trace this outline instead of the letter skeleton `char` names — a drawing
+   * lesson hands over a doodle. Its presence is what makes a target a drawing
+   * rather than a letter, and the penmanship rules go away with it: cap height
+   * and baseline are facts about letters, and ruled lines under a fish are
+   * nonsense.
+   */
+  guide?: Glyph;
+  /**
+   * The marks that are *not* the lesson — the pattern on a shell, the whiskers,
+   * the toes. Drawn faintly the whole time and never scored or required, so a
+   * child who wants to add them can and a child who does not has still drawn a
+   * turtle.
+   */
+  detail?: Glyph;
+  /** The box `guide` and `detail` are authored in. Defaults to the letter box. */
+  space?: Space;
 }
 
 export interface TraceScreenProps {
@@ -44,7 +61,20 @@ export interface TraceScreenProps {
   color?: string;
   onBack: () => void;
   /** Fires once every target is done. `stars` is the average, rounded. */
-  onComplete: (result: { stars: 1 | 2 | 3; perTarget: number[] }) => void;
+  onComplete: (result: {
+    stars: 1 | 2 | 3;
+    perTarget: number[];
+    /**
+     * Every stroke the child actually laid down, in the guide's own space.
+     *
+     * This is what makes a traced drawing still *the child's* drawing: the
+     * caller bakes a creature out of these rather than stamping the doodle it
+     * showed them. A word lesson has several targets and their strokes all
+     * share one box, so this is only meaningful for a single-target lesson —
+     * which is exactly what a drawing lesson is.
+     */
+    strokes: Stroke[];
+  }) => void;
 }
 
 /* ── geometry ────────────────────────────────────────────────────────────── */
@@ -56,17 +86,24 @@ interface Box {
   h: number;
 }
 
-/** Glyph space → canvas pixels. The exact inverse of `toGlyphSpace`. */
-function toCanvas(pts: Pt[], box: Box): Pt[] {
-  const kx = box.w / GLYPH_BOX.w;
-  const ky = box.h / GLYPH_BOX.h;
+/**
+ * The logical box a guide is authored in. Letters are 100×140 (`GLYPH_BOX`);
+ * a drawing lesson brings its own, and everything below is written in terms of
+ * whichever one the current target uses rather than assuming the letter one.
+ */
+export type Space = { w: number; h: number };
+
+/** Guide space → canvas pixels. The exact inverse of `toGlyphSpace`. */
+function toCanvas(pts: Pt[], box: Box, space: Space = GLYPH_BOX): Pt[] {
+  const kx = box.w / space.w;
+  const ky = box.h / space.h;
   return pts.map((p) => ({ x: box.x + p.x * kx, y: box.y + p.y * ky }));
 }
 
-/** Canvas pixels → glyph space, for the strokes we keep after a target is done. */
-function strokeToGlyph(s: Stroke, box: Box): Stroke {
-  const kx = GLYPH_BOX.w / box.w;
-  const ky = GLYPH_BOX.h / box.h;
+/** Canvas pixels → guide space, for the strokes we keep after a target is done. */
+function strokeToGlyph(s: Stroke, box: Box, space: Space = GLYPH_BOX): Stroke {
+  const kx = space.w / box.w;
+  const ky = space.h / box.h;
   return {
     color: s.color,
     size: s.size * kx,
@@ -81,18 +118,18 @@ function pathLen(pts: Pt[]): number {
 }
 
 /**
- * The one rect everything hangs off. Fits the glyph's 100×140 aspect inside
+ * The one rect everything hangs off. Fits the guide's own aspect inside
  * whatever the sheet has left over once the word strip has taken its band.
  */
-function fitBox(w: number, h: number, stripH: number): Box {
+function fitBox(w: number, h: number, stripH: number, space: Space = GLYPH_BOX): Box {
   const padX = Math.max(14, w * 0.07);
   const top = stripH + Math.max(12, h * 0.045);
   const bot = Math.max(14, h * 0.07);
   const aw = Math.max(1, w - padX * 2);
   const ah = Math.max(1, h - top - bot);
-  const s = Math.min(aw / GLYPH_BOX.w, ah / GLYPH_BOX.h);
-  const bw = GLYPH_BOX.w * s;
-  const bh = GLYPH_BOX.h * s;
+  const s = Math.min(aw / space.w, ah / space.h);
+  const bw = space.w * s;
+  const bh = space.h * s;
   return { x: padX + (aw - bw) / 2, y: top + (ah - bh) / 2, w: bw, h: bh };
 }
 
@@ -233,6 +270,7 @@ function MiniGlyph({
   weight,
   dashed,
   opacity,
+  space = GLYPH_BOX,
 }: {
   strokes: Pt[][];
   h: number;
@@ -240,14 +278,15 @@ function MiniGlyph({
   weight: number;
   dashed?: boolean;
   opacity?: number;
+  space?: Space;
 }) {
-  const w = (h * GLYPH_BOX.w) / GLYPH_BOX.h;
+  const w = (h * space.w) / space.h;
   return (
     <svg
       aria-hidden="true"
       width={w}
       height={h}
-      viewBox={`0 0 ${GLYPH_BOX.w} ${GLYPH_BOX.h}`}
+      viewBox={`0 0 ${space.w} ${space.h}`}
       style={{ display: "block", overflow: "visible", opacity }}
     >
       {strokes.map((s, i) => (
@@ -980,7 +1019,15 @@ function useLandscapeRail(): boolean {
 interface Item {
   char: string;
   say: string;
+  /** What is traced and scored. */
   glyph: Glyph;
+  /** Shown faintly, never scored, never asked for. Empty for a letter. */
+  detail: Glyph;
+  /** The box `glyph` and `detail` are authored in. */
+  space: Space;
+  /** A letter or a number — the only things penmanship rules mean anything
+   *  for, and so the only things that get them. */
+  ruled: boolean;
 }
 
 interface DoneRec {
@@ -1016,13 +1063,28 @@ export default function TraceScreen({
   onComplete,
 }: TraceScreenProps): JSX.Element {
   /* Characters with no skeleton (spaces, "+", punctuation) are not traceable,
-     so they never become a step. */
+     so they never become a step. Nor is an empty drawing guide — a doodle the
+     tracer could make nothing of is "no lesson here" rather than an error, so
+     it can never strand a child on a sheet with nothing to go over. */
   const items = useMemo<Item[]>(() => {
     const out: Item[] = [];
     for (const t of targets) {
+      if (t.guide) {
+        if (t.guide.length) {
+          out.push({
+            char: t.char,
+            say: t.say ?? t.char,
+            glyph: t.guide,
+            detail: t.detail ?? [],
+            space: t.space ?? GLYPH_BOX,
+            ruled: false,
+          });
+        }
+        continue;
+      }
       const ch = t.char.toUpperCase();
       const g = ALL_GLYPHS[ch];
-      if (g) out.push({ char: ch, say: t.say ?? ch, glyph: g });
+      if (g) out.push({ char: ch, say: t.say ?? ch, glyph: g, detail: [], space: GLYPH_BOX, ruled: true });
     }
     return out;
   }, [targets]);
@@ -1049,6 +1111,9 @@ export default function TraceScreen({
   const boxRef = useRef<Box>({ x: 0, y: 0, w: 1, h: 1 });
   const sheetRef = useRef({ w: 0, h: 0 });
   const glyphRef = useRef<Glyph | null>(null);
+  const detailPathsRef = useRef<Pt[][]>([]);
+  const spaceRef = useRef<Space>(GLYPH_BOX);
+  const ruledRef = useRef(true);
   const strokesRef = useRef<Stroke[]>([]);
   const liveRef = useRef<Stroke | null>(null);
   const doneRef = useRef<DoneRec[]>([]);
@@ -1082,6 +1147,7 @@ export default function TraceScreen({
   });
 
   const current = items[idx];
+  const space = current?.space ?? GLYPH_BOX;
   const stripH = multi ? Math.round(Math.min(78, Math.max(48, sheet.h * 0.15))) : 0;
 
   const after = useCallback((ms: number, fn: () => void) => {
@@ -1107,11 +1173,32 @@ export default function TraceScreen({
     ctx.clearRect(0, 0, cw, ch);
     if (b.w < 8 || !glyphRef.current) return;
 
-    paintRules(ctx, b, cw);
+    // Penmanship rules are pinned to letter metrics — cap height, midline,
+    // baseline. Those are facts about letters, so a drawing gets none of them.
+    if (ruledRef.current) paintRules(ctx, b, cw);
 
     const paths = pathsRef.current;
     const gw = Math.max(7, b.w * 0.115);
     const d = demoRef.current;
+
+    // The marks that are not the lesson. Thin and pencil-grey, so they read as
+    // a different *kind* of mark from the fat crayon ghost the child is being
+    // asked for — and painted before the early returns below, so the picture
+    // stays whole while the guide itself comes and goes.
+    for (const pts of detailPathsRef.current) {
+      if (pts.length < 2) continue;
+      ctx.save();
+      ctx.globalAlpha = 0.34;
+      ctx.strokeStyle = "#6b5f52";
+      ctx.lineWidth = Math.max(1.1, gw * 0.14);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // the ghost: the letter itself, in real wax, laid down faintly. Baked once
     // per target into an offscreen sheet so it can be composited at low alpha —
@@ -1163,7 +1250,7 @@ export default function TraceScreen({
     ctx.save();
     ctx.fillStyle = "#5f5348";
     for (const st of glyphRef.current) {
-      const dots = toCanvas(densify(st, 8), b);
+      const dots = toCanvas(densify(st, 8), b, spaceRef.current);
       for (let i = 0; i < dots.length; i++) {
         ctx.globalAlpha = i === 0 ? 0 : 0.5;
         ctx.beginPath();
@@ -1175,21 +1262,61 @@ export default function TraceScreen({
 
     const badgeR = gw * 0.5;
     const placed: Pt[] = [];
+    /** How far the nearest badge already on the page is. */
+    const gapAt = (q: Pt) =>
+      placed.reduce((m, r) => Math.min(m, Math.hypot(q.x - r.x, q.y - r.y)), Infinity);
     for (let i = 0; i < paths.length; i++) {
       const pts = paths[i];
       if (!pts.length) continue;
       paintArrow(ctx, pts, gw * 0.62);
-      // D, P and R start both their strokes in the same corner. Step a badge
-      // that would land on top of an earlier one along its own stroke, so the
-      // order stays readable instead of one number hiding the other.
       let c = pts[0];
-      for (const q of placed) {
-        if (Math.hypot(c.x - q.x, c.y - q.y) < badgeR * 2.1) {
-          const a = pts[Math.min(pts.length - 1, Math.ceil(pts.length * 0.12))];
-          const dx = a.x - c.x;
-          const dy = a.y - c.y;
-          const d = Math.hypot(dx, dy) || 1;
-          c = { x: c.x + (dx / d) * badgeR * 2.3, y: c.y + (dy / d) * badgeR * 2.3 };
+      if (ruledRef.current) {
+        // D, P and R start both their strokes in the same corner. Step a badge
+        // that would land on top of an earlier one along its own stroke, so the
+        // order stays readable instead of one number hiding the other.
+        for (const q of placed) {
+          if (Math.hypot(c.x - q.x, c.y - q.y) < badgeR * 2.1) {
+            const a = pts[Math.min(pts.length - 1, Math.ceil(pts.length * 0.12))];
+            const dx = a.x - c.x;
+            const dy = a.y - c.y;
+            const d = Math.hypot(dx, dy) || 1;
+            c = { x: c.x + (dx / d) * badgeR * 2.3, y: c.y + (dy / d) * badgeR * 2.3 };
+          }
+        }
+      } else if (gapAt(c) < badgeR * 2.1) {
+        // A drawing is a harder case than any letter: six marks put six numbers
+        // on one small picture, and several of them genuinely start in the same
+        // place — a turtle's shell and the pattern inside it both begin at the
+        // top of the shell. One step aside is not enough there (it left 1 and 2
+        // still overlapping), so walk along the mark itself and take the first
+        // spot clear of every badge already down. Stopping at seven-tenths of
+        // the way keeps the badge off its own arrowhead; if the mark is crowded
+        // end to end, the roomiest spot on it beats stacking.
+        let best = c;
+        let bestGap = -1;
+        for (let k = 0; k <= 7; k++) {
+          const q = pts[Math.min(pts.length - 1, Math.round((pts.length - 1) * k * 0.1))];
+          const gap = gapAt(q);
+          if (gap >= badgeR * 2.1) { best = q; break; }
+          if (gap > bestGap) { bestGap = gap; best = q; }
+        }
+        c = best;
+        // Some marks are simply too short to escape along: a fish's gill lives
+        // entirely inside one badge's width of the body's start, so every point
+        // on it is crowded. Then step the number straight out from the badge it
+        // clashes with. It ends up beside its own mark rather than on it, which
+        // is all a stroke number has to do, and two readable numbers beat two
+        // perfectly placed ones stacked on top of each other.
+        if (gapAt(c) < badgeR * 2.1) {
+          const near = placed.reduce((a, r) =>
+            Math.hypot(c.x - r.x, c.y - r.y) < Math.hypot(c.x - a.x, c.y - a.y) ? r : a);
+          const dx = c.x - near.x;
+          const dy = c.y - near.y;
+          const d = Math.hypot(dx, dy);
+          // exactly coincident starts have no direction of their own — go up
+          const ux = d < 0.01 ? 0 : dx / d;
+          const uy = d < 0.01 ? -1 : dy / d;
+          c = { x: near.x + ux * badgeR * 2.2, y: near.y + uy * badgeR * 2.2 };
         }
       }
       placed.push(c);
@@ -1223,7 +1350,7 @@ export default function TraceScreen({
     const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cv.width / dpr, cv.height / dpr);
-    const k = b.w / GLYPH_BOX.w;
+    const k = b.w / spaceRef.current.w;
     const { w: sw, h: shh } = sheetRef.current;
     // the word strip owns the top band of the sheet: a hopping letter stops
     // short of it rather than jumping through the word it belongs to
@@ -1237,7 +1364,7 @@ export default function TraceScreen({
     const t = Math.max(0, Math.min(1, (now - L.t0) / L.dur));
     for (const [i, s] of L.act(L.src, { t, bb: L.bb, room }).entries()) {
       if (!s.pts.length) continue;
-      drawCrayonStroke(ctx, toCanvas(s.pts, b), s.color, Math.max(1.5, s.size * k), i + 1);
+      drawCrayonStroke(ctx, toCanvas(s.pts, b, spaceRef.current), s.color, Math.max(1.5, s.size * k), i + 1);
     }
   }, []);
 
@@ -1257,7 +1384,7 @@ export default function TraceScreen({
     if (!item || b.w < 8) return;
     const src: LifeStroke[] = strokesRef.current
       .map((s) => {
-        const g = strokeToGlyph(s, b);
+        const g = strokeToGlyph(s, b, spaceRef.current);
         return { color: g.color, size: g.size, pts: densify(g.pts, 2.4) };
       })
       .filter((s) => s.pts.length >= 2);
@@ -1297,14 +1424,19 @@ export default function TraceScreen({
     const item = itemsRef.current[idxRef.current];
     const b = boxRef.current;
     glyphRef.current = item?.glyph ?? null;
+    spaceRef.current = item?.space ?? GLYPH_BOX;
+    ruledRef.current = item?.ruled ?? true;
     if (!item || b.w < 8) {
       pathsRef.current = [];
+      detailPathsRef.current = [];
       ghostRef.current = null;
       paintGuide();
       paintInk();
       return;
     }
-    pathsRef.current = item.glyph.map((st) => toCanvas(densify(st, 2), b));
+    const sp = item.space;
+    pathsRef.current = item.glyph.map((st) => toCanvas(densify(st, 2), b, sp));
+    detailPathsRef.current = item.detail.map((st) => toCanvas(densify(st, 2), b, sp));
 
     const dpr = window.devicePixelRatio || 1;
     const { w, h } = sheetRef.current;
@@ -1349,7 +1481,7 @@ export default function TraceScreen({
       setSheet((p) => (p.w === w && p.h === h ? p : { w, h }));
 
       const sh = itemsRef.current.length > 1 ? Math.round(Math.min(78, Math.max(48, h * 0.15))) : 0;
-      const b = fitBox(w, h, sh);
+      const b = fitBox(w, h, sh, itemsRef.current[idxRef.current]?.space ?? GLYPH_BOX);
       boxRef.current = b;
       setBox((p) => (sameBox(p, b) ? p : b));
       rebuild();
@@ -1359,7 +1491,9 @@ export default function TraceScreen({
     const ro = new ResizeObserver(fit);
     ro.observe(wrap);
     return () => ro.disconnect();
-  }, [rebuild, multi]);
+    // `space` is in here because the rect is fitted to the guide's own aspect:
+    // moving from a 100×140 letter to a 100×100 drawing has to refit the sheet.
+  }, [rebuild, multi, space.w, space.h]);
 
   /* A new letter needs new paths, a new ghost and a new set of stroke badges.
      A layout effect, so it has run before the effect below asks to animate it —
@@ -1490,7 +1624,13 @@ export default function TraceScreen({
       const avg = per.length ? per.reduce((a, b) => a + b, 0) / per.length : 1;
       const stars = Math.max(1, Math.min(3, Math.round(avg))) as 1 | 2 | 3;
       sfxMagic();
-      onCompleteRef.current({ stars, perTarget: per });
+      // The child's own ink goes out with the score: a drawing lesson makes its
+      // creature out of this, never out of the guide it was shown.
+      onCompleteRef.current({
+        stars,
+        perTarget: per,
+        strokes: doneRef.current.flatMap((d) => d.strokes),
+      });
       return;
     }
     liveRef.current = null;
@@ -1518,7 +1658,7 @@ export default function TraceScreen({
         {
           char: item.char,
           stars: s.stars,
-          strokes: strokesRef.current.map((k) => strokeToGlyph(k, boxRef.current)),
+          strokes: strokesRef.current.map((k) => strokeToGlyph(k, boxRef.current, spaceRef.current)),
         },
       ];
       setDone(doneRef.current);
@@ -1539,7 +1679,7 @@ export default function TraceScreen({
   const grade = useCallback((): TraceScore | null => {
     const g = glyphRef.current;
     if (!g) return null;
-    return scoreTrace(g, toGlyphSpace(strokesRef.current, boxRef.current));
+    return scoreTrace(g, toGlyphSpace(strokesRef.current, boxRef.current, spaceRef.current));
   }, []);
 
   /**
@@ -1551,7 +1691,7 @@ export default function TraceScreen({
   const allStrokesTouched = useCallback((): boolean => {
     const g = glyphRef.current;
     if (!g) return false;
-    const ink = toGlyphSpace(strokesRef.current, boxRef.current);
+    const ink = toGlyphSpace(strokesRef.current, boxRef.current, spaceRef.current);
     if (ink.length < 4) return false;
     return g.every((st) => scoreTrace([st], ink).coverage >= 0.7);
   }, []);
@@ -1643,6 +1783,9 @@ export default function TraceScreen({
   /* ── the page ─────────────────────────────────────────────────────────── */
 
   const fibre = useMemo(() => paperTile(), []);
+  /* Letters are written and drawings are drawn. Only the spoken and read-aloud
+     copy changes — everything the child touches is the same screen. */
+  const verb = current && !current.ruled ? "draw" : "write";
   const empty = strokes.length === 0;
   const TOOL = land ? 48 : 52;
   const last = idx >= items.length - 1;
@@ -1712,7 +1855,7 @@ export default function TraceScreen({
             seed={64}
             radius={16}
             tone={demoing ? "#00c2b9" : undefined}
-            aria-label={`Show me how to write ${current.say}`}
+            aria-label={`Show me how to ${verb} ${current.say}`}
             className="tr-show"
           >
             <Icon
@@ -1742,7 +1885,9 @@ export default function TraceScreen({
               ref={inkRef}
               className="tr-cv tr-cv-ink canvas-touch"
               role="img"
-              aria-label={`Tracing area for ${current.say}. Draw over the dotted letter with your finger.`}
+              aria-label={`Tracing area for ${current.say}. Draw over the dotted ${
+                current.ruled ? "letter" : "picture"
+              } with your finger.`}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
@@ -1781,6 +1926,7 @@ export default function TraceScreen({
                           h={glyphH}
                           color={rec.strokes[0]?.color ?? color}
                           weight={Math.max(5, rec.strokes[0]?.size ?? 9)}
+                          space={it.space}
                         />
                       ) : (
                         <MiniGlyph
@@ -1790,6 +1936,7 @@ export default function TraceScreen({
                           weight={isNow ? 9 : 8}
                           dashed
                           opacity={isNow ? 0.85 : 0.42}
+                          space={it.space}
                         />
                       )}
                       {rec && (
@@ -1879,7 +2026,7 @@ export default function TraceScreen({
               radius={22}
               weight={3.6}
               className={`tr-hero ${!empty && !reduced ? "tr-breathe" : ""}`}
-              aria-label={`I have finished writing ${current.say}`}
+              aria-label={`I have finished ${verb === "draw" ? "drawing" : "writing"} ${current.say}`}
             >
               <span className={empty ? "tr-hero-idle ink-hand" : "tr-hero-live ink-on-wax"}>
                 <Icon
@@ -1897,7 +2044,9 @@ export default function TraceScreen({
             {say}
           </p>
           <p className="visually-hidden">
-            {multi ? `Letter ${idx + 1} of ${items.length}: ${current.say}` : `Writing ${current.say}`}
+            {multi
+              ? `Letter ${idx + 1} of ${items.length}: ${current.say}`
+              : `${verb === "draw" ? "Drawing" : "Writing"} ${current.say}`}
           </p>
         </div>
       </div>
