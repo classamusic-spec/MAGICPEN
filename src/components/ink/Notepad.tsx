@@ -184,11 +184,7 @@ export function NotepadPage({
           </defs>
           {/* the paper itself, clipped to the torn edge */}
           <g clipPath={`url(#np-${uid})`}>
-            <rect x={0} y={0} width={box.w} height={box.h} fill="var(--card, #fffaf0)" />
-            <rect
-              x={0} y={0} width={box.w} height={box.h}
-              fill="var(--paper-fibre-fill, transparent)" opacity={0.6}
-            />
+            <rect x={0} y={0} width={box.w} height={box.h} fill="var(--paper-card, #fffdf7)" />
           </g>
           {/* two passes of ink: a pen gone over the edge twice */}
           <g transform="translate(4 4)">

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Creature, DreamWorld, RecognitionResult, Screen, Stroke, WritingWorldId } from "@/lib/types";
 import { recognize } from "@/lib/recognizer";
 import { kindById, rosterFor, WORLD_PACKS } from "@/lib/creatures";
@@ -39,6 +39,7 @@ const MiniGame = lazy(() => import("@/components/MiniGame"));
 const WriteWorld = lazy(() => import("@/components/WriteWorld"));
 const PaintWorld = lazy(() => import("@/components/PaintWorld"));
 const GrownUps = lazy(() => import("@/components/GrownUps"));
+const Onboarding = lazy(() => import("@/components/Onboarding"));
 const DrawSchool = lazy(() => import("@/components/DrawSchool"));
 
 /**
@@ -267,13 +268,13 @@ export default function App() {
   const handleDrawn = (strokes: Stroke[]) => {
     setDraft(strokes);
     setPhotoDraft(null);
-    setScreen("reveal");
+    go("reveal");
   };
 
   const handlePhoto = (photoData: string) => {
     setDraft([]);
     setPhotoDraft(photoData);
-    setScreen("reveal");
+    go("reveal");
   };
 
   const handleConfirm = (kindId: string, name: string) => {
@@ -294,7 +295,7 @@ export default function App() {
     setCreatures((prev) => [...prev.slice(-(MAX_CREATURES - 1)), creature]);
     setNewId(creature.id);
     setPhotoDraft(null);
-    setScreen("world");
+    go("world");
     askedRef.current.add(creature.id);
     startPolish(creature);
   };
@@ -323,7 +324,7 @@ export default function App() {
     setNewId(creature.id);
     setSchoolWorld(undefined);
     setWorldId(intoWorld);
-    setScreen("world");
+    go("world");
     askedRef.current.add(creature.id);
     startPolish(creature);
   };
@@ -349,59 +350,86 @@ export default function App() {
     };
     setCreatures((prev) => [...prev.slice(-(MAX_CREATURES - 1)), creature]);
     setNewId(creature.id);
-    setScreen("world");
+    go("world");
     askedRef.current.add(creature.id);
     startPolish(creature);
   };
 
-  const enterClass =
-    screen === "world"
-      ? "screen-enter-dive"
-      : screen === "draw" || screen === "reveal" || screen === "write"
-        || screen === "school" || screen === "paintworld"
-        ? "screen-enter-rise"
-        : "screen-enter-fade";
+  /* ── turning a page ────────────────────────────────────────────────────────
+     The app is a spiral pad bound at the top, so going deeper flips the current
+     sheet up over the coil and coming back drops it down again. Which of those
+     it is comes from how deep a screen sits, not from a flag every caller has
+     to remember to pass.
 
-  return (
-    /* The boundary sits outside everything, because a lazy screen that fails to
-       download throws during render and there is nothing below it left to
-       catch. `resetKey` lets a one-off crash clear itself once the app has
-       moved on, rather than poisoning every screen after it. */
-    <ErrorBoundary resetKey={screen}>
-      <div className="h-full w-full overflow-hidden">
-        {/* One boundary around the whole switch: only ever one screen is
-            mounted, so a second would buy nothing. */}
-        <Suspense fallback={<ScreenLoader />}>
-          <div key={screen} className={`h-full ${enterClass}`}>
-            {screen === "splash" && (
-              <Splash onStart={() => { markSeenIntro(); setScreen("home"); }} />
+     `go` exists so the outgoing screen and the incoming one change in a single
+     batch. Setting them separately would paint one frame with the new page and
+     no old page, and the flip would start from a blank. */
+  const DEPTH: Record<Screen, number> = {
+    splash: 0, onboarding: 0, home: 1,
+    world: 2, draw: 2, write: 2, school: 2, paintworld: 2, grownups: 2,
+    reveal: 3, game: 3,
+  };
+  const [exiting, setExiting] = useState<{ screen: Screen; back: boolean } | null>(null);
+  const [back, setBack] = useState(false);
+  const exitTimer = useRef<number | null>(null);
+
+  const go = useCallback((next: Screen) => {
+    setScreen((cur) => {
+      if (cur === next) return cur;
+      const isBack = DEPTH[next] <= DEPTH[cur];
+      setBack(isBack);
+      setExiting({ screen: cur, back: isBack });
+      if (exitTimer.current) window.clearTimeout(exitTimer.current);
+      // a touch past the longest exit (420ms), so the sheet is never cut short
+      exitTimer.current = window.setTimeout(() => setExiting(null), 470);
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => () => { if (exitTimer.current) window.clearTimeout(exitTimer.current); }, []);
+
+  /* One screen's worth of JSX, as a function of *which* screen — so the page
+     that is leaving can go on rendering itself for the length of its flip.
+     `key={screen}` alone would tear the old page out on the same frame the
+     new one arrives, and an exit animation with nothing left to animate is
+     just a missing transition. */
+  const renderScreen = (s: Screen) => (
+    <>
+            {s === "splash" && (
+              <Splash onStart={() => go("onboarding")} />
             )}
-            {screen === "home" && (
+            {s === "onboarding" && (
+              <Onboarding
+                onDone={() => { markSeenIntro(); go("home"); }}
+                onSkip={() => { markSeenIntro(); go("home"); }}
+              />
+            )}
+            {s === "home" && (
               <Home
                 creatures={creatures}
                 onPlayWorld={(id) => {
-                  if (id === "dream" && !dream) { setScreen("paintworld"); return; }
+                  if (id === "dream" && !dream) { go("paintworld"); return; }
                   setWorldId(id);
-                  setScreen("world");
+                  go("world");
                 }}
-                onDraw={() => { setIdeaPrompt(null); setDrawWorld("dream"); setScreen("draw"); }}
+                onDraw={() => { setIdeaPrompt(null); setDrawWorld("dream"); go("draw"); }}
                 idea={idea}
                 welcome={welcomeBack(visit)}
-                onDrawIdea={() => { setIdeaPrompt(idea); setDrawWorld("dream"); setScreen("draw"); }}
-                onWrite={(id) => { setWriteWorld(id); setScreen("write"); }}
-                onDrawSchool={() => setScreen("school")}
-                onGrownUps={() => setScreen("grownups")}
+                onDrawIdea={() => { setIdeaPrompt(idea); setDrawWorld("dream"); go("draw"); }}
+                onWrite={(id) => { setWriteWorld(id); go("write"); }}
+                onDrawSchool={() => go("school")}
+                onGrownUps={() => go("grownups")}
               />
             )}
-            {screen === "draw" && (
+            {s === "draw" && (
               <DrawScreen
                 prompt={prompt}
                 onDone={handleDrawn}
                 onPhoto={handlePhoto}
-                onBack={() => setScreen("home")}
+                onBack={() => go("home")}
               />
             )}
-            {screen === "reveal" && (
+            {s === "reveal" && (
               <MagicReveal
                 strokes={draft}
                 result={result}
@@ -410,69 +438,89 @@ export default function App() {
                 name={pickName(result.kindId, takenNames)}
                 onShuffleName={(k) => pickName(k, takenNames)}
                 onConfirm={handleConfirm}
-                onRedraw={() => setScreen("draw")}
+                onRedraw={() => go("draw")}
               />
             )}
-            {screen === "world" && (
+            {s === "world" && (
               <WorldScene
                 creatures={creatures}
                 newId={newId}
                 worldId={worldId}
                 dream={dream}
                 polishingIds={polishingIds}
-                onBack={() => { setNewId(null); setScreen("home"); }}
-                onDrawMore={() => { setNewId(null); setIdeaPrompt(null); setDrawWorld(worldId); setScreen("draw"); }}
-                onPlayGame={() => { setNewId(null); setScreen("game"); }}
-                onLearnDraw={() => { setNewId(null); setSchoolWorld(worldId); setScreen("school"); }}
-                onRepaint={() => setScreen("paintworld")}
+                onBack={() => { setNewId(null); go("home"); }}
+                onDrawMore={() => { setNewId(null); setIdeaPrompt(null); setDrawWorld(worldId); go("draw"); }}
+                onPlayGame={() => { setNewId(null); go("game"); }}
+                onLearnDraw={() => { setNewId(null); setSchoolWorld(worldId); go("school"); }}
+                onRepaint={() => go("paintworld")}
                 onCare={addCare}
                 visit={visit}
               />
             )}
-            {screen === "paintworld" && (
+            {s === "paintworld" && (
               <PaintWorld
                 initial={dream}
-                onBack={() => setScreen(dream ? "world" : "home")}
+                onBack={() => go(dream ? "world" : "home")}
                 onDone={(d) => {
                   saveDream(d);
                   setDream(d);
                   setWorldId("dream");
                   setNewId(null);
-                  setScreen("world");
+                  go("world");
                 }}
               />
             )}
-            {screen === "write" && (
+            {s === "write" && (
               <WriteWorld
                 world={writeWorld}
-                onBack={() => setScreen("home")}
+                onBack={() => go("home")}
                 onBorn={handleBorn}
               />
             )}
-            {screen === "school" && (
+            {s === "school" && (
               <DrawSchool
                 focusWorld={schoolWorld}
                 onBack={() => {
                   const from = schoolWorld;
                   setSchoolWorld(undefined);
-                  if (from) { setWorldId(from); setScreen("world"); } else setScreen("home");
+                  if (from) { setWorldId(from); go("world"); } else go("home");
                 }}
                 onDrawn={handleTraced}
               />
             )}
-            {screen === "grownups" && (
+            {s === "grownups" && (
           <GrownUps
             creatures={creatures}
-            onBack={() => setScreen("home")}
+            onBack={() => go("home")}
           />
         )}
-        {screen === "game" && (
+        {s === "game" && (
               <MiniGame
                 worldId={worldId}
                 creatures={creatures}
-                onBack={() => setScreen("world")}
+                onBack={() => go("world")}
               />
             )}
+    </>
+  );
+
+  return (
+    /* The boundary sits outside everything, because a lazy screen that fails to
+       download throws during render and there is nothing below it left to
+       catch. `resetKey` lets a one-off crash clear itself once the app has
+       moved on, rather than poisoning every screen after it. */
+    <ErrorBoundary resetKey={screen}>
+      <div className="page-stage h-full w-full overflow-hidden">
+        {/* One boundary around the whole switch: only ever one screen is
+            mounted, so a second would buy nothing. */}
+        <Suspense fallback={<ScreenLoader />}>
+          {exiting && (
+            <div key={exiting.screen} className={`page-layer ${exiting.back ? "" : "page-flip-out"}`} aria-hidden="true">
+              {renderScreen(exiting.screen)}
+            </div>
+          )}
+          <div key={screen} className={`page-layer ${back ? "page-flip-back-in" : "page-flip-in"}`}>
+            {renderScreen(screen)}
           </div>
         </Suspense>
       </div>
