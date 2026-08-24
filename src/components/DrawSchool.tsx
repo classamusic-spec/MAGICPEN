@@ -246,8 +246,11 @@ function Reward({ lesson, stars, strokes, hasNext, onNext, onPicker, onSetFree }
 
 /* ── the school ──────────────────────────────────────────────────────────── */
 
-export default function DrawSchool({ onBack, onDrawn }: {
+export default function DrawSchool({ onBack, onDrawn, focusWorld }: {
   onBack: () => void;
+  /** When arrived from a world, that world's shelf comes first and "Keep going"
+   *  points into it — so the invitation lands where the child asked. */
+  focusWorld?: string;
   /** The child finished a lesson and wants it in their world. */
   onDrawn: (made: { kindId: string; worldId: string; strokes: Stroke[] }) => void;
 }) {
@@ -275,9 +278,17 @@ export default function DrawSchool({ onBack, onDrawn }: {
      never-tried lesson, then once all are tried the shakiest for another go,
      null when every one is three stars. Ordered the way the picker lists the
      worlds, so "next" reads as down the page. */
+  /* The focused world first, so both the shelves and the "Keep going" pick lead
+     with what the child came to draw; the rest follow in their usual order. */
+  const worldOrder = useMemo(
+    () => (focusWorld && LESSON_WORLDS.includes(focusWorld)
+      ? [focusWorld, ...LESSON_WORLDS.filter((wId) => wId !== focusWorld)]
+      : LESSON_WORLDS),
+    [focusWorld],
+  );
   const orderedKeys = useMemo(
-    () => LESSON_WORLDS.flatMap((wId) => lessonsForWorld(wId).map((l) => l.key)),
-    [],
+    () => worldOrder.flatMap((wId) => lessonsForWorld(wId).map((l) => l.key)),
+    [worldOrder],
   );
   const nextKey = useMemo(() => nextLessonKey(orderedKeys, progress), [orderedKeys, progress]);
 
@@ -385,7 +396,7 @@ export default function DrawSchool({ onBack, onDrawn }: {
           </div>
         )}
 
-        {LESSON_WORLDS.map((worldId) => {
+        {worldOrder.map((worldId) => {
           const pack = packOf(worldId);
           return (
             <Section key={worldId} title={pack.name} hint="trace it — it's yours">

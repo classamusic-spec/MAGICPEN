@@ -71,6 +71,8 @@ export default function App() {
      world offers that world's things; drawing from the sketchbook offers the
      everyday set, because the child has not picked a world yet. */
   const [drawWorld, setDrawWorld] = useState<string>("dream");
+  /* Which world Drawing School leads with, when opened from inside a world. */
+  const [schoolWorld, setSchoolWorld] = useState<string | undefined>(undefined);
   /* The visit is recorded once per app start. It writes, so it must not happen
      in a render body that React may run twice. */
   const [visit] = useState<Visit>(() => markVisit());
@@ -306,6 +308,7 @@ export default function App() {
     };
     setCreatures((prev) => [...prev.slice(-(MAX_CREATURES - 1)), creature]);
     setNewId(creature.id);
+    setSchoolWorld(undefined);
     setWorldId(intoWorld);
     setScreen("world");
     askedRef.current.add(creature.id);
@@ -407,6 +410,7 @@ export default function App() {
                 onBack={() => { setNewId(null); setScreen("home"); }}
                 onDrawMore={() => { setNewId(null); setIdeaPrompt(null); setDrawWorld(worldId); setScreen("draw"); }}
                 onPlayGame={() => { setNewId(null); setScreen("game"); }}
+                onLearnDraw={() => { setNewId(null); setSchoolWorld(worldId); setScreen("school"); }}
                 onRepaint={() => setScreen("paintworld")}
                 onCare={addCare}
                 visit={visit}
@@ -434,7 +438,12 @@ export default function App() {
             )}
             {screen === "school" && (
               <DrawSchool
-                onBack={() => setScreen("home")}
+                focusWorld={schoolWorld}
+                onBack={() => {
+                  const from = schoolWorld;
+                  setSchoolWorld(undefined);
+                  if (from) { setWorldId(from); setScreen("world"); } else setScreen("home");
+                }}
                 onDrawn={handleTraced}
               />
             )}

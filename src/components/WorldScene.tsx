@@ -583,6 +583,7 @@ export default function WorldScene({
   polishingIds,
   onBack,
   onDrawMore,
+  onLearnDraw,
   onPlayGame,
   onRenameCreature,
   onDeleteCreature,
@@ -598,6 +599,10 @@ export default function WorldScene({
   polishingIds?: Set<string>;
   onBack: () => void;
   onDrawMore: () => void;
+  /** Open Drawing School focused on this world — the way in for a child who
+   *  wants a fish but cannot yet draw one freehand. Optional so this file need
+   *  not land in the same commit as the route. */
+  onLearnDraw?: () => void;
   onPlayGame: () => void;
   /** Optional: let the app own creature edits. Falls back to local + storage. */
   onRenameCreature?: (id: string, name: string) => void;
@@ -2835,6 +2840,18 @@ export default function WorldScene({
                     </span>
                   </InkButton>
                 </div>
+
+                {/* the way out of "I can't draw a fish": trace one first. Lands
+                    the child in this same world with a creature of their own. */}
+                {onLearnDraw && (
+                  <button
+                    onClick={() => { sfxTap(); onLearnDraw(); }}
+                    className="ink-hand mt-3 underline decoration-2 underline-offset-4"
+                    style={{ fontSize: "var(--fs-sm)", color: "var(--plum)" }}
+                  >
+                    …or show me how to draw one
+                  </button>
+                )}
               </div>
             </InkCard>
           </div>
