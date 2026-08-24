@@ -35,7 +35,6 @@ export type BehaviorKind =
 export interface CreatureKind {
   id: string;           // "fish" | "car" | ...
   label: string;        // "Fish"
-  emoji: string;
   behavior: BehaviorKind;
   names: string[];      // pool of cute names
 }
@@ -92,7 +91,6 @@ export interface WorldPack {
   id: string;
   name: string;
   tagline: string;
-  emoji: string;
   price: string | null; // null = free
   locked: boolean;
   gradient: string;     // css gradient for card
