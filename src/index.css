@@ -1,3 +1,27 @@
+/* ── the app's two typefaces, served from our own origin ─────────────────────
+   These used to come from Google Fonts, which meant every launch sent the
+   device's IP address to a third party before a child had touched anything —
+   and before the onboarding sheet that promises "nothing about your child is
+   collected" had even painted. A privacy claim the product contradicts on its
+   first frame is worse than no claim, so the fonts are ours now.
+
+   Both are variable, so one file covers every weight the app uses: 80KB for the
+   pair, latin subset only. `swap` keeps text readable while they load. */
+@font-face {
+  font-family: "Baloo 2";
+  src: url("/fonts/baloo2-latin-var.woff2") format("woff2-variations");
+  font-weight: 400 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Nunito";
+  src: url("/fonts/nunito-latin-var.woff2") format("woff2-variations");
+  font-weight: 500 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
