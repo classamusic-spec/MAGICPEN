@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { Creature, DreamWorld, RecognitionResult, Screen, Stroke, WritingWorldId } from "@/lib/types";
 import { recognize } from "@/lib/recognizer";
 import { kindById, rosterFor, WORLD_PACKS } from "@/lib/creatures";
@@ -8,14 +8,35 @@ import { CARE_PER_DAY } from "@/lib/social";
 import { trpc } from "@/providers/trpc";
 import { bakeSketchPNG, proxyArtUrl } from "@/lib/polish";
 import { doodlePNG } from "@/lib/doodleArt";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import ScreenLoader from "@/components/ScreenLoader";
+
+/* ── what ships in the first byte, and what does not ───────────────────────
+   Splash and Home are the first paint, so they stay static imports: making
+   them async would put a network round trip in front of the one thing we are
+   trying to make fast.
+
+   Everything past them is fetched when the child actually goes there. Between
+   them these six screens are the overwhelming majority of the app — the world
+   themes alone are thousands of lines of canvas painting that a child who only
+   opens the sketchbook never needs.
+
+   No `manualChunks`: Rollup already hoists whatever two or more async entries
+   share, and the build bears it out — world/themes + world/shared come out as
+   one chunk fetched by whichever of the world or the game is opened first, and
+   lib/regions as another shared by the world and the world-painter. What is
+   left over (lib/sprites, lib/polish) is not shared *between* the async
+   screens at all: eager Home needs both, so they belong in the entry chunk and
+   are already paid for. Writing the split by hand could only make that worse. */
 import Splash from "@/components/Splash";
 import Home from "@/components/Home";
-import DrawScreen from "@/components/DrawScreen";
-import MagicReveal from "@/components/MagicReveal";
-import WorldScene from "@/components/WorldScene";
-import MiniGame from "@/components/MiniGame";
-import WriteWorld from "@/components/WriteWorld";
-import PaintWorld from "@/components/PaintWorld";
+
+const DrawScreen = lazy(() => import("@/components/DrawScreen"));
+const MagicReveal = lazy(() => import("@/components/MagicReveal"));
+const WorldScene = lazy(() => import("@/components/WorldScene"));
+const MiniGame = lazy(() => import("@/components/MiniGame"));
+const WriteWorld = lazy(() => import("@/components/WriteWorld"));
+const PaintWorld = lazy(() => import("@/components/PaintWorld"));
 
 function pickName(kindId: string, taken: Set<string>): string {
   const pool = kindById(kindId).names;
@@ -144,6 +165,24 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen]);
 
+  /* ── warm the game while the child is busy in a world ─────────────────────
+     "Play a game" is one tap away from here, and the game is the heaviest
+     screen in the app. Fetching it during idle time — after the world has
+     finished its own entrance, never competing with it — means the tap lands
+     on an already-downloaded chunk. It also warms the chunk the world and the
+     game share, so the trip back is free too. Safari has no
+     requestIdleCallback, hence the timer. */
+  useEffect(() => {
+    if (screen !== "world") return;
+    const warm = () => { void import("@/components/MiniGame").catch(() => { /* it will be fetched again on tap */ }); };
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(warm, { timeout: 3000 });
+      return () => window.cancelIdleCallback?.(id);
+    }
+    const t = window.setTimeout(warm, 1500);
+    return () => window.clearTimeout(t);
+  }, [screen]);
+
   const takenNames = useMemo(() => new Set(creatures.map((c) => c.name)), [creatures]);
 
   const result: RecognitionResult = useMemo(() => {
@@ -234,89 +273,99 @@ export default function App() {
         : "screen-enter-fade";
 
   return (
-    <div className="h-full w-full overflow-hidden">
-      <div key={screen} className={`h-full ${enterClass}`}>
-        {screen === "splash" && (
-          <Splash onStart={() => { markSeenIntro(); setScreen("home"); }} />
-        )}
-        {screen === "home" && (
-          <Home
-            creatures={creatures}
-            onPlayWorld={(id) => {
-              if (id === "dream" && !dream) { setScreen("paintworld"); return; }
-              setWorldId(id);
-              setScreen("world");
-            }}
-            onDraw={() => { setIdeaPrompt(null); setDrawWorld("dream"); setScreen("draw"); }}
-            idea={idea}
-            welcome={welcomeBack(visit)}
-            onDrawIdea={() => { setIdeaPrompt(idea); setDrawWorld("dream"); setScreen("draw"); }}
-            onWrite={(id) => { setWriteWorld(id); setScreen("write"); }}
-          />
-        )}
-        {screen === "draw" && (
-          <DrawScreen
-            prompt={prompt}
-            onDone={handleDrawn}
-            onPhoto={handlePhoto}
-            onBack={() => setScreen("home")}
-          />
-        )}
-        {screen === "reveal" && (
-          <MagicReveal
-            strokes={draft}
-            result={result}
-            photo={photoDraft}
-            worldId={drawWorld}
-            name={pickName(result.kindId, takenNames)}
-            onShuffleName={(k) => pickName(k, takenNames)}
-            onConfirm={handleConfirm}
-            onRedraw={() => setScreen("draw")}
-          />
-        )}
-        {screen === "world" && (
-          <WorldScene
-            creatures={creatures}
-            newId={newId}
-            worldId={worldId}
-            dream={dream}
-            polishingIds={polishingIds}
-            onBack={() => { setNewId(null); setScreen("home"); }}
-            onDrawMore={() => { setNewId(null); setIdeaPrompt(null); setDrawWorld(worldId); setScreen("draw"); }}
-            onPlayGame={() => { setNewId(null); setScreen("game"); }}
-            onRepaint={() => setScreen("paintworld")}
-            onCare={addCare}
-            visit={visit}
-          />
-        )}
-        {screen === "paintworld" && (
-          <PaintWorld
-            initial={dream}
-            onBack={() => setScreen(dream ? "world" : "home")}
-            onDone={(d) => {
-              saveDream(d);
-              setDream(d);
-              setWorldId("dream");
-              setNewId(null);
-              setScreen("world");
-            }}
-          />
-        )}
-        {screen === "write" && (
-          <WriteWorld
-            world={writeWorld}
-            onBack={() => setScreen("home")}
-            onBorn={handleBorn}
-          />
-        )}
-        {screen === "game" && (
-          <MiniGame
-            worldId={worldId}
-            creatures={creatures}
-            onBack={() => setScreen("world")}
-          />
-        )}
+    /* The boundary sits outside everything, because a lazy screen that fails to
+       download throws during render and there is nothing below it left to
+       catch. `resetKey` lets a one-off crash clear itself once the app has
+       moved on, rather than poisoning every screen after it. */
+    <ErrorBoundary resetKey={screen}>
+      <div className="h-full w-full overflow-hidden">
+        {/* One boundary around the whole switch: only ever one screen is
+            mounted, so a second would buy nothing. */}
+        <Suspense fallback={<ScreenLoader />}>
+          <div key={screen} className={`h-full ${enterClass}`}>
+            {screen === "splash" && (
+              <Splash onStart={() => { markSeenIntro(); setScreen("home"); }} />
+            )}
+            {screen === "home" && (
+              <Home
+                creatures={creatures}
+                onPlayWorld={(id) => {
+                  if (id === "dream" && !dream) { setScreen("paintworld"); return; }
+                  setWorldId(id);
+                  setScreen("world");
+                }}
+                onDraw={() => { setIdeaPrompt(null); setDrawWorld("dream"); setScreen("draw"); }}
+                idea={idea}
+                welcome={welcomeBack(visit)}
+                onDrawIdea={() => { setIdeaPrompt(idea); setDrawWorld("dream"); setScreen("draw"); }}
+                onWrite={(id) => { setWriteWorld(id); setScreen("write"); }}
+              />
+            )}
+            {screen === "draw" && (
+              <DrawScreen
+                prompt={prompt}
+                onDone={handleDrawn}
+                onPhoto={handlePhoto}
+                onBack={() => setScreen("home")}
+              />
+            )}
+            {screen === "reveal" && (
+              <MagicReveal
+                strokes={draft}
+                result={result}
+                photo={photoDraft}
+                worldId={drawWorld}
+                name={pickName(result.kindId, takenNames)}
+                onShuffleName={(k) => pickName(k, takenNames)}
+                onConfirm={handleConfirm}
+                onRedraw={() => setScreen("draw")}
+              />
+            )}
+            {screen === "world" && (
+              <WorldScene
+                creatures={creatures}
+                newId={newId}
+                worldId={worldId}
+                dream={dream}
+                polishingIds={polishingIds}
+                onBack={() => { setNewId(null); setScreen("home"); }}
+                onDrawMore={() => { setNewId(null); setIdeaPrompt(null); setDrawWorld(worldId); setScreen("draw"); }}
+                onPlayGame={() => { setNewId(null); setScreen("game"); }}
+                onRepaint={() => setScreen("paintworld")}
+                onCare={addCare}
+                visit={visit}
+              />
+            )}
+            {screen === "paintworld" && (
+              <PaintWorld
+                initial={dream}
+                onBack={() => setScreen(dream ? "world" : "home")}
+                onDone={(d) => {
+                  saveDream(d);
+                  setDream(d);
+                  setWorldId("dream");
+                  setNewId(null);
+                  setScreen("world");
+                }}
+              />
+            )}
+            {screen === "write" && (
+              <WriteWorld
+                world={writeWorld}
+                onBack={() => setScreen("home")}
+                onBorn={handleBorn}
+              />
+            )}
+            {screen === "game" && (
+              <MiniGame
+                worldId={worldId}
+                creatures={creatures}
+                onBack={() => setScreen("world")}
+              />
+            )}
+          </div>
+        </Suspense>
       </div>
-    </div>
+    </ErrorBoundary>
   );
 }
