@@ -28,6 +28,9 @@ import {
   BIG, SOCIAL, SEP, SEP2, SCHOOL, SCHOOL2, SCARE2,
   W_SEP, W_COH, W_ALIGN, W_FLEE, W_PAL, STEER_CAP, FLEE_DECAY,
   FRIEND_SECS, FRIEND_RATE, CARE_PER_FRIEND, growthScale,
+  FOOD2, FOOD_EAT, FOOD_LIFE, FOOD_MAX,
+  CARE_PER_FOOD, CARE_PER_HI, CARE_HI_CAP, CARE_PER_TRICK,
+  TRICK_DUR, TRICK_COOLDOWN, TRICK_TWIRL, trickPose, type TrickPose,
 } from "@/lib/social";
 import { welcomeBack, type Visit } from "@/lib/daily";
 import { drawCrayonStroke } from "@/lib/crayon";
@@ -128,6 +131,26 @@ const TONE: Record<string, Tone> = {
 const MAX_NAME = 16;
 const BANNER_MS = 2800;
 const LONG_PRESS_MS = 520;
+/** Finger slop, in px: past this a press stops being a tap or a hold and
+ *  becomes a carry. One number separates all three gestures — see `onCanvasMove`. */
+const DRAG_SLOP = 14;
+/** Seconds a creature takes to swim back to where it belongs after being put
+ *  down. Long enough to read as swimming, short enough that a child who let go
+ *  in the sky is not left waiting for the joke to end. */
+const DROP_HOME = 0.4;
+
+/** What a crumb is worth, as a fraction of a creature's own cruising speed.
+ *  Not a new number to tune: it is exactly the three pulls it stands in for —
+ *  cohesion, alignment, and the lean towards a pal — so a crumb in reach beats
+ *  schooling by construction and still loses to something big going past. */
+const W_FOOD = W_COH + W_ALIGN + W_PAL;
+/** Numbers per crumb in the ring: x, y, born, alive. */
+const FOOD_SLOT = 4;
+
+/** One trick pose, borrowed by whichever creature is mid-trick this frame.
+ *  Thirty creatures cost thirty records for the life of the scene, not thirty
+ *  per frame, and a trick is one creature at a time on top of that. */
+const POSE: TrickPose = { dx: 0, dy: 0, rot: 0, sx: 1, sy: 1 };
 
 /* the ink each banner icon is drawn in */
 const BANNER_INK: Partial<Record<IconName, { color: string; fill?: string }>> = {
@@ -206,6 +229,12 @@ interface RT {
   care: number;
   /** Hellos counted towards care this session, so a drum solo is still one hi. */
   hiN: number;
+  /** 1 while there is a crumb in reach. A swimmer's idle up-and-down is worth
+   *  half the screen a second and the strongest steer it can be given is worth
+   *  a fiftieth of that, so a fish that keeps drifting off its own height never
+   *  actually arrives at anything. While this is set, that wandering gives way
+   *  — it is still swimming, it just stops changing its mind about how deep. */
+  onFood: 0 | 1;
 }
 
 /** Behaviours whose artwork turns to face the way it is travelling. */
@@ -353,6 +382,60 @@ function drawSpark(ctx: CanvasRenderingContext2D, x: number, y: number, r: numbe
   }
   ctx.closePath();
   ctx.fill();
+  ctx.restore();
+}
+
+/**
+ * A crumb of food, drawn the way the child drew everything else it is sitting
+ * in: a lumpy wax morsel inside an inked edge, not a dot. The lumps come off
+ * the crumb's own seed rather than a random hand, so it is the same crumb every
+ * frame — the wobble reads as a drawn shape, and a wobble that re-rolled sixty
+ * times a second would read as static. Costs one path and no allocation.
+ */
+const CRUMB_PTS = 7;
+/** The corners of the crumb being drawn. One array for the life of the page:
+ *  a crumb is drawn every frame and must not allocate to be drawn. */
+const CRUMB_XY = new Float64Array(CRUMB_PTS * 2);
+function drawCrumb(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, r: number, seed: number, alpha: number,
+) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+  for (let k = 0; k < CRUMB_PTS; k++) {
+    const a = (k / CRUMB_PTS) * Math.PI * 2 + seed;
+    // a cheap, stable hash per corner: same crumb, same lumps, every frame
+    const rr = r * (0.66 + 0.5 * (Math.sin(seed * 12.9898 + k * 4.1) * 0.5 + 0.5));
+    CRUMB_XY[k * 2] = Math.cos(a) * rr;
+    CRUMB_XY[k * 2 + 1] = Math.sin(a) * rr * 0.86;
+  }
+  /* Curved through the corners rather than joined between them: a crumb has
+     lumps, not facets, and seven straight edges read as a bag of chips. */
+  ctx.beginPath();
+  ctx.moveTo(
+    (CRUMB_XY[(CRUMB_PTS - 1) * 2] + CRUMB_XY[0]) / 2,
+    (CRUMB_XY[(CRUMB_PTS - 1) * 2 + 1] + CRUMB_XY[1]) / 2,
+  );
+  for (let k = 0; k < CRUMB_PTS; k++) {
+    const n = ((k + 1) % CRUMB_PTS) * 2;
+    ctx.quadraticCurveTo(
+      CRUMB_XY[k * 2], CRUMB_XY[k * 2 + 1],
+      (CRUMB_XY[k * 2] + CRUMB_XY[n]) / 2, (CRUMB_XY[k * 2 + 1] + CRUMB_XY[n + 1]) / 2,
+    );
+  }
+  ctx.closePath();
+  ctx.fillStyle = "#ffc72c";
+  ctx.fill();
+  ctx.lineWidth = Math.max(1.5, r * 0.26);
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#2d2926";
+  ctx.stroke();
+  // …and a crumb of a crumb beside it, because nobody draws just the one
+  ctx.beginPath();
+  ctx.arc(r * 1.05, -r * 0.8, Math.max(1.2, r * 0.22), 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -533,6 +616,17 @@ export default function WorldScene({
   const rtRef = useRef<Map<string, RT>>(new Map());
   const fxRef = useRef(newFxState());
   const burstRef = useRef<{ x: number; y: number }[]>([]); // evolution bursts (world coords)
+  const popRef = useRef<{ x: number; y: number }[]>([]);   // a creature put down (world coords)
+  /* ── crumbs ───────────────────────────────────────────────────────────────
+     Six of them at most, in a fixed ring of x, y, born, alive — a new crumb
+     overwrites the oldest, which caps a child drumming on the glass without
+     ever telling them no. Made once and written in place for the life of the
+     scene, like everything else the loop touches. It lives out here rather than
+     inside the loop because dropping one happens in a pointer handler, the same
+     way `burstRef` does. Never persisted, never on `Creature`: food is a treat,
+     not a save file, and a crumb should not still be there tomorrow. */
+  const foodRef = useRef(new Float32Array(FOOD_MAX * FOOD_SLOT));
+  const foodAt = useRef(0);                                // the write cursor
   const seenArtRef = useRef<Set<string>>(new Set());
   const arrivalRef = useRef<string | null>(null);
   const [muted, setM] = useState(isMuted());
@@ -785,7 +879,7 @@ export default function WorldScene({
         near: "", nearT: 0, pal: "",
         held: 0, hx: 0, hy: 0, dropT: -1e9,
         trT: -1e9, trK: (rnd() * 4) | 0,
-        care: 0, hiN: 0,
+        care: 0, hiN: 0, onFood: 0,
       };
       rt.next = rt.t;
       styleSpawn(rt, b);
@@ -1013,6 +1107,7 @@ export default function WorldScene({
       const list = creaturesRef.current;
       const pen = maskRef.current;          // the painted regions, when there are any
       const calm = calmRef.current;         // < 1 when the viewer asked for less motion
+      const food = foodRef.current;         // whatever crumbs are in the water
 
       /* ── whose turn it is to be a character ── */
       if (beatId !== null) {
@@ -1067,11 +1162,14 @@ export default function WorldScene({
          caught or taken away: something big going past makes the small ones
          scatter and then drift back together, and it wiggles too, because both
          ends of that are a game of tag. */
-      if (list.length > 1 && ++socN >= SOC_EVERY) {
+      /* (one creature alone still needs this pass now that there are crumbs to
+         notice — the pair loops below simply have no pairs to walk) */
+      if (list.length > 0 && ++socN >= SOC_EVERY) {
         socN = 0;
         // real seconds since the last *pass* — using `dt` here would quarter it
         const el = Math.min(0.5, t - socT);
         socT = t;
+        let chomp = false;               // one nibble is heard, not six at once
 
         /* Flattened once: the map lookup, the kind lookup and the three set
            tests are paid per creature, never per pair. */
@@ -1221,6 +1319,12 @@ export default function WorldScene({
             }
           }
 
+          if (r.held) {
+            // in a hand. Nothing talks it into anything while it is up there.
+            r.sx = 0; r.sy = 0;
+            continue;
+          }
+
           if (!nsoc[i]) {
             /* Rooted, orbiting, station-keeping or mid-dash: never steered. A
                tree with a friend leans towards it instead of strolling over,
@@ -1233,6 +1337,48 @@ export default function WorldScene({
             continue;
           }
 
+          /* ── and whether anybody drew it any lunch ────────────────────────
+             Six crumbs against thirty creatures is a hundred and eighty plain
+             number comparisons — against the 435 pairs above, nothing. The
+             nearest one wins, and only if it is inside `FOOD`: a creature is
+             not summoned across the whole world by a crumb, it notices one
+             nearby. Nothing is ever hungry and nothing ever misses out; food
+             here is a treat somebody brought, not a thing to survive. */
+          let fx = 0, fy = 0;
+          let fd = FOOD2;
+          for (let k = 0; k < FOOD_MAX; k++) {
+            const o = k * FOOD_SLOT;
+            if (food[o + 3] !== 1) continue;
+            const dx = food[o] - r.x, dy = food[o + 1] - r.y;
+            const d2 = dx * dx + dy * dy;
+            if (d2 >= fd) continue;
+            fd = d2; fx = dx; fy = dy;
+            if (d2 < FOOD_EAT * FOOD_EAT) {
+              food[o + 3] = 0;                       // eaten, and delighted about it
+              fx = 0; fy = 0; fd = FOOD2;
+              r.excite = 1;
+              r.care += CARE_PER_FOOD;
+              for (let s = 0; s < 7; s++) {
+                sparkles.push({
+                  x: r.x * W + (Math.random() - 0.5) * 26,
+                  y: r.y * H + (Math.random() - 0.5) * 20,
+                  vx: (Math.random() - 0.5) * 60,
+                  vy: -26 - Math.random() * 40,
+                  life: 0.5 + Math.random() * 0.4,
+                });
+              }
+              if (!chomp) {
+                chomp = true;
+                if (world === "ocean") sfxBubble(); else sfxHappy();
+              }
+            }
+          }
+
+          /* Heading for one, then, and it says so — a swimmer's own idle
+             wandering gives way to it up in the behaviour chain. */
+          const fed = fx !== 0 || fy !== 0;
+          r.onFood = fed ? 1 : 0;
+
           /* Each pull arrives as a direction; the weights say how much of the
              creature's own cruising speed each one is worth. */
           let ax = 0, ay = 0;
@@ -1240,19 +1386,30 @@ export default function WorldScene({
             const m = Math.hypot(sepX[i], sepY[i]);
             ax += (sepX[i] / m) * W_SEP; ay += (sepY[i] / m) * W_SEP;
           }
-          if (cohN[i] > 0) {
+          if (fed) {
+            /* A crumb in reach is where the school is going now: it stands in
+               for cohesion, alignment and the pull of a pal rather than being
+               weighed against them, which is what makes it the strongest thing
+               a creature wants short of getting out of a big one's way.
+               Spacing still applies, so they gather round a crumb rather than
+               piling into one another on top of it. */
+            const m = Math.hypot(fx, fy);
+            ax += (fx / m) * W_FOOD; ay += (fy / m) * W_FOOD;
+          } else if (cohN[i] > 0) {
             const cx = cohX[i] / cohN[i] - r.x, cy = cohY[i] / cohN[i] - r.y;
             const m = Math.hypot(cx, cy);
             if (m > 1e-6) { ax += (cx / m) * W_COH; ay += (cy / m) * W_COH; }
           }
+          // …and the other two the crumb stood in for
           // alignment needs no normalising: a school that disagrees with itself
           // averages towards nothing, which is the honest answer
-          if (aliN[i] > 0) ax += (aliX[i] / aliN[i]) * W_ALIGN;
+          if (!fed && aliN[i] > 0) ax += (aliX[i] / aliN[i]) * W_ALIGN;
           if (flX[i] !== 0 || flY[i] !== 0) {
+            // …and nothing outranks getting out of the way, crumb or no crumb
             const m = Math.hypot(flX[i], flY[i]);
             ax += (flX[i] / m) * W_FLEE * r.flee; ay += (flY[i] / m) * W_FLEE * r.flee;
           }
-          if (paX[i] !== 0 || paY[i] !== 0) {
+          if (!fed && (paX[i] !== 0 || paY[i] !== 0)) {
             const m = Math.hypot(paX[i], paY[i]);
             ax += (paX[i] / m) * W_PAL; ay += (paY[i] / m) * W_PAL;
           }
@@ -1268,6 +1425,30 @@ export default function WorldScene({
           }
           r.sx = ax; r.sy = ay;
         }
+      }
+
+      /* ── the crumbs somebody drew ────────────────────────────────────────
+         Drawn before the creatures, so a fish that has arrived at one is over
+         it rather than behind it. A crumb nobody comes for fades out at
+         `FOOD_LIFE` instead of sitting there forever, and a crumb fades *in*
+         over its first moment so it reads as being drawn rather than as
+         appearing. */
+      const crumbF = Math.min(W, H) / 520;
+      for (let k = 0; k < FOOD_MAX; k++) {
+        const o = k * FOOD_SLOT;
+        if (food[o + 3] !== 1) continue;
+        const age = t - food[o + 2];
+        if (age > FOOD_LIFE) { food[o + 3] = 0; continue; }
+        const a = Math.min(1, age * 5) * Math.min(1, (FOOD_LIFE - age) * 0.7);
+        const seed = food[o + 2] * 3.7 + k;
+        drawCrumb(
+          ctx,
+          food[o] * W,
+          food[o + 1] * H + Math.sin(t * 1.6 + seed) * 2.2,   // it drifts, a little
+          5.5 * crumbF + 3,
+          seed,
+          a,
+        );
       }
 
       // nobody stands so low that the bottom HUD is drawn over them
@@ -1286,10 +1467,25 @@ export default function WorldScene({
         // where it was, in case the painted world says it may not go there
         const wasX = rt.x, wasY = rt.y, wasB = rt.baseY;
 
+        /* ── in a hand, or on its way back from one ── */
+        const carried = rt.held === 1;
+        const homing = !carried && t - rt.dropT < DROP_HOME;
+
         // behavior motion
-        if (b === "swim" || b === "fly") {
+        if (carried) {
+          /* Everything a creature usually does is off while a finger has it —
+             a fish that carried on swimming out of a hand would not be a fish
+             that is being held. Only its own motion is skipped, though:
+             everything below still runs, so the neighbours still see it, its
+             trail still whips out behind it as it is swung about, and it still
+             wriggles and blinks. */
+          rt.x = rt.hx; rt.y = rt.hy; rt.baseY = rt.hy;
+          rt.excite = Math.max(rt.excite, 0.6);              // wriggling, the whole time
+          rt.sq += (-0.12 - rt.sq) * Math.min(1, dt * 6);    // and dangling, stretched
+        } else if (b === "swim" || b === "fly") {
           rt.x += rt.dir * rt.speed * speedBoost * dt;
-          rt.baseY += Math.sin(t * 0.3 + rt.seed) * 0.008 * dt * 60;
+          // …and the wandering stops while there is a crumb to get to (see `onFood`)
+          if (!rt.onFood) rt.baseY += Math.sin(t * 0.3 + rt.seed) * 0.008 * dt * 60;
           // (the painted band, when the child painted one — else exactly as before)
           rt.baseY = Math.min(rt.reg ? rt.bandB - 0.03 : 0.72, Math.max(rt.reg ? rt.bandT + 0.03 : 0.16, rt.baseY));
           rt.y = rt.baseY + Math.sin(rt.t * (b === "fly" ? 1.4 : 0.9) + rt.seed) * 0.045;
@@ -1507,6 +1703,30 @@ export default function WorldScene({
         }
         // grow, and anything we have never heard of: anchored, sway only
 
+        /* ── and if it has just been put down ─────────────────────────────
+           It does not *appear* where it belongs; it goes there. Its own way of
+           moving has already run, above, from wherever the finger left it — a
+           fish in the sky has already pulled its drifting height back into its
+           band, a cow in mid-air has already found the ground under it — and
+           all this does is ease the drop position onto that answer over
+           `DROP_HOME`. Which is why it needs to know nothing about which of the
+           eighteen ways of moving this one does: at `e` = 0 it is exactly where
+           it was let go, at 1 it is exactly where its own kind would have it,
+           and there is no seam at either end. */
+        if (homing) {
+          const u = (t - rt.dropT) / DROP_HOME;
+          const e = u * u * (3 - 2 * u);
+          /* Anything with feet belongs on the ground, whether or not its own
+             way of moving bothers to say so — a flower's does not, it simply
+             stands where it was planted, and a flower left hovering in the sky
+             is the one thing worse than a flower that teleported. */
+          if (GROUNDED.has(b)) rt.y = gy(rt.x) + rt.foot;
+          rt.x = rt.hx + (rt.x - rt.hx) * e;
+          rt.y = rt.hy + (rt.y - rt.hy) * e;
+          rt.baseY = rt.hy + (rt.baseY - rt.hy) * e;
+          rt.sq *= 1 - e;                    // the landing squash, gone by the time it is home
+        }
+
         /* ── and what the neighbours talked it into ───────────────────────
            Spent here, after the creature has moved its own way and before the
            standing cap, the painted region and the trailing update — all three
@@ -1546,8 +1766,11 @@ export default function WorldScene({
 
         if (GROUNDED.has(b) && rt.y > standCap) rt.y = standCap;
 
-        /* ── a painted world keeps everyone where they belong ── */
-        if (pen && rt.reg) {
+        /* ── a painted world keeps everyone where they belong ──
+           …unless a hand has it, or is still handing it back: a wall that
+           pushes against a finger reads as a creature refusing to be picked
+           up. Where it is put down is settled on release, not here. */
+        if (pen && rt.reg && !carried && !homing) {
           if (rt.reg === "ground") {
             if (!hasGroundAt(colsRef.current, rt.x)) {
               rt.x = wasX; rt.y = wasY;
@@ -1641,6 +1864,31 @@ export default function WorldScene({
             if (beatDX !== 0 || beatDY !== 0) ctx.translate(beatDX * sizeF, beatDY * sizeF);
             if (beatRot !== 0) ctx.rotate(beatRot);
             if (beatSx !== 1 || beatSy !== 1) ctx.scale(beatSx, beatSy);
+          }
+          /* ── and its trick, if somebody just said hello ──
+             The same hook as the idle beat, for the same reason: a trick is a
+             moment laid over whatever the creature was already doing, not
+             another way of being alive. `trickPose` writes into one module
+             record — thirty creatures never cost thirty poses a frame — and
+             `calm` is handed straight through, so a viewer who asked for less
+             motion still gets the trick, the name tag and the sparkle without
+             the sprite being thrown about. */
+          const tu = (t - rt.trT) / TRICK_DUR[rt.trK];
+          if (tu > 0 && tu < 1) {
+            trickPose(POSE, rt.trK, tu, calm);
+            if (POSE.dx !== 0 || POSE.dy !== 0) ctx.translate(POSE.dx * sizeF, POSE.dy * sizeF);
+            if (POSE.rot !== 0) ctx.rotate(POSE.rot);
+            if (POSE.sx !== 1 || POSE.sy !== 1) ctx.scale(POSE.sx, POSE.sy);
+            // the fourth one throws off sparks as it goes round
+            if (rt.trK === TRICK_TWIRL && Math.random() < 0.5) {
+              sparkles.push({
+                x: px + (Math.random() - 0.5) * sp.w * scl,
+                y: py + (Math.random() - 0.5) * sp.h * scl,
+                vx: (Math.random() - 0.5) * 50,
+                vy: -20 - Math.random() * 40,
+                life: 0.5 + Math.random() * 0.35,
+              });
+            }
           }
           /* ── what trails ──
              Applied out here, *before* the facing flip below: the whip is a
@@ -1788,6 +2036,21 @@ export default function WorldScene({
           });
         }
       }
+      // …and a smaller one wherever a creature has just been put back down
+      while (popRef.current.length) {
+        const p = popRef.current.pop()!;
+        for (let k = 0; k < 12; k++) {
+          const a = Math.random() * Math.PI * 2;
+          const v = 30 + Math.random() * 70;
+          sparkles.push({
+            x: p.x * W + (Math.random() - 0.5) * 16,
+            y: p.y * H + (Math.random() - 0.5) * 12,
+            vx: Math.cos(a) * v,
+            vy: Math.sin(a) * v - 30,
+            life: 0.5 + Math.random() * 0.35,
+          });
+        }
+      }
       for (let i = sparkles.length - 1; i >= 0; i--) {
         const s = sparkles[i];
         s.life -= dt * 1.4;
@@ -1809,8 +2072,21 @@ export default function WorldScene({
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
   }, []);
 
-  /* ── tapping a creature ───────────────────────────────────────────────── */
+  /* ── three things a finger can do ─────────────────────────────────────────
+     One press, three verbs, and no state machine to get out of step: the two
+     thresholds already here separate them completely.
+
+       up before 520ms and inside 14px … a hello, and its trick
+       still down at 520ms, inside 14px … its card
+       past 14px, whenever …………………………… it is being carried
+
+     A press that misses everything is a fourth: a crumb dropped in the water.
+     None of them can fire together — the timer that opens the card is cleared
+     the moment a carry begins, and a carry can only begin while that timer is
+     still pending. */
   const pressRef = useRef<{ id: string; x: number; y: number; timer: number } | null>(null);
+  /** Whichever creature is in a finger right now, if any. */
+  const dragRef = useRef<string | null>(null);
 
   const cancelPress = useCallback(() => {
     if (pressRef.current) window.clearTimeout(pressRef.current.timer);
@@ -1835,6 +2111,18 @@ export default function WorldScene({
     return best?.c ?? null;
   }, []);
 
+  /** Drop a crumb where the finger went. Never refuses: the oldest goes. */
+  const dropCrumb = useCallback((nx: number, ny: number) => {
+    const food = foodRef.current;
+    const o = foodAt.current * FOOD_SLOT;
+    foodAt.current = (foodAt.current + 1) % FOOD_MAX;
+    food[o] = nx;
+    food[o + 1] = ny;
+    food[o + 2] = performance.now() / 1000;
+    food[o + 3] = 1;
+    sfxTap();
+  }, []);
+
   const onCanvasDown = (e: React.PointerEvent) => {
     const cv = canvasRef.current;
     if (!cv) return;
@@ -1843,9 +2131,19 @@ export default function WorldScene({
     const nx = (e.clientX - r.left) / r.width;
     const ny = (e.clientY - r.top) / r.height;
     const hit = hitAt(nx, ny, r.width, r.height);
-    if (!hit) return;
+    // …and a finger that lands on nothing at all is drawing food
+    if (!hit) { dropCrumb(nx, ny); return; }
     const rt = rtRef.current.get(hit.id);
-    if (rt) { rt.excite = 1; rt.labelT = performance.now(); }
+    if (rt) {
+      // hello, straight away — this much happens whatever the finger does next
+      rt.excite = 1;
+      rt.labelT = performance.now();
+      // …and hellos count towards growing up, up to a dozen of them a session
+      if (rt.hiN * CARE_PER_HI < CARE_HI_CAP) {
+        rt.hiN++;
+        rt.care += CARE_PER_HI;
+      }
+    }
     sfxPop();
     cancelPress();
     // hold a creature to open its card
@@ -1864,10 +2162,99 @@ export default function WorldScene({
     };
   };
   const onCanvasMove = (e: React.PointerEvent) => {
+    const carrying = dragRef.current;
+    // a mouse wandering across the world with nothing pressed asks nothing of
+    // us, and must not pay for a layout read to find that out
+    if (!carrying && !pressRef.current) return;
+    const cv = canvasRef.current;
+    if (!cv) return;
+    const r = cv.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    /* Kept just inside the edges of the world: a creature carried off the side
+       is a creature the child has to go and find again. */
+    const nx = Math.max(0.04, Math.min(0.96, (e.clientX - r.left) / r.width));
+    const ny = Math.max(0.05, Math.min(0.95, (e.clientY - r.top) / r.height));
+
+    if (carrying) {
+      const rt = rtRef.current.get(carrying);
+      if (!rt) { dragRef.current = null; return; }
+      // it looks the way it is being swung, the same as it would if it swam there
+      if (Math.abs(nx - rt.hx) > 0.004) rt.dir = nx > rt.hx ? 1 : -1;
+      rt.hx = nx;
+      rt.hy = ny;
+      return;
+    }
+
     const p = pressRef.current;
     if (!p) return;
-    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 14) cancelPress();
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) <= DRAG_SLOP) return;
+    /* Past the slop, so this was never a tap and is no longer on its way to
+       being a hold: the card's timer goes, and from here the creature hangs off
+       the finger. The pointer is captured so it keeps up with a hand that
+       leaves the canvas — over the HUD, off the edge — instead of being
+       abandoned mid-air by a pointerleave. */
+    const id = p.id;
+    cancelPress();
+    const rt = rtRef.current.get(id);
+    if (!rt) return;
+    dragRef.current = id;
+    cv.setPointerCapture(e.pointerId);
+    rt.held = 1;
+    rt.hx = nx;
+    rt.hy = ny;
+    rt.excite = 1;      // it knows: wriggling, and a little bigger for it
+    rt.sq = -0.2;       // and stretched, because something has hold of it
+    sfxPop();
   };
+
+  /** A finger lifted: either a creature is put down, or a tap is finished. */
+  const onCanvasUp = useCallback(() => {
+    const id = dragRef.current;
+    if (!id) {
+      /* Still pending means the press never became a hold and never became a
+         carry — the card's timer has not fired and the slop was never crossed —
+         so this was a tap, and a tap is where the trick belongs. Starting it
+         back on the press would mean a creature spinning behind its own card,
+         or doing a backflip while it dangles off a finger; here, exactly one of
+         the three things a finger can do ever happens. */
+      const p = pressRef.current;
+      const rt = p ? rtRef.current.get(p.id) : null;
+      /* One tap is both hello and "do your trick": at four, two gestures for
+         two things that feel like one thing is one gesture too many. Tapping
+         again inside the cooldown still says hello and still excites it — it
+         simply does not restart the trick, so a drum solo reads as enthusiasm
+         rather than as a loop stuttering back to its first frame. */
+      if (rt) {
+        const s = performance.now() / 1000;
+        if (s - rt.trT > TRICK_COOLDOWN) {
+          rt.trT = s;
+          rt.care += CARE_PER_TRICK;
+        }
+      }
+      cancelPress();
+      return;
+    }
+    dragRef.current = null;
+    cancelPress();
+    const rt = rtRef.current.get(id);
+    if (!rt) return;
+    rt.held = 0;
+    rt.dropT = performance.now() / 1000;
+    rt.sq = 0.24;                                 // landing squash, the other way up
+    rt.excite = 1;
+    popRef.current.push({ x: rt.hx, y: rt.hy });
+    sfxSplash();
+    /* Put down somewhere it cannot live — a fish on the grass of a world the
+       child painted — the hand wins. It stops being bound to that region and
+       lives where it was left, rather than jittering against a wall it can
+       never walk out of. Repainting the world re-homes it, as it always did. */
+    const m = maskRef.current;
+    if (!m || !rt.reg) return;
+    const ok = rt.reg === "ground"
+      ? hasGroundAt(colsRef.current, rt.hx)
+      : regionAt(m, rt.hx, rt.hy) === rt.reg;
+    if (!ok) rt.reg = null;
+  }, [cancelPress]);
 
   /* ── creature edits ───────────────────────────────────────────────────── */
   // When the app hands us callbacks it owns the data. Otherwise we keep the
@@ -2139,9 +2526,9 @@ export default function WorldScene({
         className="absolute inset-0 canvas-touch"
         onPointerDown={onCanvasDown}
         onPointerMove={onCanvasMove}
-        onPointerUp={cancelPress}
-        onPointerCancel={cancelPress}
-        onPointerLeave={cancelPress}
+        onPointerUp={onCanvasUp}
+        onPointerCancel={onCanvasUp}
+        onPointerLeave={onCanvasUp}
       />
 
       {/* ── HUD ── */}
