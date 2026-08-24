@@ -9,7 +9,7 @@
 // product: the word they wrote turns into a creature and walks into their
 // world.
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WritingWorldId } from "@/lib/types";
 import { writingWorldById } from "@/lib/creatures";
 import {
@@ -17,7 +17,7 @@ import {
 } from "@/lib/writing";
 import { loadWriting, saveWriting, nextLessonKey, type WritingProgress } from "@/lib/storage";
 import { sfxTap, sfxHappy } from "@/lib/audio";
-import { sayLine, hush } from "@/lib/speech";
+import { sayLine, sayLetter, sayWord, hush, canSpeak } from "@/lib/speech";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
 import { GlyphMark } from "@/components/ink/GlyphMark";
@@ -194,14 +194,39 @@ function Reward({ world, lesson, stars, hasNext, onNext, onPicker, onBorn }: {
 }) {
   const w = writingWorldById(world);
   const isWord = world === "words";
+  const wordChars = useMemo(() => (lesson.word ? lesson.word.split("") : []), [lesson.word]);
 
-  /* The payoff, out loud. For a pre-reader this line — "A is for Apple!", the
-     word they just built said whole — is the point of the screen, not the text
-     under the picture. A short beat lets the celebration sound land first. */
+  /* ── sounding out ──────────────────────────────────────────────────────────
+     A word is not letters in a row, it is a blend — and blending is the skill
+     Word World exists to teach. So the reward does not just say the answer: it
+     sounds it out, one letter lit and named at a time, then the whole word
+     said fast. `hi` is which letter is glowing right now; -1 is none. */
+  const [hi, setHi] = useState(-1);
+  const timers = useRef<number[]>([]);
+  const clearBlend = useCallback(() => {
+    timers.current.forEach((t) => window.clearTimeout(t));
+    timers.current = [];
+  }, []);
+  const soundOut = useCallback(() => {
+    clearBlend();
+    hush();
+    const at = (ms: number, fn: () => void) => timers.current.push(window.setTimeout(fn, ms));
+    const step = 720;
+    wordChars.forEach((c, i) => at(i * step, () => { setHi(i); sayLetter(c); }));
+    const after = wordChars.length * step;
+    at(after, () => { setHi(-1); sayWord(lesson.word ?? ""); });   // …now the whole word
+    at(after + 900, () => sayLine(lesson.rewardTitle));            // "Dog is alive!"
+  }, [wordChars, lesson.word, lesson.rewardTitle, clearBlend]);
+
+  /* The payoff, out loud. A word sounds itself out; everything else just says
+     its line — "A is for Apple!" — a beat after the celebration lands. */
   useEffect(() => {
-    const id = window.setTimeout(() => sayLine(lesson.rewardTitle), 480);
-    return () => { window.clearTimeout(id); hush(); };
-  }, [lesson.rewardTitle]);
+    const id = window.setTimeout(() => {
+      if (isWord && wordChars.length) soundOut();
+      else sayLine(lesson.rewardTitle);
+    }, 480);
+    return () => { window.clearTimeout(id); clearBlend(); hush(); };
+  }, [lesson.rewardTitle, isWord, wordChars.length, soundOut, clearBlend]);
   // Math World counts the thing out; everywhere else one big one is the prize.
   const many = Math.min(lesson.count, 9);
 
@@ -236,6 +261,43 @@ function Reward({ world, lesson, stars, hasNext, onNext, onPicker, onBorn }: {
               </span>
             )}
           </span>
+
+          {/* the blend itself: the letters they wrote, lighting up and sounding
+              out one by one, then the whole word — this is the reading skill,
+              not decoration */}
+          {isWord && wordChars.length > 0 && (
+            <div className="grid gap-2 justify-items-center">
+              <div className="flex items-end justify-center gap-1.5" aria-hidden="true">
+                {wordChars.map((c, i) => {
+                  const on = hi === i;
+                  return (
+                    <span
+                      key={i}
+                      className="grid place-items-center rounded-xl transition-transform"
+                      style={{
+                        width: 42, height: 52,
+                        background: on ? "#fffaf0" : "rgba(255,250,240,0.55)",
+                        border: `2.5px solid ${on ? "var(--ink)" : "rgba(45,41,38,0.35)"}`,
+                        transform: on ? "translateY(-4px) scale(1.08)" : "none",
+                      }}
+                    >
+                      <GlyphMark char={c} size={30} color={on ? w.tone : "rgba(45,41,38,0.6)"} />
+                    </span>
+                  );
+                })}
+              </div>
+              {canSpeak() && (
+                <button
+                  onClick={() => { sfxTap(); soundOut(); }}
+                  className="ink-title text-fs-xs px-3 py-1.5 rounded-full inline-flex items-center gap-1.5"
+                  style={{ background: "#fffaf0", border: "2.5px solid var(--ink)" }}
+                >
+                  <Icon name="soundOn" size={16} />
+                  Sound it out
+                </button>
+              )}
+            </div>
+          )}
 
           <h2 className="ink-title text-fs-2xl leading-tight">{lesson.rewardTitle}</h2>
           <p className="ink-hand text-fs-sm">{lesson.rewardLine}</p>
