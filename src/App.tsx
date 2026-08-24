@@ -38,6 +38,21 @@ const MiniGame = lazy(() => import("@/components/MiniGame"));
 const WriteWorld = lazy(() => import("@/components/WriteWorld"));
 const PaintWorld = lazy(() => import("@/components/PaintWorld"));
 
+/**
+ * How many creatures a world holds.
+ *
+ * Not a storage limit — photos live in their own key now and the rest is a few
+ * kilobytes. It is a rendering limit: every creature is a live sprite in one
+ * canvas loop, and the thirty-first is where an old tablet starts to drop
+ * frames. Past it, the oldest drawing makes way.
+ *
+ * That is still the wrong shape for a child who has drawn thirty-one things,
+ * and the right fix is to say goodbye out loud — by name, the way releasing a
+ * creature already does — rather than to raise the number. Left as it is for
+ * now because the banner that would carry it lives in the world scene.
+ */
+const MAX_CREATURES = 30;
+
 function pickName(kindId: string, taken: Set<string>): string {
   const pool = kindById(kindId).names;
   const free = pool.filter((n) => !taken.has(n));
@@ -93,7 +108,30 @@ export default function App() {
     );
   };
 
-  /* ── AI polish: quietly upgrade a creature's crayon art in the background ── */
+  /* ── AI polish: quietly upgrade a creature's crayon art in the background ──
+     `artTried` used to be written the moment a creature was picked, before the
+     request had even been sent, and it was then treated as final. That is
+     wrong twice over.
+
+     Wrong moment, first: the attempt fails routinely — the child is on a
+     train, the request never lands — and the creature was marked as tried
+     anyway, on a promise the app had not kept.
+
+     Wrong idea, second, and this is the one that actually bit. Look at what
+     the server can answer with (api/routers/polish.ts): `unavailable` means
+     nobody has configured an art key yet, and `failed` covers being rate
+     limited. Neither is a fact about the drawing — both are facts about a
+     Tuesday afternoon. A flag written on either of them, and persisted,
+     means that the day the key finally is configured, every creature drawn
+     before it stays in crayon forever.
+
+     So nothing writes it any more. A session ref stops the same creature
+     being asked about twice while its request is still in the air, and it is
+     deliberately not persisted, because a new session is exactly when a retry
+     should happen. The field is still read, and still honoured — as an
+     ordering hint, not a gate: creatures nobody has asked about go first. */
+  const askedRef = useRef<Set<string>>(new Set());
+
   const startPolish = (creature: Creature) => {
     let image: string | null;
     try {
@@ -158,9 +196,14 @@ export default function App() {
   // retro-polish up to 3 older crayon-only creatures when entering a world
   useEffect(() => {
     if (screen !== "world") return;
-    const backlog = creatures.filter((c) => !c.artTried && !c.artUrl).slice(0, 3);
+    const waiting = creatures.filter(
+      (c) => !c.artUrl && !askedRef.current.has(c.id),
+    );
+    // never asked about first, then the ones an older build gave up on
+    const backlog = [...waiting.filter((c) => !c.artTried), ...waiting.filter((c) => c.artTried)]
+      .slice(0, 3);
     if (!backlog.length) return;
-    setCreatures((prev) => prev.map((c) => (backlog.some((b) => b.id === c.id) ? { ...c, artTried: true } : c)));
+    for (const c of backlog) askedRef.current.add(c.id);
     backlog.forEach((c, i) => window.setTimeout(() => startPolish(c), i * 4000));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen]);
@@ -230,12 +273,12 @@ export default function App() {
       speed: 0.03,
       phase: Math.random() * 10,
       scale: 0.75 + Math.random() * 0.45,
-      artTried: true,
     };
-    setCreatures((prev) => [...prev.slice(-29), creature]);
+    setCreatures((prev) => [...prev.slice(-(MAX_CREATURES - 1)), creature]);
     setNewId(creature.id);
     setPhotoDraft(null);
     setScreen("world");
+    askedRef.current.add(creature.id);
     startPolish(creature);
   };
 
@@ -257,11 +300,11 @@ export default function App() {
       speed: 0.03,
       phase: Math.random() * 10,
       scale: 0.8 + Math.random() * 0.35,
-      artTried: true,
     };
-    setCreatures((prev) => [...prev.slice(-29), creature]);
+    setCreatures((prev) => [...prev.slice(-(MAX_CREATURES - 1)), creature]);
     setNewId(creature.id);
     setScreen("world");
+    askedRef.current.add(creature.id);
     startPolish(creature);
   };
 

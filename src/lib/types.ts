@@ -53,7 +53,12 @@ export interface Creature {
   phase: number;              // animation phase offset
   scale: number;              // size relative to drawing
   artUrl?: string;            // AI-polished artwork (public URL), undefined = crayon
-  artTried?: boolean;         // polish was already requested (don't re-ask)
+  /** Legacy: an older build set this before a polish request was even sent, and
+   *  treated it as final — which meant a missing art key or a rate limit, both
+   *  facts about a Tuesday rather than about the drawing, stranded a creature
+   *  in crayon forever. Nothing writes it any more. It is still read, as an
+   *  ordering hint: creatures nobody has asked about are asked about first. */
+  artTried?: boolean;
   photoData?: string;         // paper-photo drawing (transparent PNG data URL)
   /** Born in Word World: its body is the doodle of this name, not `strokes`.
    *  Kept as an id rather than a baked PNG so it costs a few bytes of storage
