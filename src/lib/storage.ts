@@ -70,8 +70,9 @@ export function saveCreatures(c: Creature[]): SaveResult {
     if (!x.photoData) return x;
     photos[x.id] = x.photoData;
     any = true;
-    const { photoData: _drop, ...rest } = x;
-    return rest as Creature;
+    const lean: Creature = { ...x };
+    delete lean.photoData;
+    return lean;
   });
 
   const out: SaveResult = { creatures: false, photos: true };
