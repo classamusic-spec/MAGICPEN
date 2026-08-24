@@ -468,13 +468,17 @@ export function TopBinding({ seed = 19 }: { seed?: number }) {
 /* ── a whole sheet ───────────────────────────────────────────────────────── */
 
 /**
- * The shadow the bound top strip lies in.
+ * The shadow the bound top strip lies in, as a band whose lower edge scallops.
  *
- * A sheet on a coil is held up at every ring and sags between them, so the
- * shading under its top edge scallops. Drawn clipped to the paper, which is
- * what makes it safe: the page's own edge is a hand-drawn line that bows by a
- * couple of px, and anything painted near it freehand would float off the sheet
- * wherever the bow went the other way.
+ * A sheet on a coil is pulled up at every ring and hangs between them, so the
+ * shading under its top edge is deepest midway between two holes. It is drawn
+ * clipped to the paper, and that is what makes it safe: the page's own edge is
+ * a freehand line that bows by a couple of px, so anything painted near it in
+ * open space would float clear of the sheet wherever the bow went the other
+ * way. Two of these stacked stand in for a soft gradient — one step reads as a
+ * printed line, two read as shade.
+ *
+ * `y` values are page coordinates, measured from the top of the page box.
  */
 function liftShade(w: number, xs: number[], hi: number, lo: number): string {
   if (!xs.length) return "";
@@ -519,13 +523,16 @@ export function NotepadPage({
     () => (box.w > 24 && box.h > 24 ? roughRect(box.w - 8, box.h - 8, { seed, wobble: 3.6, radius: 16 }) : ""),
     [box.w, box.h, seed],
   );
-  // the same hole positions the metal will use, so the sag lands between rings
-  const shade = useMemo(
-    () => (coil && box.w >= 40
-      ? liftShade(box.w, ringXs(box.w, seed + 7), PAPER_Y + COIL_TOP + 1.5, PAPER_Y + COIL_TOP + 4.5)
-      : ""),
-    [box.w, seed, coil],
-  );
+  // The same hole positions the metal will use, so the sag lands between the
+  // rings. Both bands start well clear of the drawn edge — the ink line the
+  // page draws over itself is nearly 3px wide, and shade tucked under it is
+  // shade nobody will ever see.
+  const shade = useMemo(() => {
+    if (!coil || box.w < 40) return null;
+    const xs = ringXs(box.w, seed + 7);
+    const y = PAPER_Y + COIL_TOP;
+    return { far: liftShade(box.w, xs, y + 13, y + 19), near: liftShade(box.w, xs, y + 7, y + 12) };
+  }, [box.w, seed, coil]);
 
   const showCoil = coil && box.w > 0;
 
@@ -555,7 +562,8 @@ export function NotepadPage({
           {/* the paper itself, clipped to the torn edge */}
           <g clipPath={`url(#np-${uid})`}>
             <rect x={0} y={0} width={box.w} height={box.h} fill="var(--paper-card, #fffdf7)" />
-            {shade && <path d={shade} fill={CAST} opacity={0.055} />}
+            {shade && <path d={shade.far} fill={CAST} opacity={0.035} />}
+            {shade && <path d={shade.near} fill={CAST} opacity={0.04} />}
           </g>
           {/* two passes of ink: a pen gone over the edge twice */}
           <g transform="translate(4 4)">
