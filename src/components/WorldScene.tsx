@@ -1779,6 +1779,20 @@ export default function WorldScene({
 
         if (GROUNDED.has(b) && rt.y > standCap) rt.y = standCap;
 
+        /* …and nobody floats so high that their head leaves the screen. The
+           swim band's floor is a fixed 0.16, but a sprite is drawn from its
+           *centre*, so a big fish riding the top of its wave hung half out the
+           top edge — the mirror of the HUD clamp above, and the same fix: keep
+           the whole body on screen rather than the centre. Size-aware, because
+           a grown whale needs far more headroom than a minnow. Streaks are
+           meant to leave, and a finger may lift a creature anywhere, so both
+           are left alone. */
+        if (!GROUNDED.has(b) && b !== "streak" && !carried) {
+          const scl0 = c.scale * growthScale(c.care) * sizeF * (1 + rt.excite * 0.25);
+          const ceilY = (sp.h * scl0 * 0.5 + 6) / Math.max(1, H);
+          if (rt.y < ceilY) rt.y = ceilY;
+        }
+
         /* ── a painted world keeps everyone where they belong ──
            …unless a hand has it, or is still handing it back: a wall that
            pushes against a finger reads as a creature refusing to be picked
