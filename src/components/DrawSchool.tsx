@@ -15,13 +15,14 @@
 // Structurally this is Write World: pick a lesson, trace it, get the payoff.
 // The picking and the payoff live here; the tracing is TraceScreen's job.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Stroke } from "@/lib/types";
 import { DRAW_LESSONS, LESSON_WORLDS, lessonsForWorld, type DrawLesson } from "@/lib/lessons";
 import { DOODLE_BOX, doodleLesson } from "@/lib/doodleTrace";
 import { WORLD_PACKS } from "@/lib/creatures";
 import { loadWriting, saveWriting, type WritingProgress } from "@/lib/storage";
 import { sfxHappy, sfxTap } from "@/lib/audio";
+import { sayLine, hush } from "@/lib/speech";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
 import { Doodle } from "@/components/ink/Doodles";
@@ -171,6 +172,13 @@ function Reward({ lesson, stars, strokes, hasNext, onNext, onPicker, onSetFree }
 }) {
   const pack = packOf(lesson.worldId);
   const tone = toneOf(lesson.worldId);
+
+  // say the payoff out loud — "You drew a fish!" — a beat after the fanfare
+  useEffect(() => {
+    const line = `You drew ${thingOf(lesson)}!`;
+    const id = window.setTimeout(() => sayLine(line), 480);
+    return () => { window.clearTimeout(id); hush(); };
+  }, [lesson]);
 
   return (
     <div className="screen overflow-y-auto no-scrollbar" style={{ background: pack.gradient }}>

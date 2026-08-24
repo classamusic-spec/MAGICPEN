@@ -9,7 +9,7 @@
 // product: the word they wrote turns into a creature and walks into their
 // world.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { WritingWorldId } from "@/lib/types";
 import { writingWorldById } from "@/lib/creatures";
 import {
@@ -17,6 +17,7 @@ import {
 } from "@/lib/writing";
 import { loadWriting, saveWriting, type WritingProgress } from "@/lib/storage";
 import { sfxTap, sfxHappy } from "@/lib/audio";
+import { sayLine, hush } from "@/lib/speech";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
 import { GlyphMark } from "@/components/ink/GlyphMark";
@@ -173,6 +174,14 @@ function Reward({ world, lesson, stars, hasNext, onNext, onPicker, onBorn }: {
 }) {
   const w = writingWorldById(world);
   const isWord = world === "words";
+
+  /* The payoff, out loud. For a pre-reader this line — "A is for Apple!", the
+     word they just built said whole — is the point of the screen, not the text
+     under the picture. A short beat lets the celebration sound land first. */
+  useEffect(() => {
+    const id = window.setTimeout(() => sayLine(lesson.rewardTitle), 480);
+    return () => { window.clearTimeout(id); hush(); };
+  }, [lesson.rewardTitle]);
   // Math World counts the thing out; everywhere else one big one is the prize.
   const many = Math.min(lesson.count, 9);
 

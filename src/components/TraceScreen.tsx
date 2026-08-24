@@ -20,6 +20,7 @@ import { ALL_GLYPHS, DIGIT_GLYPHS, GLYPH_BOX, densify, type Glyph } from "@/lib/
 import { scoreTrace, toGlyphSpace, tracePraise, type TraceScore } from "@/lib/tracing";
 import { hand, paperTile, roughEllipse, roughRect, shade, waxTile } from "@/lib/ink";
 import { sfxHappy, sfxMagic, sfxPop, sfxTap } from "@/lib/audio";
+import { primeVoices, hush, sayLetter, sayNumber, sayLine, canSpeak } from "@/lib/speech";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
 import { usePrefersReducedMotion } from "@/components/ink/motion";
@@ -1094,6 +1095,9 @@ export default function TraceScreen({
   const reduced = usePrefersReducedMotion();
 
   const [idx, setIdx] = useState(0);
+  // give the app a voice the moment a lesson opens, and take it back on the way
+  // out so a letter is never still being spoken over the next screen
+  useEffect(() => { primeVoices(); return () => hush(); }, []);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [done, setDone] = useState<DoneRec[]>([]);
   const [result, setResult] = useState<TraceScore | null>(null);
@@ -1148,6 +1152,18 @@ export default function TraceScreen({
 
   const current = items[idx];
   const space = current?.space ?? GLYPH_BOX;
+
+  /* What a target should sound like. The tracing screen does not know which
+     world it is in, so it reads the target itself: a one-character ruled glyph
+     is a letter said by its name, a longer ruled glyph is a number said as a
+     word ("three", never "3"), and an unruled target is a drawing, named as a
+     phrase. */
+  const sayTarget = useCallback((t: Item | undefined) => {
+    if (!t || !canSpeak()) return;
+    if (!t.ruled) sayLine(t.say);
+    else if (t.say.trim().length <= 1) sayLetter(t.say);
+    else sayNumber(t.say);
+  }, []);
   const stripH = multi ? Math.round(Math.min(78, Math.max(48, sheet.h * 0.15))) : 0;
 
   const after = useCallback((ms: number, fn: () => void) => {
@@ -1609,6 +1625,18 @@ export default function TraceScreen({
 
   /* ── scoring and praise ───────────────────────────────────────────────── */
 
+  /* Say each target out loud as the child arrives at it. A short beat lets the
+     sheet settle and the previous sound finish; `speak` cancels anything still
+     talking, so tapping ahead never stacks up a backlog. Only in the tracing
+     phase — the praise moment has its own line. */
+  useEffect(() => {
+    if (phase !== "trace") return;
+    const t = items[idx];
+    if (!t) return;
+    const id = window.setTimeout(() => sayTarget(t), 260);
+    return () => window.clearTimeout(id);
+  }, [idx, phase, items, sayTarget]);
+
   const advance = useCallback(() => {
     if (phaseRef.current !== "praise") return;
     phaseRef.current = "trace";
@@ -1848,10 +1876,23 @@ export default function TraceScreen({
             <Icon name="back" size={22} />
           </InkButton>
 
+          {canSpeak() && (
+            <InkButton
+              onClick={() => { sfxTap(); sayTarget(current); }}
+              shape="ellipse"
+              seed={31}
+              aria-label={`Hear ${current.say} again`}
+              className="tr-icon-btn"
+              style={{ width: TOOL, height: TOOL }}
+            >
+              <Icon name="soundOn" size={20} />
+            </InkButton>
+          )}
+
           <span className="tr-spacer" />
 
           <InkButton
-            onClick={() => { sfxTap(); startDemo(); }}
+            onClick={() => { sfxTap(); sayTarget(current); startDemo(); }}
             seed={64}
             radius={16}
             tone={demoing ? "#00c2b9" : undefined}
