@@ -25,7 +25,7 @@ import { Icon, type IconName } from "@/components/ink/Icons";
 import { hand, paperTile, roughRect, seedOf, tornEdge } from "@/lib/ink";
 import { newLag, lagWeight, updateLag, applyLag, type Lag } from "@/lib/secondary";
 import {
-  BIG, SOCIAL, SEP, SEP2, SCHOOL, SCHOOL2, SCARE2,
+  BIG, SOCIAL, SCHOOL, SCHOOL2, SCARE2, drawnWidth, sepFor,
   W_SEP, W_COH, W_ALIGN, W_FLEE, W_PAL, STEER_CAP, FLEE_DECAY,
   FRIEND_SECS, FRIEND_RATE, CARE_PER_FRIEND, growthScale,
   FOOD2, FOOD_EAT, FOOD_LIFE, FOOD_MAX,
@@ -997,6 +997,13 @@ export default function WorldScene({
     const nbig = new Uint8Array(SOC_MAX);
     const nsoc = new Uint8Array(SOC_MAX);
     const nroot = new Uint8Array(SOC_MAX);
+    /* How wide each one is drawn, in the same normalized-x the pass measures
+       distance in. Not a constant, and that is the whole point: a sprite is
+       drawn at `scale × min(W,H)/520` pixels and then measured against the
+       width, so the same fish is a tenth of a landscape tablet and a quarter
+       of an upright phone. A fixed separation tuned on one is a heap on the
+       other — which is exactly what happened. */
+    const nwide = new Float64Array(SOC_MAX);
     const sepX = new Float64Array(SOC_MAX), sepY = new Float64Array(SOC_MAX);
     const cohX = new Float64Array(SOC_MAX), cohY = new Float64Array(SOC_MAX);
     const cohN = new Int32Array(SOC_MAX);
@@ -1184,6 +1191,8 @@ export default function WorldScene({
           nbig[n] = BIG.has(c.kindId) ? 1 : 0;
           nsoc[n] = SOCIAL.has(cb) ? 1 : 0;
           nroot[n] = ROOTED.has(cb) ? 1 : 0;
+          // the same scale the sprite is drawn at further down, growth included
+          nwide[n] = drawnWidth(c.scale * growthScale(c.care), W, H);
           sepX[n] = 0; sepY[n] = 0;
           cohX[n] = 0; cohY[n] = 0; cohN[n] = 0;
           aliX[n] = 0; aliN[n] = 0;
@@ -1205,10 +1214,14 @@ export default function WorldScene({
 
             /* too close for comfort — whoever they are. Pushing harder than the
                school pulls is what stops the school becoming one flickering
-               pile; `W_SEP` > `W_COH` is that rule, and this is where it lands. */
-            if (d2 < SEP2 && d2 > 1e-9) {
+               pile; `W_SEP` > `W_COH` is that rule, and this is where it lands.
+               How close is too close depends on how big these two actually
+               are: a whale and a starfish do not want the same elbow room, and
+               neither does the same fish on a phone and on a tablet. */
+            const sep = sepFor(nwide[i], nwide[j]);
+            if (d2 < sep * sep && d2 > 1e-9) {
               const d = Math.sqrt(d2);
-              const w = (SEP - d) / (SEP * d);     // strongest right up against each other
+              const w = (sep - d) / (sep * d);     // strongest right up against each other
               sepX[i] -= dx * w; sepY[i] -= dy * w;
               sepX[j] += dx * w; sepY[j] += dy * w;
             }
