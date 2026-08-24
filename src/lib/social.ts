@@ -48,8 +48,15 @@ export const SOCIAL = new Set([
    and one that pushes harder than it pulls simply spreads out — which is the
    failure mode you cannot see. */
 
-/** Closer than this and they ease apart. */
-export const SEP = 0.075;
+/** Closer than this and they ease apart.
+ *
+ *  This is what the spacing of a settled school actually ends up being, so it
+ *  has to be bigger than the creatures are wide or they converge into one
+ *  overlapping blob — which is exactly what 0.075 did when I watched five fish
+ *  re-form after a scatter. A sprite is baked in a 150-unit box and drawn at
+ *  `scale × min(W,H)/520`, so a typical creature is a little over a tenth of
+ *  the width. Measured against that, with a margin, rather than guessed. */
+export const SEP = 0.115;
 export const SEP2 = SEP * SEP;
 /** Same-kind cohesion and alignment reach this far. */
 export const SCHOOL = 0.3;

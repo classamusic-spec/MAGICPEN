@@ -24,7 +24,11 @@ import { InkButton, InkCard, InkShape, Scribble, Tape } from "@/components/ink/I
 import { Icon, type IconName } from "@/components/ink/Icons";
 import { hand, paperTile, roughRect, seedOf, tornEdge } from "@/lib/ink";
 import { newLag, lagWeight, updateLag, applyLag, type Lag } from "@/lib/secondary";
-import { growthScale } from "@/lib/social";
+import {
+  BIG, SOCIAL, SEP, SEP2, SCHOOL, SCHOOL2, SCARE2,
+  W_SEP, W_COH, W_ALIGN, W_FLEE, W_PAL, STEER_CAP, FLEE_DECAY,
+  FRIEND_SECS, FRIEND_RATE, CARE_PER_FRIEND, growthScale,
+} from "@/lib/social";
 import { welcomeBack, type Visit } from "@/lib/daily";
 import { drawCrayonStroke } from "@/lib/crayon";
 
@@ -226,6 +230,18 @@ const HUD_CLEAR = 214;
 const FOOT = 0.45;
 /** Things with roots. They can shiver and look up; they do not hop or spin. */
 const ROOTED = new Set(["grow", "erupt", "sway"]);
+/** Behaviours that carry their own drifting height in `rt.baseY`, and so are
+ *  the only ones a neighbour may talk *up or down*. Everything else either
+ *  re-derives `y` from the ground under its feet every frame — where a nudge
+ *  would sink it into the floor — or from a formula that would swallow it. */
+const FREE_Y = new Set(["swim", "fly"]);
+/** Behaviours that author their own `rt.roll` every frame. A lean handed to one
+ *  of these rides on top of what it was already doing; for everyone else the
+ *  lean *is* the roll, because adding to one nobody resets winds up like a
+ *  clock spring and leaves a fish permanently on its side. */
+const ROLL_OWN = new Set([
+  "orbit", "jet", "scuttle", "stomp", "waddle", "graze", "hover", "streak", "erupt", "sway",
+]);
 
 /* ── blinking ────────────────────────────────────────────────────────────────
    A creature whose eyes never close reads as a stuffed toy. These sprites are
@@ -625,6 +641,11 @@ export default function WorldScene({
     bannerBusy.current = true;
     setBanner(item);
   }, []);
+  /* The render loop is mount-scoped and cannot reach a callback that a re-render
+     might replace, so it announces friendships through this — the same way it
+     reaches the polish set and the burst queue. */
+  const bannerRef = useRef(pushBanner);
+  bannerRef.current = pushBanner;
   useEffect(() => {
     if (!banner) { bannerBusy.current = false; return; }
     const t = window.setTimeout(() => {
@@ -858,8 +879,47 @@ export default function WorldScene({
     let raf = 0;
     let W = 0, H = 0;
     const bubbles: { x: number; y: number; r: number; v: number; wob: number }[] = [];
-    const sparkles: { x: number; y: number; vx: number; vy: number; life: number }[] = [];
+    const sparkles: { x: number; y: number; vx: number; vy: number; life: number; heart?: 1 }[] = [];
     let lastT = performance.now();
+
+    /* ── the neighbour pass's scratch ────────────────────────────────────────
+       Everyone in the scene, flattened once per pass into plain arrays: the map
+       lookups, the kind lookups and the set tests are each paid for once per
+       creature instead of once per *pair*, and the 435 pairs at thirty
+       creatures then read nothing but numbers. Every array here is made once,
+       at mount, and written in place for the life of the scene — the pass
+       allocates nothing, which is the whole reason the runtime records are flat
+       records of numbers in the first place.
+
+       Sized well past the app's own cap of thirty; anyone past the end is
+       simply not part of the conversation that frame. */
+    const SOC_MAX = 64;
+    /** One frame in four. The intent persists in `sx`/`sy` in between, so the
+     *  motion is smooth and the pass costs a quarter of what it looks like. */
+    const SOC_EVERY = 4;
+    const nc: (Creature | null)[] = new Array(SOC_MAX).fill(null);
+    const nrt: (RT | null)[] = new Array(SOC_MAX).fill(null);
+    const nkind = new Int32Array(SOC_MAX);   // cheap hash of kindId; ties confirmed by string
+    const nbig = new Uint8Array(SOC_MAX);
+    const nsoc = new Uint8Array(SOC_MAX);
+    const nroot = new Uint8Array(SOC_MAX);
+    const sepX = new Float64Array(SOC_MAX), sepY = new Float64Array(SOC_MAX);
+    const cohX = new Float64Array(SOC_MAX), cohY = new Float64Array(SOC_MAX);
+    const cohN = new Int32Array(SOC_MAX);
+    const aliX = new Float64Array(SOC_MAX), aliN = new Int32Array(SOC_MAX);
+    const flX = new Float64Array(SOC_MAX), flY = new Float64Array(SOC_MAX);
+    const paX = new Float64Array(SOC_MAX), paY = new Float64Array(SOC_MAX);
+    const bestJ = new Int32Array(SOC_MAX), bestD = new Float64Array(SOC_MAX);
+    let socN = 0;                                  // frames since the last pass
+    let socT = performance.now() / 1000;           // when that pass was
+    let bubbleT = -1e9;                            // last scatter that made a sound
+    /** kindId → a number, so the inner loop compares integers. Collisions only
+     *  ever cost one string comparison, which the caller does on a match. */
+    const kindHash = (id: string) => {
+      let h = 0;
+      for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+      return h;
+    };
     /** Ground shake, in px. A footfall knocks it up; it dies away in a moment. */
     let shake = 0;
     /* ── idle beats ──────────────────────────────────────────────────────────
@@ -991,6 +1051,222 @@ export default function WorldScene({
           beatDur = (beatKind === 0 ? 0.8 : beatKind === 1 ? 0.55 : beatKind === 2 ? 0.7 : 1.1) / calm;
         } else {
           beatNext = t + 2;                          // ask again in a moment
+        }
+      }
+
+      /* ── everyone notices everyone else ──────────────────────────────────
+         One pass over the whole scene, before anybody has moved. It is separate
+         from the behaviour loop on purpose: reading neighbours from inside that
+         loop would give the first half of the creatures this frame's positions
+         and the second half last frame's, and would mean an edit to all
+         eighteen branches. Instead it leaves an *intent* behind — `sx`/`sy`, in
+         world units per second — which each creature spends further down, after
+         it has moved the way its own kind moves.
+
+         Everything here is a playground, not a food chain. Nothing is chased,
+         caught or taken away: something big going past makes the small ones
+         scatter and then drift back together, and it wiggles too, because both
+         ends of that are a game of tag. */
+      if (list.length > 1 && ++socN >= SOC_EVERY) {
+        socN = 0;
+        // real seconds since the last *pass* — using `dt` here would quarter it
+        const el = Math.min(0.5, t - socT);
+        socT = t;
+
+        /* Flattened once: the map lookup, the kind lookup and the three set
+           tests are paid per creature, never per pair. */
+        let n = 0;
+        for (let i = 0; i < list.length && n < SOC_MAX; i++) {
+          const c = list[i];
+          const rt = rtRef.current.get(c.id);
+          if (!rt) continue;                       // still baking; not here yet
+          const cb = kindById(c.kindId).behavior;
+          nc[n] = c; nrt[n] = rt;
+          nkind[n] = kindHash(c.kindId);
+          nbig[n] = BIG.has(c.kindId) ? 1 : 0;
+          nsoc[n] = SOCIAL.has(cb) ? 1 : 0;
+          nroot[n] = ROOTED.has(cb) ? 1 : 0;
+          sepX[n] = 0; sepY[n] = 0;
+          cohX[n] = 0; cohY[n] = 0; cohN[n] = 0;
+          aliX[n] = 0; aliN[n] = 0;
+          flX[n] = 0; flY[n] = 0;
+          paX[n] = 0; paY[n] = 0;
+          bestJ[n] = -1; bestD[n] = SCHOOL2;       // nothing further than a school counts
+          n++;
+        }
+
+        /* …and from here it is nothing but numbers in arrays: 435 pairs at the
+           app's thirty creatures, a few microseconds against a 16.7ms frame. */
+        for (let i = 0; i < n; i++) {
+          const a = nrt[i]!, ac = nc[i]!;
+          const aFree = a.pal === "";              // still looking for a friend
+          for (let j = i + 1; j < n; j++) {
+            const o = nrt[j]!, oc = nc[j]!;
+            const dx = o.x - a.x, dy = o.y - a.y;
+            const d2 = dx * dx + dy * dy;
+
+            /* too close for comfort — whoever they are. Pushing harder than the
+               school pulls is what stops the school becoming one flickering
+               pile; `W_SEP` > `W_COH` is that rule, and this is where it lands. */
+            if (d2 < SEP2 && d2 > 1e-9) {
+              const d = Math.sqrt(d2);
+              const w = (SEP - d) / (SEP * d);     // strongest right up against each other
+              sepX[i] -= dx * w; sepY[i] -= dy * w;
+              sepX[j] += dx * w; sepY[j] += dy * w;
+            }
+
+            /* its own kind, near enough to keep up with: where to be, and which
+               way everyone is pointing */
+            if (d2 < SCHOOL2 && nkind[i] === nkind[j] && ac.kindId === oc.kindId) {
+              cohX[i] += o.x; cohY[i] += o.y; cohN[i]++;
+              cohX[j] += a.x; cohY[j] += a.y; cohN[j]++;
+              aliX[i] += o.dir; aliN[i]++;
+              aliX[j] += a.dir; aliN[j]++;
+            }
+
+            /* something big came past. Exactly one of the two is big, so this
+               never fires between two whales — and the small one is never
+               followed, only startled: it points away, and that is the end of it. */
+            if (nbig[i] !== nbig[j] && d2 < SCARE2 && d2 > 1e-9) {
+              const sm = nbig[i] ? j : i;
+              const rs = nrt[sm]!, rb = nrt[nbig[i] ? i : j]!;
+              const f = 1 - d2 / SCARE2;           // 1 right beside it, 0 at the rim
+              const d = Math.sqrt(d2);
+              const wx = (sm === i ? -dx : dx) / d, wy = (sm === i ? -dy : dy) / d;
+              flX[sm] += wx * f; flY[sm] += wy * f;
+              if (f > rs.flee) {
+                // one bubble per scatter at most, and not many of those
+                if (rs.flee < 0.25 && f > 0.5 && world === "ocean" && t - bubbleT > 4) {
+                  bubbleT = t;
+                  sfxBubble();
+                }
+                rs.flee = f;
+              }
+              // and the big one wiggles too: this is tag, and it is playing
+              const play = f * 0.5;
+              if (play > rb.flee) rb.flee = play;
+            }
+
+            /* pals, at any distance at all: a small, permanent lean towards
+               each other. A pal whose creature is gone is simply never matched
+               here, which is exactly what "resolves to nothing" should cost. */
+            const aPal = a.pal !== "" && a.pal === oc.id;
+            const oPal = o.pal !== "" && o.pal === ac.id;
+            if (aPal) { paX[i] += dx; paY[i] += dy; }
+            if (oPal) { paX[j] -= dx; paY[j] -= dy; }
+            if (aPal && oPal && Math.random() < 0.02) {
+              sparkles.push({
+                x: a.x * W, y: a.y * H - 10,
+                vx: (Math.random() - 0.5) * 16, vy: -24 - Math.random() * 12,
+                life: 0.9, heart: 1,
+              });
+              sparkles.push({
+                x: o.x * W, y: o.y * H - 10,
+                vx: (Math.random() - 0.5) * 16, vy: -24 - Math.random() * 12,
+                life: 0.9, heart: 1,
+              });
+            }
+
+            /* and who each of them is closest to, of the things that live where
+               they live — the one candidate a friendship can grow from. Anyone
+               who already has a friend is out of the running: a friendship here
+               is never swapped, dropped or taken off anybody. */
+            if (aFree && o.pal === "" && a.home === o.home) {
+              if (d2 < bestD[i]) { bestD[i] = d2; bestJ[i] = j; }
+              if (d2 < bestD[j]) { bestD[j] = d2; bestJ[j] = i; }
+            }
+          }
+        }
+
+        for (let i = 0; i < n; i++) {
+          const r = nrt[i]!;
+
+          /* ── keeping running into the same one ──────────────────────────
+             Time near, not distance travelled, and never a punishment: drifting
+             off to somebody else halves what was banked rather than emptying
+             it, so two creatures that keep meeting across several visits still
+             get there in the end. */
+          const bi = r.pal === "" ? bestJ[i] : -1;
+          if (bi >= 0) {
+            const oc = nc[bi]!, o = nrt[bi]!;
+            if (r.near !== oc.id) {
+              r.near = oc.id;
+              r.nearT *= 0.5;
+            } else {
+              r.nearT += el * FRIEND_RATE;
+            }
+            // (the candidate may have been spoken for a moment ago, further up
+            //  this same loop — then it simply is not today)
+            if (r.nearT > FRIEND_SECS && o.pal === "") {
+              /* Both ends at once — one friendship, one banner, and the other
+                 one can never come back round here and announce it again. */
+              const me = nc[i]!;
+              r.pal = oc.id; o.pal = me.id;
+              o.near = me.id; o.nearT = r.nearT;
+              r.care += CARE_PER_FRIEND; o.care += CARE_PER_FRIEND;
+              r.excite = Math.max(r.excite, 0.5); o.excite = Math.max(o.excite, 0.5);
+              r.labelT = now; o.labelT = now;        // both of them, named, together
+              for (let k = 0; k < 12; k++) {
+                const h = k % 2 === 0 ? r : o;
+                sparkles.push({
+                  x: h.x * W + (Math.random() - 0.5) * 30,
+                  y: h.y * H + (Math.random() - 0.5) * 20,
+                  vx: (Math.random() - 0.5) * 60,
+                  vy: -30 - Math.random() * 50,
+                  life: 0.9 + Math.random() * 0.4, heart: 1,
+                });
+              }
+              sfxHappy();
+              bannerRef.current(`${me.name} and ${oc.name} are friends now!`, "heart");
+            }
+          }
+
+          if (!nsoc[i]) {
+            /* Rooted, orbiting, station-keeping or mid-dash: never steered. A
+               tree with a friend leans towards it instead of strolling over,
+               so on one of those `sx` is not a speed at all but the lean
+               itself, in radians — spent as one, down in the behaviour loop. */
+            r.sy = 0;
+            r.sx = nroot[i] && paX[i] !== 0
+              ? Math.max(-1, Math.min(1, paX[i] / SCHOOL)) * (W_PAL / 2)
+              : 0;
+            continue;
+          }
+
+          /* Each pull arrives as a direction; the weights say how much of the
+             creature's own cruising speed each one is worth. */
+          let ax = 0, ay = 0;
+          if (sepX[i] !== 0 || sepY[i] !== 0) {
+            const m = Math.hypot(sepX[i], sepY[i]);
+            ax += (sepX[i] / m) * W_SEP; ay += (sepY[i] / m) * W_SEP;
+          }
+          if (cohN[i] > 0) {
+            const cx = cohX[i] / cohN[i] - r.x, cy = cohY[i] / cohN[i] - r.y;
+            const m = Math.hypot(cx, cy);
+            if (m > 1e-6) { ax += (cx / m) * W_COH; ay += (cy / m) * W_COH; }
+          }
+          // alignment needs no normalising: a school that disagrees with itself
+          // averages towards nothing, which is the honest answer
+          if (aliN[i] > 0) ax += (aliX[i] / aliN[i]) * W_ALIGN;
+          if (flX[i] !== 0 || flY[i] !== 0) {
+            const m = Math.hypot(flX[i], flY[i]);
+            ax += (flX[i] / m) * W_FLEE * r.flee; ay += (flY[i] / m) * W_FLEE * r.flee;
+          }
+          if (paX[i] !== 0 || paY[i] !== 0) {
+            const m = Math.hypot(paX[i], paY[i]);
+            ax += (paX[i] / m) * W_PAL; ay += (paY[i] / m) * W_PAL;
+          }
+          /* …and no combination of them, ever, is worth more than `STEER_CAP`
+             of that speed. The behaviour loop's own `speedBoost` is not in
+             here: a scatter on top of an excited tap is still a fish. */
+          ax *= r.speed; ay *= r.speed;
+          const cap = STEER_CAP * r.speed;
+          const m2 = ax * ax + ay * ay;
+          if (m2 > cap * cap) {
+            const k = cap / Math.sqrt(m2);
+            ax *= k; ay *= k;
+          }
+          r.sx = ax; r.sy = ay;
         }
       }
 
@@ -1230,6 +1506,43 @@ export default function WorldScene({
           rt.y = gy(rt.x) + rt.foot;
         }
         // grow, and anything we have never heard of: anchored, sway only
+
+        /* ── and what the neighbours talked it into ───────────────────────
+           Spent here, after the creature has moved its own way and before the
+           standing cap, the painted region and the trailing update — all three
+           of which want the position it actually ended up at. `sx`/`sy` are an
+           intent per second, so they cost one multiply whether the neighbour
+           pass ran this frame or three frames ago. */
+        let lean = 0;                      // …how far over it goes about it, in radians
+        if (SOCIAL.has(b)) {
+          rt.x += rt.sx * dt;
+          // …but only the free swimmers and flyers carry their own height.
+          // Everything else re-derives `y` from the ground under it every
+          // frame, and a nudge there would sink it through the floor.
+          if (FREE_Y.has(b)) rt.baseY += rt.sy * dt;
+          /* Turning to look where it is being pulled — but not for every
+             little tug: a steer no stronger than the pull of its own school is
+             a drift, not a decision. Anything stronger (getting out of
+             somebody's way, a big one going past, a friend across the reef)
+             turns it round, and for these behaviours `dir` is both the facing
+             and the way it swims, so it really does set off. */
+          if (FACING.has(b) && Math.abs(rt.sx) > W_COH * rt.speed) {
+            rt.dir = rt.sx > 0 ? 1 : -1;
+          }
+        } else if (ROOTED.has(b)) {
+          /* Roots do not walk, and a tree strolling over to its friend is the
+             one bug this feature must never ship. On a rooted creature `sx` is
+             not a speed at all but the lean itself — see the neighbour pass. */
+          lean = rt.sx;
+        }
+        if (rt.flee > 0) {
+          // the shiver of a game of tag, on whoever is playing it — the big one
+          // included, which is what keeps it a game (see the pass)
+          lean += Math.sin(rt.t * 17 + rt.seed) * 0.07 * rt.flee;
+          rt.flee = Math.max(0, rt.flee - FLEE_DECAY * dt);
+        }
+        if (ROLL_OWN.has(b)) rt.roll += lean;
+        else rt.roll = lean;
 
         if (GROUNDED.has(b) && rt.y > standCap) rt.y = standCap;
 
@@ -1483,7 +1796,9 @@ export default function WorldScene({
         s.y += s.vy * dt;
         ctx.save();
         ctx.globalAlpha = s.life;
-        ctx.fillStyle = "#ffd65a";
+        // friendship sparkles are drawn in the heart's own ink; everything
+        // else is the app's gold
+        ctx.fillStyle = s.heart ? "#ff6b6b" : "#ffd65a";
         drawSpark(ctx, s.x, s.y, 4 * s.life + 1, t * 4);
         ctx.restore();
       }
