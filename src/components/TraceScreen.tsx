@@ -1430,7 +1430,7 @@ export default function TraceScreen({
     lifeRef.current = {
       t0: performance.now(),
       dur: calm ? LIFE_CALM_MS : LIFE_MS,
-      act: calm ? PULSE : (ACTS[item.char] ?? CHEER),
+      act: calm ? PULSE : (ACTS[item.char.toUpperCase()] ?? CHEER),
       src,
       bb: lifeBounds(src),
     };

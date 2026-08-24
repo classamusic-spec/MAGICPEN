@@ -51,6 +51,18 @@ interface Lesson {
 
 const say = (c: string) => c;
 
+/** Turn a written line into one a synthesizer says right: math glyphs become
+ *  words (a screen's "−" is often read as nothing at all), and an all-caps word
+ *  is lowercased so it is blended, not spelled letter by letter. */
+const forSpeech = (line: string): string =>
+  line
+    .replace(/[−–—-]/g, " minus ")
+    .replace(/\+/g, " plus ")
+    .replace(/=/g, " equals ")
+    .replace(/\b[A-Z]{2,}\b/g, (w) => w.toLowerCase())
+    .replace(/\s+/g, " ")
+    .trim();
+
 function letterLessons(): Lesson[] {
   return LETTER_LESSONS.map((l) => ({
     key: `letter:${l.char}`,
@@ -246,8 +258,8 @@ function Reward({ world, lesson, stars, hasNext, onNext, onPicker, onBorn }: {
     const step = 720;
     wordChars.forEach((c, i) => at(i * step, () => { setHi(i); sayLetter(c); }));
     const after = wordChars.length * step;
-    at(after, () => { setHi(-1); sayWord(lesson.word ?? ""); });   // …now the whole word
-    at(after + 900, () => sayLine(lesson.rewardTitle));            // "Dog is alive!"
+    at(after, () => { setHi(-1); sayWord((lesson.word ?? "").toLowerCase()); });  // …now the whole word
+    at(after + 900, () => sayLine(forSpeech(lesson.rewardTitle)));  // "dog is alive!"
   }, [wordChars, lesson.word, lesson.rewardTitle, clearBlend]);
 
   /* The payoff, out loud. A word sounds itself out; everything else just says
@@ -255,7 +267,7 @@ function Reward({ world, lesson, stars, hasNext, onNext, onPicker, onBorn }: {
   useEffect(() => {
     const id = window.setTimeout(() => {
       if (isWord && wordChars.length) soundOut();
-      else sayLine(lesson.rewardTitle);
+      else sayLine(forSpeech(lesson.rewardTitle));
     }, 480);
     return () => { window.clearTimeout(id); clearBlend(); hush(); };
   }, [lesson.rewardTitle, isWord, wordChars.length, soundOut, clearBlend]);

@@ -65,7 +65,6 @@ export const CREATURE_FACTS: Record<string, string> = {
   tree: "A big tree can drink hundreds of buckets of water in a day!",
   flower: "Flowers turn to follow the Sun across the sky!",
   rainbow: "A rainbow is sunlight bent by tiny raindrops!",
-  butterfly2: "",
 };
 
 /** The fact for a creature kind, or null if we don't have a true one. */

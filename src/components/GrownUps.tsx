@@ -18,6 +18,7 @@ import { loadWriting } from "@/lib/storage";
 import { peekVisit } from "@/lib/daily";
 import { LETTER_LESSONS, NUMBER_LESSONS, SUM_LESSONS, WORD_LESSONS } from "@/lib/writing";
 import { DRAW_LESSONS } from "@/lib/lessons";
+import { SHAPES } from "@/lib/glyphs";
 import { InkButton, InkCard, Scribble } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
 import { sfxTap } from "@/lib/audio";
@@ -50,6 +51,7 @@ export default function GrownUps({ creatures, onBack }: {
     { label: "Lowercase letters", done: tried(progress, "lower:"), total: LETTER_LESSONS.length, tone: "#a855f7", unit: "letters" },
     { label: "Numbers", done: tried(progress, "digit:"), total: NUMBER_LESSONS.length, tone: "#0e8a86", unit: "numbers" },
     { label: "Sums", done: tried(progress, "sum:"), total: SUM_LESSONS.length, tone: "#0369a1", unit: "sums" },
+    { label: "Shapes", done: tried(progress, "shape:"), total: SHAPES.length, tone: "#0891b2", unit: "shapes" },
     { label: "Words written", done: tried(progress, "word:"), total: WORD_LESSONS.length, tone: "#c2600c", unit: "words" },
     { label: "Drawings learned", done: tried(progress, "draw:"), total: DRAW_LESSONS.length, tone: "#0e7fd6", unit: "drawings" },
   ];
