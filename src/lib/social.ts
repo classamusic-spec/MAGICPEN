@@ -48,16 +48,49 @@ export const SOCIAL = new Set([
    and one that pushes harder than it pulls simply spreads out — which is the
    failure mode you cannot see. */
 
-/** Closer than this and they ease apart.
+/**
+ * The smallest gap two creatures will settle at, as a floor.
  *
- *  This is what the spacing of a settled school actually ends up being, so it
- *  has to be bigger than the creatures are wide or they converge into one
- *  overlapping blob — which is exactly what 0.075 did when I watched five fish
- *  re-form after a scatter. A sprite is baked in a 150-unit box and drawn at
- *  `scale × min(W,H)/520`, so a typical creature is a little over a tenth of
- *  the width. Measured against that, with a margin, rather than guessed. */
+ * A fixed number cannot be the whole answer, and finding out why was the most
+ * useful mistake in this file. `SEP` *is* the spacing of a settled school — it
+ * is where the pushing apart and the pulling together balance — so it has to
+ * be wider than the creatures are drawn or the school is a heap of overlapping
+ * sprites. But how wide a creature is *in these units* depends on the screen:
+ * a sprite is drawn at `scale × min(W,H)/520` pixels and then measured against
+ * the width, so the same fish is about a tenth of a landscape tablet and a
+ * quarter of an upright phone. One constant tuned on one of those is wrong on
+ * the other, and 0.115 — tuned in landscape — piles fish up on a phone.
+ *
+ * So the pass asks `sepFor` how far apart *these two* should sit, and this is
+ * only the floor beneath it, for the very small. The floor stays at the value
+ * that was measured to look right in landscape: below it a school reads as
+ * loose rather than as a pile, which is the safer way to be wrong.
+ */
 export const SEP = 0.115;
 export const SEP2 = SEP * SEP;
+
+/** The box `bakeCrayonSprite` normalizes every drawing into. */
+const SPRITE_BOX = 150;
+/** The screen size the world's `sizeF` is measured against. */
+const SIZE_REF = 520;
+
+/**
+ * How wide one creature is drawn, in the same normalized-x units the neighbour
+ * pass measures distance in. `scale` is the creature's own, already multiplied
+ * by whatever growing up has earned it.
+ */
+export const drawnWidth = (scale: number, W: number, H: number): number =>
+  (SPRITE_BOX * scale * (Math.min(W, H) / SIZE_REF)) / Math.max(1, W);
+
+/** A little less than touching: a school sits shoulder to shoulder, not apart. */
+export const SEP_SNUG = 0.78;
+
+/**
+ * How close these two may get, given how big each is drawn. Never below `SEP`,
+ * so two very small creatures still keep a gap worth seeing.
+ */
+export const sepFor = (wA: number, wB: number): number =>
+  Math.max(SEP, (wA + wB) * 0.5 * SEP_SNUG * 2);
 /** Same-kind cohesion and alignment reach this far. */
 export const SCHOOL = 0.3;
 export const SCHOOL2 = SCHOOL * SCHOOL;
