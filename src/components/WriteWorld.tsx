@@ -60,6 +60,26 @@ function letterLessons(): Lesson[] {
   }));
 }
 
+/** The same twenty-six, in the letters children actually read. A separate
+ *  progress key (`lower:`) so a child's lowercase stars are their own, and the
+ *  lowercase glyph is what gets traced — a different letterform, not a small
+ *  capital. */
+function lowerLessons(): Lesson[] {
+  return LETTER_LESSONS.map((l) => {
+    const lc = l.char.toLowerCase();
+    return {
+      key: `lower:${lc}`,
+      targets: [{ char: lc, say: say(lc) }],
+      title: `Trace the letter ${lc}`,
+      subtitle: `${lc} is for ${l.word}`,
+      doodle: l.doodle,
+      count: 1,
+      rewardTitle: `${lc} is for ${l.word}!`,
+      rewardLine: "You wrote a whole letter.",
+    };
+  });
+}
+
 const SPOKEN = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
 function numberLessons(): Lesson[] {
@@ -275,9 +295,16 @@ export default function WriteWorld({ world, onBack, onBorn }: {
   onBorn: (born: { word: string; doodle: string }) => void;
 }) {
   const w = writingWorldById(world);
+  /* Letter World teaches both cases. Capitals first — they are what a child is
+     taught to write first and the easier shapes — with a tap to switch to the
+     lowercase they will actually read. */
+  const [lowercase, setLowercase] = useState(false);
   const lessons = useMemo(
-    () => (world === "letters" ? letterLessons() : world === "numbers" ? numberLessons() : wordLessons()),
-    [world]
+    () =>
+      world === "letters"
+        ? lowercase ? lowerLessons() : letterLessons()
+        : world === "numbers" ? numberLessons() : wordLessons(),
+    [world, lowercase]
   );
 
   const [progress, setProgress] = useState<WritingProgress>(() => loadWriting());
@@ -359,7 +386,36 @@ export default function WriteWorld({ world, onBack, onBorn }: {
         </header>
 
         {world === "letters" && (
-          <Section title="Every letter" hint="tap one to write it">
+          <Section title={lowercase ? "Small letters" : "Big letters"} hint="tap one to write it">
+            {/* Capitals or the lowercase children actually read. Both drawn from
+                their own glyphs, so ABC and abc show the very shapes to trace. */}
+            <div className="flex justify-center pt-3">
+              <div
+                role="tablist"
+                aria-label="Letter case"
+                className="inline-flex gap-1 p-1 rounded-full"
+                style={{ background: "#fffaf0", border: "2.5px solid var(--ink)" }}
+              >
+                {([["Big ABC", false], ["small abc", true]] as const).map(([label, lc]) => {
+                  const on = lowercase === lc;
+                  return (
+                    <button
+                      key={label}
+                      role="tab"
+                      aria-selected={on}
+                      onClick={() => { if (!on) { sfxTap(); setLowercase(lc); } }}
+                      className="ink-title text-fs-sm px-4 py-1.5 rounded-full transition-colors"
+                      style={{
+                        background: on ? w.tone : "transparent",
+                        color: on ? "#fffaf0" : "var(--ink)",
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <ul className="grid gap-2.5 pt-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(4.3rem, 1fr))" }}>
               {lessons.map((l, i) => (
                 <li key={l.key}>

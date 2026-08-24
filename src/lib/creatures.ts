@@ -235,7 +235,7 @@ export const WRITING_WORLDS: WritingWorld[] = [
     id: "letters",
     name: "Letter World",
     tagline: "Write your ABCs!",
-    teaches: "Letter shapes and first sounds, A to Z",
+    teaches: "Capital and lowercase letters, and their first sounds, A to Z",
     gradient: "linear-gradient(160deg,#8b46c7 0%,#c084fc 58%,#fbcfe8 100%)",
     tone: "#8b46c7",
   },

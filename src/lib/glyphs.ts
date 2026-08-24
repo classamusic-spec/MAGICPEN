@@ -108,6 +108,62 @@ export const DIGIT_GLYPHS: Record<string, Glyph> = {
   ],
 };
 
+
+/* ── lowercase ───────────────────────────────────────────────────────────────
+   The letters children actually *read* — books, signs and screens are almost
+   all lowercase, so teaching only capitals trains the wrong shapes. Lowercase
+   needs more of the box than capitals do: ascenders climb to the cap line and
+   descenders drop below the baseline, which capitals never do. So these live in
+   a taller box with their own metrics, and the tracing screen draws the extra
+   ruled line for the tails to hang from.
+
+   Every shape here was drawn, rendered and looked at — the same way the capital
+   S and G were fixed once — because a letterform that is subtly wrong is a
+   letterform a child learns wrong. */
+
+const ASC = 16;    // ascender line (b d f h k l t reach near here)
+const XH = 72;     // x-height: shares the capitals' midline exactly
+const XM = 100;    // middle of the x-height band, where the bowls centre
+const BASE_L = 128;// baseline
+const DESC = 156;  // descender line (g j p q y hang to here)
+const RY = (BASE_L - XH) / 2;  // 28 — half the x-height, the bowls' radius
+
+/** The taller box lowercase is authored in. */
+export const LOWER_BOX = { w: 100, h: 160 };
+/** The ruled lines a lowercase sheet shows: top, x-height, baseline, descender. */
+export const LOWER_RULE = { top: ASC, mid: XH, base: BASE_L, desc: DESC };
+
+export const LOWER_GLYPHS: Record<string, Glyph> = {
+  a: [arc(48, XM, 24, RY, -0.15 * Math.PI, 1.75 * Math.PI), [p(72, XH + 2), p(72, BASE_L)]],
+  b: [[p(24, ASC), p(24, BASE_L)], arc(48, XM, 24, RY, -1.5 * Math.PI, 0.5 * Math.PI)],
+  c: [arc(52, XM, 25, RY, -0.3 * Math.PI, -1.72 * Math.PI)],
+  d: [[p(76, ASC), p(76, BASE_L)], arc(52, XM, 24, RY, -0.5 * Math.PI, 1.5 * Math.PI)],
+  e: [[p(27, XM), p(73, XM)], arc(50, XM, 25, RY, 0, -1.6 * Math.PI)],
+  f: [arc(58, XH + 6, 18, 16, 0, -1.15 * Math.PI), [p(40, XH + 4), p(40, BASE_L)], [p(24, XH + 6), p(60, XH + 6)]],
+  g: [arc(50, XM, 24, RY, -0.15 * Math.PI, 1.85 * Math.PI), [p(74, XH), p(74, DESC - 6)], arc(50, DESC - 6, 24, 14, 0, 0.9 * Math.PI)],
+  h: [[p(26, ASC), p(26, BASE_L)], [p(26, XH + 8), ...arc(50, XH + 10, 24, 20, -Math.PI, 0), p(74, BASE_L)]],
+  i: [[p(50, XH), p(50, BASE_L)], [p(50, ASC + 16), p(50, ASC + 18)]],
+  j: [[p(58, XH), p(58, DESC - 8)], arc(40, DESC - 8, 18, 14, 0, 0.95 * Math.PI), [p(58, ASC + 16), p(58, ASC + 18)]],
+  k: [[p(28, ASC), p(28, BASE_L)], [p(70, XH), p(28, XM + 4)], [p(40, XM - 2), p(72, BASE_L)]],
+  l: [[p(46, ASC), p(46, BASE_L)]],
+  m: [[p(24, XH), p(24, BASE_L)], [p(24, XH + 6), ...arc(37, XH + 9, 14, 16, -Math.PI, 0), p(50, BASE_L)], [p(50, XH + 6), ...arc(64, XH + 9, 14, 16, -Math.PI, 0), p(78, BASE_L)]],
+  n: [[p(28, XH), p(28, BASE_L)], [p(28, XH + 6), ...arc(51, XH + 10, 24, 20, -Math.PI, 0), p(74, BASE_L)]],
+  o: [arc(50, XM, 25, RY, -Math.PI / 2, 1.5 * Math.PI)],
+  p: [[p(26, XH), p(26, DESC)], arc(50, XM, 24, RY, -1.5 * Math.PI, 0.5 * Math.PI)],
+  q: [[p(74, XH), p(74, DESC)], arc(50, XM, 24, RY, -0.5 * Math.PI, 1.5 * Math.PI)],
+  r: [[p(30, XH), p(30, BASE_L)], [p(30, XH + 8), ...arc(48, XH + 10, 20, 14, -Math.PI, -0.15 * Math.PI)]],
+  s: [[...arc(50, 86, 16, 13, -0.13 * Math.PI, -1.5 * Math.PI, 20), ...arc(50, 114, 16, 14, -0.5 * Math.PI, 0.88 * Math.PI, 20)]],
+  t: [[p(46, ASC + 20), p(46, BASE_L - 6)], arc(58, BASE_L - 6, 12, 10, -Math.PI, -0.15 * Math.PI), [p(28, XH), p(64, XH)]],
+  u: [[p(28, XH), p(28, BASE_L - 12), ...arc(50, BASE_L - 12, 22, 16, Math.PI, 0), p(72, BASE_L - 12), p(72, XH)]],
+  v: [[p(26, XH), p(50, BASE_L), p(74, XH)]],
+  w: [[p(20, XH), p(36, BASE_L), p(50, XH + 16), p(64, BASE_L), p(80, XH)]],
+  x: [[p(28, XH), p(72, BASE_L)], [p(72, XH), p(28, BASE_L)]],
+  y: [[p(26, XH), p(50, BASE_L)], [p(74, XH), p(44, DESC)]],
+  z: [[p(28, XH), p(72, XH), p(28, BASE_L), p(74, BASE_L)]],
+};
+
+export const LOWERS = Object.keys(LOWER_GLYPHS);
+
 export const ALL_GLYPHS: Record<string, Glyph> = { ...LETTER_GLYPHS, ...DIGIT_GLYPHS };
 
 export const LETTERS = Object.keys(LETTER_GLYPHS);

@@ -16,7 +16,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { JSX } from "react";
 import type { Pt, Stroke } from "@/lib/types";
 import { drawCrayonStroke } from "@/lib/crayon";
-import { ALL_GLYPHS, DIGIT_GLYPHS, GLYPH_BOX, densify, type Glyph } from "@/lib/glyphs";
+import { ALL_GLYPHS, DIGIT_GLYPHS, GLYPH_BOX, LOWER_GLYPHS, LOWER_BOX, LOWER_RULE, densify, type Glyph } from "@/lib/glyphs";
 import { scoreTrace, toGlyphSpace, tracePraise, type TraceScore } from "@/lib/tracing";
 import { hand, paperTile, roughEllipse, roughRect, shade, waxTile } from "@/lib/ink";
 import { sfxHappy, sfxMagic, sfxPop, sfxTap } from "@/lib/audio";
@@ -335,8 +335,13 @@ function RoundRing({ w, h, color, seed }: { w: number; h: number; color: string;
 /* ── canvas painting helpers ─────────────────────────────────────────────── */
 
 /** The ruled lines of penmanship paper, pinned to the glyph's own metrics. */
-function paintRules(ctx: CanvasRenderingContext2D, box: Box, sheetW: number) {
-  const ky = box.h / GLYPH_BOX.h;
+const CAP_RULE = { top: 15, mid: 72, base: 130 };
+function paintRules(
+  ctx: CanvasRenderingContext2D, box: Box, sheetW: number,
+  spaceH: number = GLYPH_BOX.h,
+  rule: { top: number; mid: number; base: number; desc?: number } = CAP_RULE,
+) {
+  const ky = box.h / spaceH;
   const x0 = Math.max(6, box.x - box.w * 0.42);
   const x1 = Math.min(sheetW - 6, box.x + box.w * 1.42);
   const line = (gy: number, dash: boolean, alpha: number, wgt: number) => {
@@ -353,9 +358,10 @@ function paintRules(ctx: CanvasRenderingContext2D, box: Box, sheetW: number) {
     ctx.stroke();
     ctx.restore();
   };
-  line(15, true, 0.45, 1.6);   // cap height
-  line(72, true, 0.3, 1.4);    // the midline you keep the humps under
-  line(130, false, 0.6, 2.2);  // the baseline you sit letters on
+  line(rule.top, true, 0.45, 1.6);         // the top the tall letters reach
+  line(rule.mid, true, 0.3, 1.4);          // the midline you keep the humps under
+  line(rule.base, false, 0.6, 2.2);        // the baseline you sit letters on
+  if (rule.desc != null) line(rule.desc, true, 0.32, 1.4);  // where the tails hang to
 }
 
 /** A stroke-number badge, its digit drawn from the app's own digit glyphs. */
@@ -1029,6 +1035,9 @@ interface Item {
   /** A letter or a number — the only things penmanship rules mean anything
    *  for, and so the only things that get them. */
   ruled: boolean;
+  /** The ruled lines this glyph sits on, when they are not the capitals'
+   *  cap/mid/baseline — lowercase brings its own, including a descender line. */
+  rule?: { top: number; mid: number; base: number; desc?: number };
 }
 
 interface DoneRec {
@@ -1083,6 +1092,15 @@ export default function TraceScreen({
         }
         continue;
       }
+      // a lowercase letter is a different letterform in a taller box, not just
+      // a small capital — resolve it to its own glyph, or fall through to caps
+      if (/^[a-z]$/.test(t.char)) {
+        const lg = LOWER_GLYPHS[t.char];
+        if (lg) {
+          out.push({ char: t.char, say: t.say ?? t.char, glyph: lg, detail: [], space: LOWER_BOX, ruled: true, rule: LOWER_RULE });
+          continue;
+        }
+      }
       const ch = t.char.toUpperCase();
       const g = ALL_GLYPHS[ch];
       if (g) out.push({ char: ch, say: t.say ?? ch, glyph: g, detail: [], space: GLYPH_BOX, ruled: true });
@@ -1118,6 +1136,7 @@ export default function TraceScreen({
   const detailPathsRef = useRef<Pt[][]>([]);
   const spaceRef = useRef<Space>(GLYPH_BOX);
   const ruledRef = useRef(true);
+  const ruleRef = useRef<{ top: number; mid: number; base: number; desc?: number } | undefined>(undefined);
   const strokesRef = useRef<Stroke[]>([]);
   const liveRef = useRef<Stroke | null>(null);
   const doneRef = useRef<DoneRec[]>([]);
@@ -1191,7 +1210,7 @@ export default function TraceScreen({
 
     // Penmanship rules are pinned to letter metrics — cap height, midline,
     // baseline. Those are facts about letters, so a drawing gets none of them.
-    if (ruledRef.current) paintRules(ctx, b, cw);
+    if (ruledRef.current) paintRules(ctx, b, cw, spaceRef.current.h, ruleRef.current);
 
     const paths = pathsRef.current;
     const gw = Math.max(7, b.w * 0.115);
@@ -1442,6 +1461,7 @@ export default function TraceScreen({
     glyphRef.current = item?.glyph ?? null;
     spaceRef.current = item?.space ?? GLYPH_BOX;
     ruledRef.current = item?.ruled ?? true;
+    ruleRef.current = item?.rule;
     if (!item || b.w < 8) {
       pathsRef.current = [];
       detailPathsRef.current = [];
