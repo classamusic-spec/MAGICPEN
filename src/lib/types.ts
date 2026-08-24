@@ -62,6 +62,14 @@ export interface Creature {
   doodleId?: string;
   /** The word the child wrote to summon it, e.g. "DOG". */
   word?: string;
+  /** How much of this creature's life the child has been present for.
+   *
+   *  The only number the growing-up feature persists: size, and everything that
+   *  follows from size, is derived from it (see `lib/social`). Earned mostly by
+   *  *visits* rather than by elapsed days, so a creature nobody has seen for a
+   *  month is exactly as it was rather than reproachfully enormous. Absent on
+   *  every creature drawn before this existed, and absent reads as 0. */
+  care?: number;
 }
 
 export interface RecognitionResult {
@@ -78,8 +86,7 @@ export type Screen =
   | "world"
   | "game"
   | "write"
-  | "paintworld"
-  | "packs";
+  | "paintworld";
 
 export interface WorldPack {
   id: string;

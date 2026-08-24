@@ -24,6 +24,8 @@ import { InkButton, InkCard, InkShape, Scribble, Tape } from "@/components/ink/I
 import { Icon, type IconName } from "@/components/ink/Icons";
 import { hand, paperTile, roughRect, seedOf, tornEdge } from "@/lib/ink";
 import { newLag, lagWeight, updateLag, applyLag, type Lag } from "@/lib/secondary";
+import { growthScale } from "@/lib/social";
+import { welcomeBack, type Visit } from "@/lib/daily";
 import { drawCrayonStroke } from "@/lib/crayon";
 
 /* per-world wrapper colors + empty-state copy */
@@ -174,6 +176,32 @@ interface RT {
   lagW: number;
   /** Seconds between this one's blinks — near enough shared, never in step. */
   blinkP: number;
+  /* ── what its neighbours have talked it into ──
+     `sx`/`sy` are a steering *intent* in normalized units per second, written
+     by the neighbour pass and spent by the behaviour chain. They persist
+     between passes on purpose: the pass runs at a quarter of frame rate and
+     the motion has to stay smooth in between. `flee` is a scatter charge, 1
+     the moment something big goes past and gone a couple of seconds later. */
+  sx: number; sy: number; flee: number;
+  /* ── who it keeps running into ──
+     One candidate, not a table. `near` is whoever it is closest to right now,
+     `nearT` the time it has spent near them, and `pal` the one it finally
+     committed to. Drifting apart halves `nearT` rather than clearing it, so a
+     friendship built over several visits still happens. */
+  near: string; nearT: number; pal: string;
+  /* ── being picked up ──
+     `held` is 1 while a finger has it; `hx`/`hy` are where that finger is, and
+     the behaviour chain is skipped entirely while it is set. `dropT` is when it
+     was let go, so it can swim home rather than appear where it landed. */
+  held: 0 | 1; hx: number; hy: number; dropT: number;
+  /* ── its trick ──
+     `trK` is which of the four it does, chosen once from its own seed so it is
+     always *its* trick. `trT` is when the current one started, or long ago. */
+  trT: number; trK: number;
+  /** Care earned this session and not yet written down. See `commitCare`. */
+  care: number;
+  /** Hellos counted towards care this session, so a drum solo is still one hi. */
+  hiN: number;
 }
 
 /** Behaviours whose artwork turns to face the way it is travelling. */
@@ -460,6 +488,8 @@ export default function WorldScene({
   onRenameCreature,
   onDeleteCreature,
   onRepaint,
+  onCare,
+  visit,
 }: {
   creatures: Creature[];
   newId: string | null;
@@ -475,6 +505,11 @@ export default function WorldScene({
   onDeleteCreature?: (id: string) => void;
   /** Dream world only: reopen the easel to repaint the background. */
   onRepaint?: () => void;
+  /** Write down care earned in the scene, as `{ creatureId: delta }`. Called on
+   *  a slow cadence — see `commitCare` — never per frame. */
+  onCare?: (deltas: Record<string, number>) => void;
+  /** How long the child has been away, so their creatures can say hello. */
+  visit?: Visit;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -537,6 +572,34 @@ export default function WorldScene({
   const colsRef = useRef(groundCols);
   colsRef.current = groundCols;
 
+  /* ── writing down what has been earned ────────────────────────────────────
+     Care accrues in the runtime records, where a `+=` costs nothing, and only
+     reaches the creature list on a slow cadence: once a minute, when the tab
+     goes away, and when the scene unmounts. Never per frame, and this is not a
+     micro-optimisation — a creature list can carry a 160 KB photo per creature,
+     so serialising it sixty times a second would cost more than every other
+     thing in this file put together. */
+  const onCareRef = useRef(onCare);
+  onCareRef.current = onCare;
+  const commitCare = useCallback(() => {
+    let any = false;
+    const deltas: Record<string, number> = {};
+    for (const [id, rt] of rtRef.current) {
+      if (rt.care > 0) { deltas[id] = rt.care; rt.care = 0; any = true; }
+    }
+    if (any) onCareRef.current?.(deltas);
+  }, []);
+  const commitRef = useRef(commitCare);
+  commitRef.current = commitCare;
+  useEffect(() => {
+    const onHide = () => { if (document.visibilityState === "hidden") commitCare(); };
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      commitCare();
+    };
+  }, [commitCare]);
+
   const reduced = usePrefersReducedMotion();
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
@@ -598,6 +661,37 @@ export default function WorldScene({
       pushBanner(`The magic dust worked! ${c.name} transformed!`, "sparkle");
     }
   }, [view, artTick, pushBanner]);
+
+  /* ── coming back ──────────────────────────────────────────────────────────
+     A child who has been away overnight is met by name. Not a modal, not a
+     reward chest, not a streak that can be lost — the two or three creatures
+     they have spent the most time with turn round and say hello, a beat apart
+     so it reads as three friends noticing rather than one animation firing.
+
+     Waits for the sprites, because photo creatures bake asynchronously and a
+     greeting from something that is not on screen yet is no greeting at all. */
+  const greetedRef = useRef(false);
+  useEffect(() => {
+    const v = visit;
+    if (!v || greetedRef.current) return;
+    if (!v.newDay && v.away < 8) { greetedRef.current = true; return; }
+    const here = view.filter((c) => rtRef.current.has(c.id));
+    if (!here.length) return;                       // nothing staged yet; try again
+    greetedRef.current = true;
+    const line = welcomeBack(v);
+    if (line) pushBanner(line, "heart");
+    const oldest = here
+      .slice()
+      .sort((a, b) => (b.care ?? 0) - (a.care ?? 0) || a.createdAt - b.createdAt)
+      .slice(0, 3);
+    const now = performance.now();
+    oldest.forEach((c, i) => {
+      const rt = rtRef.current.get(c.id);
+      if (!rt) return;
+      rt.excite = 1;
+      rt.labelT = now + 900 + i * 600;
+    });
+  }, [view, visit, pushBanner]);
 
   // bake sprites for any new creatures (photo creatures bake async)
   useEffect(() => {
@@ -666,6 +760,11 @@ export default function WorldScene({
         sq: 0, roll: 0, dip: 0,
         reg, bandT, bandB, home: want, foot,
         lag: newLag(), lagW: lagWeight(b), blinkP: 3.1 + rnd() * 1.7,
+        sx: 0, sy: 0, flee: 0,
+        near: "", nearT: 0, pal: "",
+        held: 0, hx: 0, hy: 0, dropT: -1e9,
+        trT: -1e9, trK: (rnd() * 4) | 0,
+        care: 0, hiN: 0,
       };
       rt.next = rt.t;
       styleSpawn(rt, b);
@@ -1175,7 +1274,12 @@ export default function WorldScene({
 
         const px = rt.x * W;
         const py = rt.y * H;
-        const scl = c.scale * sizeF * (1 + rt.excite * 0.25);
+        /* Growing up costs nothing to draw: the sprite is baked at a fixed size
+           and scaled here, so a creature that has been visited for a fortnight
+           is simply drawn half again as large — and its hit target, its name
+           tag, its trailing anchor and every particle that comes off it follow
+           for free, because all of them are already measured from `scl`. */
+        const scl = c.scale * growthScale(c.care) * sizeF * (1 + rt.excite * 0.25);
         const entrance = now - rt.born < 1600;
         const e = entrance ? Math.max(0, Math.min(1, (now - rt.born) / 1600)) : 1;
         const ease = 1 - Math.pow(1 - e, 3);
@@ -1408,7 +1512,7 @@ export default function WorldScene({
       const rt = rtRef.current.get(c.id);
       const sp = spritesRef.current.get(c.id);
       if (!rt || !sp) continue;
-      const scl = c.scale * sizeF * (1 + rt.excite * 0.25);
+      const scl = c.scale * growthScale(c.care) * sizeF * (1 + rt.excite * 0.25);
       const rPx = Math.min(maxR, Math.max(28, (Math.max(sp.w, sp.h) / 2) * scl * 1.05));
       const d = Math.hypot((rt.x - nx) * W, (rt.y - ny) * H) / rPx;
       if (d <= 1 && (!best || d < best.d)) best = { c, d };

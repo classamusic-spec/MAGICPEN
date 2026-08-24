@@ -4,6 +4,7 @@ import { recognize } from "@/lib/recognizer";
 import { kindById, rosterFor, WORLD_PACKS } from "@/lib/creatures";
 import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid, loadDream, saveDream } from "@/lib/storage";
 import { markVisit, dailyIdea, welcomeBack, type Visit } from "@/lib/daily";
+import { CARE_PER_DAY } from "@/lib/social";
 import { trpc } from "@/providers/trpc";
 import { bakeSketchPNG, proxyArtUrl } from "@/lib/polish";
 import { doodlePNG } from "@/lib/doodleArt";
@@ -49,6 +50,27 @@ export default function App() {
   worldIdRef.current = worldId;
 
   useEffect(() => { saveCreatures(creatures); }, [creatures]);
+
+  /* ── growing up ───────────────────────────────────────────────────────────
+     Every creature that already existed is a day older the first time the app
+     is opened on a new day. Deliberately keyed on the *visit*, not on the
+     calendar: a creature nobody has seen for a month has not aged a month, it
+     has simply been waiting, exactly as it was. The ref survives StrictMode's
+     double mount, which would otherwise hand out two days for one. */
+  const agedRef = useRef(false);
+  useEffect(() => {
+    if (!visit.newDay || agedRef.current) return;
+    agedRef.current = true;
+    setCreatures((prev) => prev.map((c) => ({ ...c, care: (c.care ?? 0) + CARE_PER_DAY })));
+  }, [visit.newDay]);
+
+  /** Care earned inside a world — a hello, a trick, a crumb eaten, a friend
+   *  made. Arrives in batches on a slow cadence, never per frame. */
+  const addCare = (deltas: Record<string, number>) => {
+    setCreatures((prev) =>
+      prev.map((c) => (deltas[c.id] ? { ...c, care: (c.care ?? 0) + deltas[c.id] } : c)),
+    );
+  };
 
   /* ── AI polish: quietly upgrade a creature's crayon art in the background ── */
   const startPolish = (creature: Creature) => {
@@ -263,6 +285,8 @@ export default function App() {
             onDrawMore={() => { setNewId(null); setIdeaPrompt(null); setDrawWorld(worldId); setScreen("draw"); }}
             onPlayGame={() => { setNewId(null); setScreen("game"); }}
             onRepaint={() => setScreen("paintworld")}
+            onCare={addCare}
+            visit={visit}
           />
         )}
         {screen === "paintworld" && (
