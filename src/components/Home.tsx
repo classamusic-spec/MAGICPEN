@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Creature, WorldPack, WritingWorld, WritingWorldId } from "@/lib/types";
 import { WORLD_PACKS, WRITING_WORLDS, kindById } from "@/lib/creatures";
 import { LETTER_LESSONS, NUMBER_LESSONS, SUM_LESSONS, WORD_LESSONS } from "@/lib/writing";
+import { DRAW_LESSONS } from "@/lib/lessons";
 import { loadWriting } from "@/lib/storage";
 import { sfxTap, sfxHappy } from "@/lib/audio";
 import { artSprite, onArtLoaded } from "@/lib/polish";
@@ -178,6 +179,70 @@ function PackPreview({ id }: { id: string }) {
   );
 }
 
+/* ── drawing school ──────────────────────────────────────────────────────────
+   One wide card, not a third carousel. Home already asks a child to swipe
+   twice — through the worlds and through the writing worlds — and a third row
+   of the same shape stops reading as "another thing you can do" and starts
+   reading as wallpaper. The school's own screen is where the forty lessons get
+   room to breathe. */
+function DrawSchoolCard({ done, total, onOpen }: { done: number; total: number; onOpen: () => void }) {
+  return (
+    <button
+      onClick={() => { sfxHappy(); onOpen(); }}
+      aria-label={`Drawing school. Learn to draw by tracing. ${done} of ${total} done.`}
+      className="ink-pinned block w-full text-left"
+    >
+      <InkCard seed={77} className="overflow-hidden" radius={16}>
+        <div className="relative m-2 mb-0 overflow-hidden" style={{ clipPath: tornWindow(23) }}>
+          <div
+            className="h-28 sm:h-32 grid place-items-center"
+            style={{ background: "linear-gradient(160deg,#ffd9a0 0%,#ffb37a 52%,#ff9ec4 100%)" }}
+          >
+            <span
+              aria-hidden="true"
+              className="absolute inset-0"
+              style={{ background: "radial-gradient(72% 58% at 50% 16%, rgba(255,255,255,0.42), rgba(255,255,255,0) 72%)" }}
+            />
+            {/* the promise of the screen, in one picture: a guide, and the
+                drawing that comes off it */}
+            <span aria-hidden="true" className="relative flex items-center gap-3">
+              <Doodle name="fish" size={62} mono="rgba(255,253,247,0.8)" />
+              <Icon name="pencil" size={22} color="#2d2926" weight={2.6} />
+              <span className="anim-float-y block"><Doodle name="fish" size={68} /></span>
+            </span>
+          </div>
+        </div>
+
+        <div className="px-3 pb-3 pt-2">
+          <span className="ink-title block text-fs-lg">Drawing school</span>
+          <span className="ink-hand block text-fs-xs">Trace it once — then it's yours</span>
+          <InkCard
+            aria-hidden="true"
+            tone="#ff7a1a"
+            seed={31}
+            radius={18}
+            lifted={false}
+            className="mt-2 py-1.5 ink-title text-fs-md"
+            contentClassName="flex items-center justify-center gap-1.5 ink-on-wax"
+          >
+            <Icon name="pencil" size={17} color="#fffaf0" weight={2.4} />
+            Learn to draw
+          </InkCard>
+        </div>
+
+        {done > 0 && (
+          <span
+            className="absolute top-3 right-3 ink-title text-fs-2xs px-2 py-0.5 rounded-full"
+            style={{ background: "var(--sun)", border: "2.5px solid var(--ink)" }}
+          >
+            {done}/{total}
+          </span>
+        )}
+      </InkCard>
+    </button>
+  );
+}
+
 function PackCard({
   pack, count, index, onPlay, onLocked,
 }: { pack: WorldPack; count: number; index: number; onPlay: () => void; onLocked: () => void }) {
@@ -260,6 +325,13 @@ const WRITING_PREFIX: Record<WritingWorldId, string[]> = {
   numbers: ["digit:", "sum:"],
   words: ["word:"],
 };
+
+/** How many drawing lessons have been traced at least once. The `draw:` prefix
+ *  is what keeps them out of the letter and number counts — one flat map holds
+ *  the lot (see storage). */
+function drawingDone(progress: Record<string, number>): number {
+  return Object.keys(progress).filter((k) => k.startsWith("draw:")).length;
+}
 
 function writingDone(progress: Record<string, number>, id: WritingWorldId): number {
   const pre = WRITING_PREFIX[id];
@@ -355,6 +427,7 @@ export default function Home({
   onPlayWorld,
   onDraw,
   onWrite,
+  onDrawSchool,
   idea,
   welcome,
   onDrawIdea,
@@ -363,6 +436,9 @@ export default function Home({
   onPlayWorld: (worldId: string) => void;
   onDraw: () => void;
   onWrite: (worldId: WritingWorldId) => void;
+  /** Open the drawing school. Optional only so this file does not have to land
+   *  in the same commit as the route. */
+  onDrawSchool?: () => void;
   /** Today's drawing idea — the same all day, different tomorrow. */
   idea?: string;
   /** A warm line for a child who has been away — it already carries the streak
@@ -569,6 +645,22 @@ export default function Home({
             ))}
           </ul>
         </section>
+
+        {onDrawSchool && (
+          <section className="mt-6 enter" style={{ "--i": 5 } as React.CSSProperties} aria-labelledby="school-h">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 id="school-h" className="ink-title text-fs-xl">Drawing school</h2>
+              <span className="ink-hand text-fs-2xs">learn to draw anything</span>
+            </div>
+            <div className="pt-3 enter-pop" style={{ "--i": 0 } as React.CSSProperties}>
+              <DrawSchoolCard
+                done={drawingDone(writing)}
+                total={DRAW_LESSONS.length}
+                onOpen={onDrawSchool}
+              />
+            </div>
+          </section>
+        )}
 
         {/* Honest about what leaves the device: the drawings are kept locally,
             but the optional "magic dust" art is generated online. */}
