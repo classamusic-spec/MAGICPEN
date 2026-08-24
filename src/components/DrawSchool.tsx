@@ -334,7 +334,7 @@ export default function DrawSchool({ onBack, onDrawn }: {
             <Icon name="back" size={22} />
           </InkButton>
           <div className="min-w-0 flex-1">
-            <h1 className="ink-title text-fs-2xl leading-none truncate">Drawing School</h1>
+            <h1 className="ink-title text-fs-2xl leading-none truncate">Drawing school</h1>
             <p className="ink-hand text-fs-xs truncate">Learn to draw anything!</p>
           </div>
           <span
@@ -352,7 +352,7 @@ export default function DrawSchool({ onBack, onDrawn }: {
             <Section key={worldId} title={pack.name} hint="trace it — it's yours">
               <ul
                 className="grid gap-3 pt-3"
-                style={{ gridTemplateColumns: "repeat(auto-fill, minmax(7.4rem, 1fr))" }}
+                style={{ gridTemplateColumns: "repeat(auto-fill, minmax(6.4rem, 1fr))" }}
               >
                 {lessonsForWorld(worldId).map((l, i) => (
                   <li key={l.key}>

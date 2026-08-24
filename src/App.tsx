@@ -37,6 +37,7 @@ const WorldScene = lazy(() => import("@/components/WorldScene"));
 const MiniGame = lazy(() => import("@/components/MiniGame"));
 const WriteWorld = lazy(() => import("@/components/WriteWorld"));
 const PaintWorld = lazy(() => import("@/components/PaintWorld"));
+const DrawSchool = lazy(() => import("@/components/DrawSchool"));
 
 /**
  * How many creatures a world holds.
@@ -282,6 +283,34 @@ export default function App() {
     startPolish(creature);
   };
 
+  /* Drawing school's payoff, and the whole reason the guide is a ghost rather
+     than a stamp: what walks into the world is built from the strokes the child
+     actually laid down, exactly as a freehand drawing is. The lesson taught the
+     shape; it did not do the drawing. */
+  const handleTraced = ({ kindId, worldId: intoWorld, strokes }: {
+    kindId: string; worldId: string; strokes: Stroke[];
+  }) => {
+    const creature: Creature = {
+      id: uuid(),
+      kindId,
+      name: pickName(kindId, takenNames),
+      strokes,
+      createdAt: Date.now(),
+      wx: 0.5,
+      wy: 0.5,
+      dir: Math.random() > 0.5 ? 1 : -1,
+      speed: 0.03,
+      phase: Math.random() * 10,
+      scale: 0.8 + Math.random() * 0.35,
+    };
+    setCreatures((prev) => [...prev.slice(-(MAX_CREATURES - 1)), creature]);
+    setNewId(creature.id);
+    setWorldId(intoWorld);
+    setScreen("world");
+    askedRef.current.add(creature.id);
+    startPolish(creature);
+  };
+
   /* Word World's payoff: the word the child wrote becomes a creature and walks
      straight into their world. It carries `doodleId` instead of strokes, so it
      costs a handful of bytes to store and stays sharp at any size. */
@@ -311,7 +340,8 @@ export default function App() {
   const enterClass =
     screen === "world"
       ? "screen-enter-dive"
-      : screen === "draw" || screen === "reveal" || screen === "write" || screen === "paintworld"
+      : screen === "draw" || screen === "reveal" || screen === "write"
+        || screen === "school" || screen === "paintworld"
         ? "screen-enter-rise"
         : "screen-enter-fade";
 
@@ -342,6 +372,7 @@ export default function App() {
                 welcome={welcomeBack(visit)}
                 onDrawIdea={() => { setIdeaPrompt(idea); setDrawWorld("dream"); setScreen("draw"); }}
                 onWrite={(id) => { setWriteWorld(id); setScreen("write"); }}
+                onDrawSchool={() => setScreen("school")}
               />
             )}
             {screen === "draw" && (
@@ -397,6 +428,12 @@ export default function App() {
                 world={writeWorld}
                 onBack={() => setScreen("home")}
                 onBorn={handleBorn}
+              />
+            )}
+            {screen === "school" && (
+              <DrawSchool
+                onBack={() => setScreen("home")}
+                onDrawn={handleTraced}
               />
             )}
             {screen === "game" && (
