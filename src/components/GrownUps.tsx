@@ -16,7 +16,7 @@ import { useMemo, useState } from "react";
 import type { Creature } from "@/lib/types";
 import { loadWriting } from "@/lib/storage";
 import { peekVisit } from "@/lib/daily";
-import { LETTER_LESSONS, NUMBER_LESSONS, SUM_LESSONS, WORD_LESSONS } from "@/lib/writing";
+import { LETTER_LESSONS, NUMBER_CATEGORIES, SUM_LESSONS, WORD_LESSONS } from "@/lib/writing";
 import { DRAW_LESSONS } from "@/lib/lessons";
 import { SHAPES } from "@/lib/glyphs";
 import { InkButton, InkCard, Scribble } from "@/components/ink/Ink";
@@ -31,6 +31,9 @@ function tried(progress: Record<string, number>, prefix: string): number {
   for (const k in progress) if (k.startsWith(prefix) && progress[k] > 0) n++;
   return n;
 }
+
+/** A teal-to-blue ramp, one shade per group of numbers, in curriculum order. */
+const NUMBER_TONES = ["#0e8a86", "#0d7f92", "#0c6f9e", "#0b5fa8"];
 
 interface Row {
   label: string;
@@ -66,7 +69,18 @@ export default function GrownUps({ creatures, onBack }: {
   const rows: Row[] = [
     { label: "Capital letters", done: tried(progress, "letter:"), total: LETTER_LESSONS.length, tone: "#8b46c7", unit: "letters" },
     { label: "Lowercase letters", done: tried(progress, "lower:"), total: LETTER_LESSONS.length, tone: "#a855f7", unit: "letters" },
-    { label: "Numbers", done: tried(progress, "digit:"), total: NUMBER_LESSONS.length, tone: "#0e8a86", unit: "numbers" },
+    /* One row per group of numbers, straight off the curriculum — the picker
+       shows a child exactly these four sections, so a grown-up looking for
+       "has she met the teens yet?" sees the same shape she does. Each group
+       counts its own progress prefix; totals can never drift from the lessons
+       because they are the lessons. */
+    ...NUMBER_CATEGORIES.map((c, i) => ({
+      label: c.title,
+      done: tried(progress, c.prefix),
+      total: c.lessons.length,
+      tone: NUMBER_TONES[i % NUMBER_TONES.length],
+      unit: "numbers",
+    })),
     { label: "Sums", done: tried(progress, "sum:"), total: SUM_LESSONS.length, tone: "#0369a1", unit: "sums" },
     { label: "Shapes", done: tried(progress, "shape:"), total: SHAPES.length, tone: "#0891b2", unit: "shapes" },
     { label: "Words written", done: tried(progress, "word:"), total: WORD_LESSONS.length, tone: "#c2600c", unit: "words" },

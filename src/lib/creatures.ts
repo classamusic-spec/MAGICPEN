@@ -27,6 +27,19 @@ export const CREATURE_KINDS: CreatureKind[] = [
    anyway — a written word can. `kindById` looks in both. */
 export const WORD_KINDS: CreatureKind[] = [
   { id: "dog",   label: "Dog",   behavior: "bounce",  names: ["Rex", "Biscuit", "Pip", "Waggy", "Bandit"] },
+  /* ── these eight had artwork but nobody behind it ──
+     Their doodles existed, so Word World could show them, but no kind matched —
+     a child who wrote ZEBRA got a creature called "Squiggle" labelled "Mystery
+     Creature". Eight lines is the whole fix, and it is what lets those eight
+     words exist at all. */
+  { id: "zebra", label: "Zebra", behavior: "graze",   names: ["Stripes", "Dazzle", "Zig-Zag", "Socks"] },
+  { id: "kite",  label: "Kite",  behavior: "fly",     names: ["Swoopy", "Tug", "High-Flyer", "Breezy"] },
+  { id: "leaf",  label: "Leaf",  behavior: "float",   names: ["Drifty", "Rustle", "Twirl", "Green"] },
+  { id: "nest",  label: "Nest",  behavior: "grow",    names: ["Cosy", "Twiggy", "Home", "Snug"] },
+  { id: "gift",  label: "Gift",  behavior: "bounce",  names: ["Surprise", "Ribbon", "Wrappy", "Shhh"] },
+  { id: "crown", label: "Crown", behavior: "float",   names: ["Majesty", "Goldie", "Shiny", "Royal"] },
+  { id: "yoyo",  label: "Yo-yo", behavior: "bounce",  names: ["Bobbin", "Up-Down", "Whirly", "Spin"] },
+  { id: "orange",label: "Orange",behavior: "grow",    names: ["Zesty", "Pip", "Sunny", "Juicy"] },
   { id: "cat",   label: "Cat",   behavior: "crawl",   names: ["Mittens", "Whiskers", "Nibbles", "Smudge"] },
   { id: "bee",   label: "Bee",   behavior: "fly",     names: ["Buzz", "Honey", "Fuzzy", "Zip"] },
   { id: "frog",  label: "Frog",  behavior: "bounce",  names: ["Hopper", "Ribbit", "Lily", "Splot"] },
@@ -243,7 +256,7 @@ export const WRITING_WORLDS: WritingWorld[] = [
     id: "numbers",
     name: "Math World",
     tagline: "Write numbers & sums!",
-    teaches: "Writing 0–9, counting, and single-digit sums",
+    teaches: "Writing numbers to 100, counting, sums, and first shapes",
     gradient: "linear-gradient(160deg,#0369a1 0%,#00c2b9 58%,#bbf7d0 100%)",
     tone: "#00838a",
   },
@@ -251,7 +264,7 @@ export const WRITING_WORLDS: WritingWorld[] = [
     id: "words",
     name: "Word World",
     tagline: "Write a word — watch it come alive!",
-    teaches: "Blending letters into three- and four-letter words",
+    teaches: "Blending letters into words, three to six letters long",
     gradient: "linear-gradient(160deg,#c2410c 0%,#f59e0b 55%,#fde68a 100%)",
     tone: "#d1490b",
   },

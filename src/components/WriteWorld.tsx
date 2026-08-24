@@ -13,7 +13,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WritingWorldId } from "@/lib/types";
 import { writingWorldById } from "@/lib/creatures";
 import {
-  LETTER_LESSONS, NUMBER_LESSONS, SUM_LESSONS, WORD_LESSONS,
+  LETTER_LESSONS, NUMBER_CATEGORIES, SUM_LESSONS, WORD_GROUPS,
+  COUNTABLE_MAX, spokenName,
+  type NumberCategory, type NumberLesson,
 } from "@/lib/writing";
 import { SHAPES, SHAPE_GLYPHS, SHAPE_BOX } from "@/lib/glyphs";
 import { loadWriting, saveWriting, nextLessonKey, type WritingProgress } from "@/lib/storage";
@@ -42,6 +44,22 @@ interface Lesson {
   count: number;
   rewardTitle: string;
   rewardLine: string;
+  /**
+   * What the reward says out loud, when the written line is not what should be
+   * said. A number is the reason this exists: "Forty-two!" read off the screen
+   * comes out "forty minus two" — a hyphen is a dash to a speech synthesizer —
+   * and the digits alone come out "four two". Left unset, the reward speaks its
+   * own title, which is right for everything else.
+   */
+  say?: string;
+  /**
+   * Math World: show this numeral, big, instead of counting things out.
+   *
+   * Set on every number too large to count — you cannot draw forty-seven
+   * apples on a phone and expect a five-year-old to count them. The small
+   * numbers leave it unset and keep their pile.
+   */
+  numeral?: string;
   /** Word World only: the word written, and the creature it becomes. */
   word?: string;
   /** Shapes: the name of the shape traced, e.g. "circle". Its reward shows the
@@ -49,7 +67,33 @@ interface Lesson {
   shape?: string;
 }
 
-const say = (c: string) => c;
+/* ── the picker, built from the lessons rather than sliced out of them ───────
+   Sections used to be `lessons.slice(SUM_OFFSET, SHAPE_OFFSET)` against a flat
+   array, with the tile's index recomputed by hand — three numbers that had to
+   agree, in three different places, every time the curriculum changed. They did
+   not always agree.
+
+   So a section now *owns* its lessons and the flat list is derived from the
+   sections (see `sections`/`lessons` below). A tile carries the lesson it was
+   built from and opens it by key, so there is no index arithmetic left to get
+   wrong: a tile can only ever open the lesson whose face it is showing. */
+
+interface PickerItem {
+  lesson: Lesson;
+  /** What the tile shows. Takes the stars so far — a word not yet written is
+   *  drawn in pencil. */
+  face: (stars: number) => React.ReactNode;
+}
+
+interface PickerSection {
+  /** Stable id, for React keys. */
+  id: string;
+  title: string;
+  hint: string;
+  /** Narrowest a tile may be; the grid auto-fills from there. */
+  min: string;
+  items: PickerItem[];
+}
 
 /** Turn a written line into one a synthesizer says right: math glyphs become
  *  words (a screen's "−" is often read as nothing at all), and an all-caps word
@@ -63,84 +107,90 @@ const forSpeech = (line: string): string =>
     .replace(/\s+/g, " ")
     .trim();
 
-function letterLessons(): Lesson[] {
-  return LETTER_LESSONS.map((l) => ({
-    key: `letter:${l.char}`,
-    targets: [{ char: l.char, say: say(l.char) }],
-    title: `Trace the letter ${l.char}`,
-    subtitle: `${l.char} is for ${l.word}`,
-    doodle: l.doodle,
-    count: 1,
-    rewardTitle: `${l.char} is for ${l.word}!`,
-    rewardLine: "You wrote a whole letter.",
-  }));
+/** One letter, drawn from the very glyph the child is about to trace. */
+const glyphFace = (char: string, tone: string, size = 40) => (
+  <GlyphMark char={char} size={size} color={tone} />
+);
+
+/** A numeral, one glyph per digit — "42" is a four and a two, side by side, the
+ *  same two shapes the tracing screen will ask for and in the same order. Three
+ *  digits get a little smaller so a hundred still fits a narrow tile. */
+function numeralFace(numeral: string, tone: string, size: number) {
+  const s = numeral.length >= 3 ? size * 0.78 : numeral.length === 2 ? size * 0.9 : size;
+  return (
+    <span className="flex items-end justify-center gap-1">
+      {numeral.split("").map((d, i) => (
+        <GlyphMark key={i} char={d} size={s} color={tone} />
+      ))}
+    </span>
+  );
 }
 
-/** The same twenty-six, in the letters children actually read. A separate
- *  progress key (`lower:`) so a child's lowercase stars are their own, and the
- *  lowercase glyph is what gets traced — a different letterform, not a small
- *  capital. */
-function lowerLessons(): Lesson[] {
-  return LETTER_LESSONS.map((l) => {
-    const lc = l.char.toLowerCase();
-    return {
-      key: `lower:${lc}`,
-      targets: [{ char: lc, say: say(lc) }],
-      title: `Trace the letter ${lc}`,
-      subtitle: `${lc} is for ${l.word}`,
-      doodle: l.doodle,
-      count: 1,
-      rewardTitle: `${lc} is for ${l.word}!`,
-      rewardLine: "You wrote a whole letter.",
-    };
-  });
+function letterSections(lowercase: boolean, tone: string): PickerSection[] {
+  return [{
+    id: "letters",
+    title: lowercase ? "Small letters" : "Big letters",
+    hint: "tap one to write it",
+    min: "4.3rem",
+    items: LETTER_LESSONS.map((l) => {
+      /* A separate progress key for each case (`letter:` / `lower:`) so a
+         child's lowercase stars are their own, and the lowercase glyph is what
+         gets traced — a different letterform, not a small capital. */
+      const c = lowercase ? l.char.toLowerCase() : l.char;
+      return {
+        lesson: {
+          key: `${lowercase ? "lower" : "letter"}:${c}`,
+          targets: [{ char: c, say: c }],
+          title: `Trace the letter ${c}`,
+          subtitle: `${c} is for ${l.word}`,
+          doodle: l.doodle,
+          count: 1,
+          rewardTitle: `${c} is for ${l.word}!`,
+          rewardLine: "You wrote a whole letter.",
+        },
+        face: () => glyphFace(c, tone),
+      };
+    }),
+  }];
 }
 
 const SPOKEN = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 
-function numberLessons(): Lesson[] {
-  const digits: Lesson[] = NUMBER_LESSONS.map((n) => ({
-    key: `digit:${n.digit}`,
-    targets: [{ char: n.digit, say: SPOKEN[n.count] ?? n.digit }],
-    title: `Trace the number ${n.digit}`,
-    subtitle: n.count === 0 ? `${n.digit} means none at all` : `${n.digit} ${n.thing}`,
-    doodle: n.doodle,
-    count: n.count,
-    rewardTitle: n.count === 0 ? "Zero! An empty plate." : `${n.count} ${n.thing}!`,
-    rewardLine: "Count them with your finger.",
-  }));
-  const sums: Lesson[] = SUM_LESSONS.map((s) => {
-    const q = `${s.a} ${s.op === "+" ? "+" : "−"} ${s.b}`;
-    return {
-      key: `sum:${s.a}${s.op}${s.b}`,
-      targets: [{ char: String(s.answer), say: SPOKEN[s.answer] ?? String(s.answer) }],
-      title: `${q} = ?`,
-      subtitle: "Write the answer",
-      doodle: "star",
-      count: 1,
-      rewardTitle: `${q} = ${s.answer}`,
-      rewardLine: "You worked it out!",
-    };
-  });
-  return [...digits, ...sums];
-}
+const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-function wordLessons(): Lesson[] {
-  return WORD_LESSONS.map((w) => ({
-    key: `word:${w.word}`,
-    targets: w.word.split("").map((c) => ({ char: c, say: c })),
-    title: `Write ${w.word}`,
-    subtitle: w.hint,
-    doodle: w.doodle,
-    count: 1,
-    rewardTitle: `${w.word} is alive!`,
-    rewardLine: w.hint,
-    word: w.word,
-  }));
+/** One number, in one of the four groups. The group supplies the progress
+ *  prefix, so 0–9 keep the `digit:` keys they have always had. */
+function numberItem(cat: NumberCategory, n: NumberLesson, tone: string): PickerItem {
+  /* Counting art is only honest while the pile is countable. Past that the
+     reward shows the numeral and says its name — which is the lesson anyway,
+     once a number is bigger than a child's fingers. */
+  const counts = n.doodle !== undefined && n.thing !== undefined && n.value <= COUNTABLE_MAX;
+  // "1 moons" is not a sentence anybody says; one is the only count that needs it
+  const thing = n.value === 1 ? (n.thing ?? "").replace(/s$/, "") : n.thing ?? "";
+  return {
+    lesson: {
+      key: `${cat.prefix}${n.numeral}`,
+      // one screen per digit, each spoken as the digit it is: "four", "two"
+      targets: n.numeral.split("").map((d) => ({ char: d, say: SPOKEN[Number(d)] ?? d })),
+      title: `Trace the number ${n.numeral}`,
+      subtitle: counts
+        ? n.value === 0 ? `${n.numeral} means none at all` : `${n.value} ${thing}`
+        : n.name,
+      doodle: n.doodle ?? "",
+      count: n.value,
+      numeral: counts ? undefined : n.numeral,
+      rewardTitle: counts
+        ? n.value === 0 ? "Zero! An empty plate." : `${n.value} ${thing}!`
+        : `${capitalise(n.name)}!`,
+      rewardLine: counts ? "Count them with your finger." : "You wrote a big number.",
+      // never left to the screen's own words: "Forty-two!" reads as a subtraction
+      say: counts
+        ? n.value === 0 ? "zero. an empty plate." : `${n.name} ${thing}`
+        : spokenName(n),
+    },
+    face: () => numeralFace(n.numeral, tone, 40),
+  };
 }
-
-/** How many digit lessons come before the sums, so the picker can split them. */
-const SUM_OFFSET = NUMBER_LESSONS.length;
 
 const SHAPE_HINT: Record<string, string> = {
   circle: "round and round, back to the start",
@@ -151,24 +201,102 @@ const SHAPE_HINT: Record<string, string> = {
   heart: "two bumps at the top, down to a point",
 };
 
-/** Shapes — the marks a hand learns to make before any letter. Traced like a
- *  drawing (their own square box, no penmanship lines), never counted. */
-function shapeLessons(): Lesson[] {
-  return SHAPES.map((name) => ({
-    key: `shape:${name}`,
-    targets: [{ char: name, say: name, guide: SHAPE_GLYPHS[name], space: SHAPE_BOX }],
-    title: `Trace a ${name}`,
-    subtitle: SHAPE_HINT[name],
-    doodle: "",
-    count: 1,
-    rewardTitle: `A ${name}!`,
-    rewardLine: "You traced a whole shape.",
-    shape: name,
+/** Numbers by group, then sums, then shapes. */
+function numberSections(tone: string): PickerSection[] {
+  const numbers: PickerSection[] = NUMBER_CATEGORIES.map((cat) => ({
+    id: cat.prefix,
+    title: cat.title,
+    hint: cat.hint,
+    // a two- or three-digit tile needs more room than a single figure does
+    min: cat.lessons.some((n) => n.numeral.length > 1) ? "5rem" : "4.3rem",
+    items: cat.lessons.map((n) => numberItem(cat, n, tone)),
   }));
+
+  const sums: PickerSection = {
+    id: "sums",
+    title: "Sums",
+    hint: "write the answer",
+    min: "8rem",
+    items: SUM_LESSONS.map((s) => {
+      const q = `${s.a} ${s.op === "+" ? "+" : "−"} ${s.b}`;
+      return {
+        lesson: {
+          key: `sum:${s.a}${s.op}${s.b}`,
+          targets: [{ char: String(s.answer), say: SPOKEN[s.answer] ?? String(s.answer) }],
+          title: `${q} = ?`,
+          subtitle: "Write the answer",
+          doodle: "star",
+          count: 1,
+          rewardTitle: `${q} = ${s.answer}`,
+          rewardLine: "You worked it out!",
+        },
+        face: () => (
+          <span className="ink-title text-fs-xl py-1" style={{ color: tone }}>{q}</span>
+        ),
+      };
+    }),
+  };
+
+  /* Shapes — the marks a hand learns to make before any letter. Traced like a
+     drawing (their own square box, no penmanship lines), never counted. */
+  const shapes: PickerSection = {
+    id: "shapes",
+    title: "Shapes",
+    hint: "the first thing a hand learns to draw",
+    min: "4.3rem",
+    items: SHAPES.map((name) => ({
+      lesson: {
+        key: `shape:${name}`,
+        targets: [{ char: name, say: name, guide: SHAPE_GLYPHS[name], space: SHAPE_BOX }],
+        title: `Trace a ${name}`,
+        subtitle: SHAPE_HINT[name],
+        doodle: "",
+        count: 1,
+        rewardTitle: `A ${name}!`,
+        rewardLine: "You traced a whole shape.",
+        shape: name,
+      },
+      face: () => <GlyphMark char={name} size={38} color={tone} weight={7} />,
+    })),
+  };
+
+  return [...numbers, sums, shapes];
 }
 
-/** Digits, then sums, then shapes — where the shapes begin. */
-const SHAPE_OFFSET = NUMBER_LESSONS.length + SUM_LESSONS.length;
+/** Words, in the world each one belongs to. */
+function wordSections(tone: string): PickerSection[] {
+  return WORD_GROUPS.map((g) => ({
+    id: g.id,
+    title: g.title,
+    hint: g.hint,
+    min: "7.4rem",
+    items: g.words.map((w) => ({
+      lesson: {
+        key: `word:${w.word}`,
+        targets: w.word.split("").map((c) => ({ char: c, say: c })),
+        title: `Write ${w.word}`,
+        subtitle: w.hint,
+        doodle: w.doodle,
+        count: 1,
+        rewardTitle: `${w.word} is alive!`,
+        rewardLine: w.hint,
+        word: w.word,
+      },
+      face: (stars: number) => (
+        <>
+          {/* A word not yet written is a creature not yet awake: drawn in
+              pencil until the child writes it in. */}
+          <span className={stars > 0 ? "anim-float-y block" : "block"}>
+            <Doodle name={w.doodle} size={52} mono={stars > 0 ? undefined : "rgba(45,41,38,0.3)"} />
+          </span>
+          <span className="ink-title text-fs-md tracking-wide" style={{ color: tone }}>
+            {w.word}
+          </span>
+        </>
+      ),
+    })),
+  }));
+}
 
 /* ── earned stars ────────────────────────────────────────────────────────── */
 
@@ -251,6 +379,11 @@ function Reward({ world, lesson, stars, hasNext, onNext, onPicker, onBorn }: {
     timers.current.forEach((t) => window.clearTimeout(t));
     timers.current = [];
   }, []);
+
+  /* What the payoff says out loud. A lesson that knows how it should sound —
+     every number does — says so; everything else has its written line read. */
+  const spoken = lesson.say ?? forSpeech(lesson.rewardTitle);
+
   const soundOut = useCallback(() => {
     clearBlend();
     hush();
@@ -259,20 +392,20 @@ function Reward({ world, lesson, stars, hasNext, onNext, onPicker, onBorn }: {
     wordChars.forEach((c, i) => at(i * step, () => { setHi(i); sayLetter(c); }));
     const after = wordChars.length * step;
     at(after, () => { setHi(-1); sayWord((lesson.word ?? "").toLowerCase()); });  // …now the whole word
-    at(after + 900, () => sayLine(forSpeech(lesson.rewardTitle)));  // "dog is alive!"
-  }, [wordChars, lesson.word, lesson.rewardTitle, clearBlend]);
+    at(after + 900, () => sayLine(spoken));  // "dog is alive!"
+  }, [wordChars, lesson.word, spoken, clearBlend]);
 
   /* The payoff, out loud. A word sounds itself out; everything else just says
      its line — "A is for Apple!" — a beat after the celebration lands. */
   useEffect(() => {
     const id = window.setTimeout(() => {
       if (isWord && wordChars.length) soundOut();
-      else sayLine(forSpeech(lesson.rewardTitle));
+      else sayLine(spoken);
     }, 480);
     return () => { window.clearTimeout(id); clearBlend(); hush(); };
-  }, [lesson.rewardTitle, isWord, wordChars.length, soundOut, clearBlend]);
+  }, [spoken, isWord, wordChars.length, soundOut, clearBlend]);
   // Math World counts the thing out; everywhere else one big one is the prize.
-  const many = Math.min(lesson.count, 9);
+  const many = Math.min(lesson.count, COUNTABLE_MAX);
 
   return (
     <div className="screen overflow-y-auto no-scrollbar" style={{ background: w.gradient }}>
@@ -292,6 +425,14 @@ function Reward({ world, lesson, stars, hasNext, onNext, onPicker, onBorn }: {
             {lesson.shape ? (
               <span className="anim-float-y block">
                 <GlyphMark char={lesson.shape} size={112} color={w.tone} weight={9} />
+              </span>
+            ) : lesson.numeral ? (
+              /* Too many to count, so the number itself is the prize: the
+                 numeral they just wrote, big, with its name underneath. */
+              <span className="anim-float-y flex items-end justify-center gap-1.5">
+                {lesson.numeral.split("").map((d, i) => (
+                  <GlyphMark key={i} char={d} size={lesson.numeral!.length >= 3 ? 88 : 100} color={w.tone} weight={9} />
+                ))}
               </span>
             ) : lesson.count === 0 ? (
               <span className="ink-hand text-fs-lg opacity-70">nothing at all!</span>
@@ -409,29 +550,45 @@ export default function WriteWorld({ world, onBack, onBorn }: {
      taught to write first and the easier shapes — with a tap to switch to the
      lowercase they will actually read. */
   const [lowercase, setLowercase] = useState(false);
-  const lessons = useMemo(
+
+  /* The sections are the source of truth; the flat list is what falls out of
+     them. Everything downstream — "keep going", "next one", how many are done —
+     reads the flat list, and nothing anywhere has to know where one section
+     ends and the next begins. */
+  const sections = useMemo(
     () =>
-      world === "letters"
-        ? lowercase ? lowerLessons() : letterLessons()
-        : world === "numbers" ? [...numberLessons(), ...shapeLessons()] : wordLessons(),
-    [world, lowercase]
+      world === "letters" ? letterSections(lowercase, w.tone)
+        : world === "numbers" ? numberSections(w.tone)
+          : wordSections(w.tone),
+    [world, lowercase, w.tone]
+  );
+  const lessons = useMemo(() => sections.flatMap((s) => s.items.map((i) => i.lesson)), [sections]);
+  /** Where each lesson sits in the flat list — the tiles' only use for a number
+   *  is to seed their scatter, so it is looked up, never counted out. */
+  const orderOf = useMemo(
+    () => new Map(lessons.map((l, i) => [l.key, i])),
+    [lessons]
   );
 
   const [progress, setProgress] = useState<WritingProgress>(() => loadWriting());
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  /* Which lesson is open, held by its key rather than its position: a key
+     names one lesson and only that lesson, so a tile cannot open its
+     neighbour. */
+  const [activeKey, setActiveKey] = useState<string | null>(null);
   const [earned, setEarned] = useState<1 | 2 | 3 | null>(null);
 
-  const active = activeIndex === null ? null : lessons[activeIndex];
+  const activeIndex = activeKey === null ? -1 : lessons.findIndex((l) => l.key === activeKey);
+  const active = activeIndex < 0 ? null : lessons[activeIndex];
   const done = lessons.filter((l) => (progress[l.key] ?? 0) > 0).length;
 
   /* Where the stars say to go next: the first untried lesson, or once all are
      tried, the shakiest one for another gentle go. null once every lesson is a
      confident three stars — then there is nothing to nudge. */
   const nextKey = useMemo(() => nextLessonKey(lessons.map((l) => l.key), progress), [lessons, progress]);
-  const nextIndex = nextKey ? lessons.findIndex((l) => l.key === nextKey) : -1;
   const anyStarted = done > 0;
 
-  const open = (i: number) => { setActiveIndex(i); setEarned(null); };
+  const open = (key: string) => { setActiveKey(key); setEarned(null); };
+  const close = () => { setActiveKey(null); setEarned(null); };
 
   const finish = (stars: 1 | 2 | 3) => {
     if (active) setProgress(saveWriting(active.key, stars));
@@ -449,7 +606,7 @@ export default function WriteWorld({ world, onBack, onBorn }: {
         title={active.title}
         subtitle={active.subtitle}
         color={w.tone}
-        onBack={() => setActiveIndex(null)}
+        onBack={close}
         onComplete={(r) => finish(r.stars)}
       />
     );
@@ -457,19 +614,51 @@ export default function WriteWorld({ world, onBack, onBorn }: {
 
   /* ── reward ── */
   if (active && earned !== null) {
-    const hasNext = activeIndex !== null && activeIndex + 1 < lessons.length;
+    const next = lessons[activeIndex + 1];
     return (
       <Reward
         world={world}
         lesson={active}
         stars={earned}
-        hasNext={hasNext}
-        onNext={() => open((activeIndex ?? 0) + 1)}
-        onPicker={() => { setActiveIndex(null); setEarned(null); }}
+        hasNext={Boolean(next)}
+        onNext={() => { if (next) open(next.key); }}
+        onPicker={close}
         onBorn={active.word ? () => onBorn({ word: active.word!, doodle: active.doodle }) : undefined}
       />
     );
   }
+
+  /* Capitals or the lowercase children actually read. Both drawn from their own
+     glyphs, so ABC and abc show the very shapes to trace. */
+  const caseToggle = (
+    <div className="flex justify-center pt-3">
+      <div
+        role="tablist"
+        aria-label="Letter case"
+        className="inline-flex gap-1 p-1 rounded-full"
+        style={{ background: "#fffaf0", border: "2.5px solid var(--ink)" }}
+      >
+        {([["Big ABC", false], ["small abc", true]] as const).map(([label, lc]) => {
+          const on = lowercase === lc;
+          return (
+            <button
+              key={label}
+              role="tab"
+              aria-selected={on}
+              onClick={() => { if (!on) { sfxTap(); setLowercase(lc); } }}
+              className="ink-title text-fs-sm px-4 py-1.5 rounded-full transition-colors"
+              style={{
+                background: on ? w.tone : "transparent",
+                color: on ? "#fffaf0" : "var(--ink)",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   /* ── picker ── */
   return (
@@ -507,13 +696,13 @@ export default function WriteWorld({ world, onBack, onBorn }: {
             found hardest — instead of leaving a four-year-old to choose from a
             wall of tiles. Gone only when every lesson is a confident three
             stars, which is a finish line, not a gap. */}
-        {nextIndex >= 0 && (
+        {nextKey && (
           <div className="pt-4 anim-rise-in">
             <InkButton
               tone={w.tone}
               seed={51}
               radius={18}
-              onClick={() => { sfxHappy(); open(nextIndex); }}
+              onClick={() => { sfxHappy(); open(nextKey); }}
               className="w-full font-display font-extrabold text-fs-lg"
               style={{ minHeight: "var(--tap)" }}
             >
@@ -525,122 +714,35 @@ export default function WriteWorld({ world, onBack, onBorn }: {
           </div>
         )}
 
-        {world === "letters" && (
-          <Section title={lowercase ? "Small letters" : "Big letters"} hint="tap one to write it">
-            {/* Capitals or the lowercase children actually read. Both drawn from
-                their own glyphs, so ABC and abc show the very shapes to trace. */}
-            <div className="flex justify-center pt-3">
-              <div
-                role="tablist"
-                aria-label="Letter case"
-                className="inline-flex gap-1 p-1 rounded-full"
-                style={{ background: "#fffaf0", border: "2.5px solid var(--ink)" }}
-              >
-                {([["Big ABC", false], ["small abc", true]] as const).map(([label, lc]) => {
-                  const on = lowercase === lc;
-                  return (
-                    <button
-                      key={label}
-                      role="tab"
-                      aria-selected={on}
-                      onClick={() => { if (!on) { sfxTap(); setLowercase(lc); } }}
-                      className="ink-title text-fs-sm px-4 py-1.5 rounded-full transition-colors"
-                      style={{
-                        background: on ? w.tone : "transparent",
-                        color: on ? "#fffaf0" : "var(--ink)",
-                      }}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <ul className="grid gap-2.5 pt-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(4.3rem, 1fr))" }}>
-              {lessons.map((l, i) => (
-                <li key={l.key}>
-                  <Tile lesson={l} index={i} stars={progress[l.key] ?? 0} onPick={() => open(i)} wide>
-                    <GlyphMark char={l.targets[0].char} size={40} color={w.tone} />
-                  </Tile>
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-
-        {world === "numbers" && (
-          <>
-            <Section title="Numbers" hint="0 to 9">
-              <ul className="grid gap-2.5 pt-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(4.3rem, 1fr))" }}>
-                {lessons.slice(0, SUM_OFFSET).map((l, i) => (
-                  <li key={l.key}>
-                    <Tile lesson={l} index={i} stars={progress[l.key] ?? 0} onPick={() => open(i)} wide>
-                      <GlyphMark char={l.targets[0].char} size={40} color={w.tone} />
-                    </Tile>
-                  </li>
-                ))}
-              </ul>
-            </Section>
-            <Section title="Sums" hint="write the answer">
-              <ul className="grid gap-2.5 pt-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(8rem, 1fr))" }}>
-                {lessons.slice(SUM_OFFSET, SHAPE_OFFSET).map((l, i) => (
-                  <li key={l.key}>
+        {/* One render for all three worlds. A tile is handed the lesson it was
+            built beside and opens it by key, so what a tile shows and what it
+            opens cannot drift apart. */}
+        {sections.map((s) => (
+          <Section key={s.id} title={s.title} hint={s.hint}>
+            {s.id === "letters" && caseToggle}
+            <ul
+              className="grid gap-2.5 pt-3"
+              style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${s.min}, 1fr))` }}
+            >
+              {s.items.map(({ lesson, face }) => {
+                const stars = progress[lesson.key] ?? 0;
+                return (
+                  <li key={lesson.key}>
                     <Tile
-                      lesson={l}
-                      index={SUM_OFFSET + i}
-                      stars={progress[l.key] ?? 0}
-                      onPick={() => open(SUM_OFFSET + i)}
+                      lesson={lesson}
+                      index={orderOf.get(lesson.key) ?? 0}
+                      stars={stars}
+                      onPick={() => open(lesson.key)}
                       wide
                     >
-                      <span className="ink-title text-fs-xl py-1" style={{ color: w.tone }}>
-                        {l.title.replace(" = ?", "")}
-                      </span>
-                    </Tile>
-                  </li>
-                ))}
-              </ul>
-            </Section>
-            <Section title="Shapes" hint="the first thing a hand learns to draw">
-              <ul className="grid gap-2.5 pt-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(4.3rem, 1fr))" }}>
-                {lessons.slice(SHAPE_OFFSET).map((l, i) => (
-                  <li key={l.key}>
-                    <Tile lesson={l} index={SHAPE_OFFSET + i} stars={progress[l.key] ?? 0} onPick={() => open(SHAPE_OFFSET + i)} wide>
-                      <GlyphMark char={l.shape ?? "circle"} size={38} color={w.tone} weight={7} />
-                    </Tile>
-                  </li>
-                ))}
-              </ul>
-            </Section>
-          </>
-        )}
-
-        {world === "words" && (
-          <Section title="Words to write" hint="write it — it comes alive">
-            <ul className="grid gap-3 pt-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(7.4rem, 1fr))" }}>
-              {lessons.map((l, i) => {
-                const stars = progress[l.key] ?? 0;
-                return (
-                  <li key={l.key}>
-                    <Tile lesson={l} index={i} stars={stars} onPick={() => open(i)} wide>
-                      {/* A word not yet written is a creature not yet awake:
-                          drawn in pencil until the child writes it in. */}
-                      <span className={stars > 0 ? "anim-float-y block" : "block"}>
-                        <Doodle
-                          name={l.doodle}
-                          size={52}
-                          mono={stars > 0 ? undefined : "rgba(45,41,38,0.3)"}
-                        />
-                      </span>
-                      <span className="ink-title text-fs-md tracking-wide" style={{ color: w.tone }}>
-                        {l.word}
-                      </span>
+                      {face(stars)}
                     </Tile>
                   </li>
                 );
               })}
             </ul>
           </Section>
-        )}
+        ))}
 
         <p className="ink-hand text-fs-2xs text-center mt-6 opacity-80">
           For grown-ups: {w.teaches}. Nothing is ever marked wrong — the stars say how

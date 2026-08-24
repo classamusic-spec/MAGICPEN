@@ -5,7 +5,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { Creature, WorldPack, WritingWorld, WritingWorldId } from "@/lib/types";
 import { WORLD_PACKS, WRITING_WORLDS, kindById } from "@/lib/creatures";
-import { LETTER_LESSONS, NUMBER_LESSONS, SUM_LESSONS, WORD_LESSONS } from "@/lib/writing";
+import { LETTER_LESSONS, ALL_NUMBER_LESSONS, SUM_LESSONS, WORD_LESSONS } from "@/lib/writing";
+import { SHAPES } from "@/lib/glyphs";
 import { DRAW_LESSONS } from "@/lib/lessons";
 import { loadWriting } from "@/lib/storage";
 import { sfxTap, sfxHappy } from "@/lib/audio";
@@ -315,14 +316,14 @@ function PackCard({
 /** How many lessons each writing world holds, so a card can show progress. */
 const WRITING_TOTAL: Record<WritingWorldId, number> = {
   letters: LETTER_LESSONS.length,
-  numbers: NUMBER_LESSONS.length + SUM_LESSONS.length,
+  numbers: ALL_NUMBER_LESSONS.length + SUM_LESSONS.length + SHAPES.length,
   words: WORD_LESSONS.length,
 };
 
 /** Which progress keys belong to which world. Keys are persisted — see storage. */
 const WRITING_PREFIX: Record<WritingWorldId, string[]> = {
   letters: ["letter:"],
-  numbers: ["digit:", "sum:"],
+  numbers: ["digit:", "teen:", "tens:", "big:", "sum:", "shape:"],
   words: ["word:"],
 };
 
