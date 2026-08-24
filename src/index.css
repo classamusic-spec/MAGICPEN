@@ -644,6 +644,73 @@
   0% { opacity: 0; transform: scale(1.07); }
   100% { opacity: 1; transform: scale(1); }
 }
+
+/* ── the pad turns ──────────────────────────────────────────────────────────
+   Magic Pen is written on a spiral notepad whose coil runs across the TOP.
+   That one fact decides all of the motion below: a top-bound sheet hinges on
+   its top edge and swings up over the metal. It never slides sideways — that
+   is a book, and this is a reporter's pad.
+
+   The three *turns* are all a `rotateX` about `top center`, which means all
+   three need a `.page-stage` ancestor to hand them a perspective. Without one
+   a rotateX is not a page turn at all, it is a vertical squash. The tear is
+   the odd one out — it is a lift, not a hinge — so it rotates in the plane of
+   the screen and brings its own `perspective()` along. */
+
+/* Forward, deeper into the app. The child's hand takes the bottom edge, lifts
+   the sheet towards them and throws it over the binding. It stops at 84° —
+   just short of edge-on — and is already invisible by then, so the mirrored
+   back of the page never gets a single frame. The late `translateZ` pushes
+   the sheet away from the camera as it rises, which stops the near edge
+   ballooning under perspective the way a raw rotate does. */
+@keyframes page-flip-out {
+  0% { opacity: 1; transform: translateZ(0) rotateX(0deg); }
+  62% { opacity: 0.9; }
+  100% { opacity: 0; transform: translateZ(-120px) rotateX(84deg); }
+}
+
+/* The sheet that was underneath. It does not arrive from anywhere — it was
+   always lying there, in the shade of the page on top of it. So all it is
+   allowed to do is come up out of that shadow and relax flat: a little depth,
+   three and a half degrees of curl, and the brightness coming back. */
+@keyframes page-flip-in {
+  0% { opacity: 0; transform: translateZ(-46px) rotateX(-3.5deg); filter: brightness(0.86); }
+  45% { opacity: 1; }
+  100% { opacity: 1; transform: none; filter: none; }
+}
+
+/* Backwards, out towards home. The page comes back down over the coil and
+   lands. The spring carries it a few degrees past flat and lets it settle,
+   which is the thing paper actually does when you drop it. */
+@keyframes page-flip-back-in {
+  /* not opacity 0 — the sheet is a real thing already coming over the coil,
+     and starting it invisible buys one blank frame in the middle of a
+     navigation, which is the one thing a child reads as "it broke" */
+  0% { opacity: 0.35; transform: translateZ(-110px) rotateX(76deg); }
+  22% { opacity: 1; }
+  100% { opacity: 1; transform: none; }
+}
+
+/* Torn out — the moment a drawing stops being on the pad and starts being
+   alive. Not a hinge: the perforation gives, the sheet drops a hair as it
+   lets go of the metal, then lifts off the pad and drifts away. Carries its
+   own `perspective()` so it works on a loose sheet anywhere, not only inside
+   a `.page-stage`. */
+@keyframes page-tear {
+  0% { opacity: 1; transform: perspective(1200px) translate3d(0, 0, 0) rotate(0deg); }
+  /* the perforation gives: a short tug down before anything lifts */
+  14% { opacity: 1; transform: perspective(1200px) translate3d(0, 7px, 0) rotate(-0.8deg); }
+  /* held opaque most of the way, or the drift happens to something already
+     invisible and the last half of the animation is spent on nothing */
+  62% { opacity: 0.88; }
+  100% { opacity: 0; transform: perspective(1200px) translate3d(0, -14%, 130px) rotate(-6.5deg); }
+}
+
+/* Reduced-motion stand-in for the two page animations that are *exits*. */
+@keyframes page-vanish {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
 @keyframes halo-ring {
   0%, 100% { box-shadow: var(--ring-white), var(--soft-2); }
   50% { box-shadow: var(--ring-white), 0 0 34px 8px rgba(255, 199, 44, 0.8); }
@@ -714,6 +781,78 @@
 }
 .screen-enter-dive { animation: screen-dive 0.65s var(--ease-out) both; }
 
+/* ── page turns on a top-bound pad ──────────────────────────────────────────
+   `.page-stage` is the one piece that has to be wired by hand: it goes on the
+   element that *contains* the screens, never on a screen itself, because
+   `perspective` is a property a parent hands down to its children. Everything
+   else is applied to the page that is moving.
+
+   The durations sit at 420–520ms on purpose. A page turn is a wall between a
+   four-year-old and the thing they wanted; it has to be over before they can
+   notice it is happening. */
+.page-stage {
+  position: relative;
+  perspective: 1800px;
+  perspective-origin: top center;
+  transform-style: preserve-3d;
+}
+
+/* Two pages can only trade places if they are stacked, not laid out one after
+   the other. Both the leaving and the arriving sheet wear this. */
+.page-layer {
+  position: absolute;
+  inset: 0;
+}
+/* The sheet being lifted off is the one on top — both going forward and
+   coming back, it is the sheet nearest the child's hand. */
+.page-layer.page-flip-out,
+.page-layer.page-flip-back-in { z-index: 2; }
+.page-layer.page-flip-in { z-index: 1; }
+
+/* The coil is the one thing on the pad that does not move. Hoist a single
+   `<TopBinding />` up into the `.page-stage` wearing this and it stays put
+   while every page rotates underneath it. */
+.page-coil-pin {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.page-flip-out {
+  animation: page-flip-out var(--dur-3) var(--ease-in-out) both;
+  transform-origin: top center;
+  backface-visibility: hidden;
+  /* a full-screen 3D rotate wants its own layer, and this element is gone the
+     moment it finishes, so the layer costs nothing for long */
+  will-change: transform, opacity;
+  /* nothing on a page that is already flying away should be tappable */
+  pointer-events: none;
+}
+.page-flip-in {
+  animation: page-flip-in var(--dur-3) var(--ease-out) both;
+  transform-origin: top center;
+  backface-visibility: hidden;
+}
+.page-flip-back-in {
+  animation: page-flip-back-in 480ms var(--ease-spring) both;
+  transform-origin: top center;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+.page-tear {
+  /* not `--ease-out`: that front-loads everything and the sheet is gone
+     before it has drifted anywhere. The tear wants resistance, a give, and
+     then a float. */
+  animation: page-tear 520ms var(--ease-in-out) both;
+  /* pivots where the metal was holding it, not at its middle */
+  transform-origin: 50% 22%;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+
 /* confetti particle */
 .confetti-p {
   position: absolute;
@@ -760,12 +899,30 @@
   .enter-pop,
   .screen-enter-rise,
   .screen-enter-fade,
-  .screen-enter-dive {
+  .screen-enter-dive,
+  .page-flip-in,
+  .page-flip-back-in {
     animation-name: screen-fade !important;
     animation-duration: 220ms !important;
     animation-timing-function: ease !important;
     animation-delay: 0ms !important;
   }
+  /* The other two page animations are *exits*. Collapsing them onto
+     `screen-fade` would fade the departing sheet back in and leave it sitting
+     on top of the app, so they get the same 220ms in the other direction. */
+  .page-flip-out,
+  .page-tear {
+    animation-name: page-vanish !important;
+    animation-duration: 220ms !important;
+    animation-timing-function: ease !important;
+    animation-delay: 0ms !important;
+  }
+  /* no 3D projection at all for a vestibular-sensitive child */
+  .page-stage { perspective: none; }
+  .page-flip-out,
+  .page-flip-in,
+  .page-flip-back-in,
+  .page-tear { will-change: auto; }
   .hover-lift:hover { transform: none; }
   .swatch[aria-checked="true"] { transform: scale(1.06); }
   * { scroll-behavior: auto !important; }
