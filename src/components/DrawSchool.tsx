@@ -20,7 +20,7 @@ import type { Stroke } from "@/lib/types";
 import { DRAW_LESSONS, LESSON_WORLDS, lessonsForWorld, type DrawLesson } from "@/lib/lessons";
 import { DOODLE_BOX, doodleLesson } from "@/lib/doodleTrace";
 import { WORLD_PACKS } from "@/lib/creatures";
-import { loadWriting, saveWriting, type WritingProgress } from "@/lib/storage";
+import { loadWriting, saveWriting, nextLessonKey, type WritingProgress } from "@/lib/storage";
 import { sfxHappy, sfxTap } from "@/lib/audio";
 import { sayLine, hush } from "@/lib/speech";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
@@ -271,6 +271,16 @@ export default function DrawSchool({ onBack, onDrawn }: {
 
   const open = (key: string) => { setActiveKey(key); setMade(null); };
 
+  /* The next thing to draw, chosen from the stars already earned: the first
+     never-tried lesson, then once all are tried the shakiest for another go,
+     null when every one is three stars. Ordered the way the picker lists the
+     worlds, so "next" reads as down the page. */
+  const orderedKeys = useMemo(
+    () => LESSON_WORLDS.flatMap((wId) => lessonsForWorld(wId).map((l) => l.key)),
+    [],
+  );
+  const nextKey = useMemo(() => nextLessonKey(orderedKeys, progress), [orderedKeys, progress]);
+
   const finish = (stars: 1 | 2 | 3, strokes: Stroke[]) => {
     if (active) setProgress(saveWriting(active.key, stars));
     setMade({ stars, strokes });
@@ -353,6 +363,27 @@ export default function DrawSchool({ onBack, onDrawn }: {
             {done}/{DRAW_LESSONS.length}
           </span>
         </header>
+
+        {/* One tap to the right next drawing, read from the stars — the first
+            not yet tried, or the one that was hardest — so the child is never
+            left to pick from forty tiles. */}
+        {nextKey && (
+          <div className="pt-4 anim-rise-in">
+            <InkButton
+              tone="#d946ef"
+              seed={51}
+              radius={18}
+              onClick={() => { sfxHappy(); open(nextKey); }}
+              className="w-full font-display font-extrabold text-fs-lg"
+              style={{ minHeight: "var(--tap)" }}
+            >
+              <span className="ink-on-wax flex items-center justify-center gap-2">
+                <Icon name="play" size={20} color="#fffaf0" fill="#fffaf0" />
+                {done > 0 ? "Keep going" : "Start here"}
+              </span>
+            </InkButton>
+          </div>
+        )}
 
         {LESSON_WORLDS.map((worldId) => {
           const pack = packOf(worldId);

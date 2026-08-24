@@ -160,6 +160,31 @@ export function saveWriting(key: string, stars: number): WritingProgress {
   return all;
 }
 
+/**
+ * Which lesson to steer a child to next, given the stars they have earned.
+ *
+ * This is the whole point of recording those stars: a lesson score that nobody
+ * ever reads is not progress, it is bookkeeping. The rule is gentle and never
+ * scolds — it points at the first thing not yet tried, and once everything has
+ * been tried it quietly brings back the shakiest one (the lowest score under
+ * three stars) for another, no-pressure go. When every lesson is a confident
+ * three stars, it returns null: there is nothing left to nudge, and that is a
+ * win, not an empty screen to fill.
+ *
+ * `keys` is the ordered list of lesson keys as the picker shows them, so "next"
+ * follows the teaching order a child already sees.
+ */
+export function nextLessonKey(keys: string[], progress: WritingProgress): string | null {
+  let weakest: string | null = null;
+  let weakestStars = 3;
+  for (const k of keys) {
+    const stars = progress[k] ?? 0;
+    if (stars === 0) return k;                       // never tried — start here
+    if (stars < weakestStars) { weakestStars = stars; weakest = k; }
+  }
+  return weakest;                                     // the shakiest, or null if all are 3
+}
+
 /* ── Dream World (the child's own painted world) ─────────────────────────────── */
 
 const DREAM_KEY = "magicpen.dreamworld.v1";

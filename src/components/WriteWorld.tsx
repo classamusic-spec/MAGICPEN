@@ -15,7 +15,7 @@ import { writingWorldById } from "@/lib/creatures";
 import {
   LETTER_LESSONS, NUMBER_LESSONS, SUM_LESSONS, WORD_LESSONS,
 } from "@/lib/writing";
-import { loadWriting, saveWriting, type WritingProgress } from "@/lib/storage";
+import { loadWriting, saveWriting, nextLessonKey, type WritingProgress } from "@/lib/storage";
 import { sfxTap, sfxHappy } from "@/lib/audio";
 import { sayLine, hush } from "@/lib/speech";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
@@ -314,6 +314,13 @@ export default function WriteWorld({ world, onBack, onBorn }: {
   const active = activeIndex === null ? null : lessons[activeIndex];
   const done = lessons.filter((l) => (progress[l.key] ?? 0) > 0).length;
 
+  /* Where the stars say to go next: the first untried lesson, or once all are
+     tried, the shakiest one for another gentle go. null once every lesson is a
+     confident three stars — then there is nothing to nudge. */
+  const nextKey = useMemo(() => nextLessonKey(lessons.map((l) => l.key), progress), [lessons, progress]);
+  const nextIndex = nextKey ? lessons.findIndex((l) => l.key === nextKey) : -1;
+  const anyStarted = done > 0;
+
   const open = (i: number) => { setActiveIndex(i); setEarned(null); };
 
   const finish = (stars: 1 | 2 | 3) => {
@@ -384,6 +391,29 @@ export default function WriteWorld({ world, onBack, onBorn }: {
             {done}/{lessons.length}
           </span>
         </header>
+
+        {/* The stars, put to work: one warm tap that takes the child to the
+            right next thing — the first they have not tried, or the one they
+            found hardest — instead of leaving a four-year-old to choose from a
+            wall of tiles. Gone only when every lesson is a confident three
+            stars, which is a finish line, not a gap. */}
+        {nextIndex >= 0 && (
+          <div className="pt-4 anim-rise-in">
+            <InkButton
+              tone={w.tone}
+              seed={51}
+              radius={18}
+              onClick={() => { sfxHappy(); open(nextIndex); }}
+              className="w-full font-display font-extrabold text-fs-lg"
+              style={{ minHeight: "var(--tap)" }}
+            >
+              <span className="ink-on-wax flex items-center justify-center gap-2">
+                <Icon name="play" size={20} color="#fffaf0" fill="#fffaf0" />
+                {anyStarted ? "Keep going" : "Start here"}
+              </span>
+            </InkButton>
+          </div>
+        )}
 
         {world === "letters" && (
           <Section title={lowercase ? "Small letters" : "Big letters"} hint="tap one to write it">
