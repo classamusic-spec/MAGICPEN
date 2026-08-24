@@ -144,6 +144,40 @@ function tornWindow(seed: number): string {
   return `polygon(${pts.join(", ")})`;
 }
 
+/* ── the window into a world ─────────────────────────────────────────────────
+   This used to be one big emoji. `ink/Icons.tsx` opens by saying emoji "read as
+   'we didn't make art'", and it is right: a 🐠 is somebody else's drawing,
+   rendered differently on every phone, sitting on a card whose every other line
+   this app drew by hand. Three of our own doodles in a little arrangement say
+   what lives in there far better than one glyph ever did, and they say it in
+   the same hand as everything around them. */
+const PACK_SCENE: Record<string, [string, string, string]> = {
+  ocean: ["fish", "starfish", "jellyfish"],
+  space: ["rocket", "planet", "star"],
+  farm:  ["cow", "chicken", "tree"],
+  dino:  ["trex", "egg", "palmtree"],
+  dream: ["rainbow", "cat", "star"],
+};
+
+function PackPreview({ id }: { id: string }) {
+  const [big, left, right] = PACK_SCENE[id] ?? PACK_SCENE.dream;
+  return (
+    <span className="relative grid place-items-center" style={{ width: 168, height: 104 }}>
+      {/* the two small ones drift on their own beat, so the group never pulses
+          as one block — that reads as a logo rather than as a place */}
+      <span className="absolute anim-float-y" style={{ left: 0, bottom: 2, animationDelay: "460ms" }}>
+        <Doodle name={left} size={46} />
+      </span>
+      <span className="absolute anim-float-y" style={{ right: 0, top: 0, animationDelay: "900ms" }}>
+        <Doodle name={right} size={42} />
+      </span>
+      <span className="relative anim-float-y drop-shadow-lg">
+        <Doodle name={big} size={80} />
+      </span>
+    </span>
+  );
+}
+
 function PackCard({
   pack, count, index, onPlay, onLocked,
 }: { pack: WorldPack; count: number; index: number; onPlay: () => void; onLocked: () => void }) {
@@ -166,7 +200,7 @@ function PackCard({
               className="absolute inset-0"
               style={{ background: "radial-gradient(72% 58% at 50% 16%, rgba(255,255,255,0.4), rgba(255,255,255,0) 72%)" }}
             />
-            <span className="text-6xl relative anim-float-y drop-shadow-lg">{pack.emoji}</span>
+            <span aria-hidden="true" className="relative"><PackPreview id={pack.id} /></span>
           </div>
         </div>
 
@@ -558,7 +592,9 @@ export default function Home({
             className="max-w-sm w-full p-5 text-center anim-pop-in my-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <span aria-hidden="true" className="text-5xl block">{grownUps.emoji}</span>
+            <span aria-hidden="true" className="grid place-items-center">
+              <Doodle name={PACK_SCENE[grownUps.id]?.[0] ?? "star"} size={64} />
+            </span>
             <h3 id="pack-title" className="ink-title text-fs-2xl mt-2">{grownUps.name}</h3>
             <p className="ink-hand text-fs-sm mt-1">
               A whole new world where drawings{" "}
