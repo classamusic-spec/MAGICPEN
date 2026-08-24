@@ -37,6 +37,7 @@ const WorldScene = lazy(() => import("@/components/WorldScene"));
 const MiniGame = lazy(() => import("@/components/MiniGame"));
 const WriteWorld = lazy(() => import("@/components/WriteWorld"));
 const PaintWorld = lazy(() => import("@/components/PaintWorld"));
+const GrownUps = lazy(() => import("@/components/GrownUps"));
 const DrawSchool = lazy(() => import("@/components/DrawSchool"));
 
 /**
@@ -373,6 +374,7 @@ export default function App() {
                 onDrawIdea={() => { setIdeaPrompt(idea); setDrawWorld("dream"); setScreen("draw"); }}
                 onWrite={(id) => { setWriteWorld(id); setScreen("write"); }}
                 onDrawSchool={() => setScreen("school")}
+                onGrownUps={() => setScreen("grownups")}
               />
             )}
             {screen === "draw" && (
@@ -436,7 +438,13 @@ export default function App() {
                 onDrawn={handleTraced}
               />
             )}
-            {screen === "game" && (
+            {screen === "grownups" && (
+          <GrownUps
+            creatures={creatures}
+            onBack={() => setScreen("home")}
+          />
+        )}
+        {screen === "game" && (
               <MiniGame
                 worldId={worldId}
                 creatures={creatures}

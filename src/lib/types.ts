@@ -91,6 +91,7 @@ export type Screen =
   | "game"
   | "write"
   | "school"
+  | "grownups"
   | "paintworld";
 
 export interface WorldPack {

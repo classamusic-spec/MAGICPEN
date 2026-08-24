@@ -428,6 +428,7 @@ export default function Home({
   onDraw,
   onWrite,
   onDrawSchool,
+  onGrownUps,
   idea,
   welcome,
   onDrawIdea,
@@ -439,6 +440,8 @@ export default function Home({
   /** Open the drawing school. Optional only so this file does not have to land
    *  in the same commit as the route. */
   onDrawSchool?: () => void;
+  /** Open the grown-up snapshot. Optional for the same reason. */
+  onGrownUps?: () => void;
   /** Today's drawing idea — the same all day, different tomorrow. */
   idea?: string;
   /** A warm line for a child who has been away — it already carries the streak
@@ -662,12 +665,23 @@ export default function Home({
           </section>
         )}
 
-        {/* Honest about what leaves the device: the drawings are kept locally,
-            but the optional "magic dust" art is generated online. */}
-        <p className="ink-hand text-fs-2xs text-center mt-5 opacity-80">
-          For grown-ups: no ads, no accounts. Drawings are saved on this device;
-          the magic-dust artwork is made online.
-        </p>
+        {/* Honest about what leaves the device — and, for a grown-up, a way in
+            to see what the child has been practising. */}
+        <div className="mt-5 flex flex-col items-center gap-2">
+          {onGrownUps && (
+            <button
+              onClick={() => { sfxTap(); onGrownUps(); }}
+              className="ink-title text-fs-xs px-4 py-2 rounded-full"
+              style={{ background: "#fffaf0", border: "2.5px solid var(--ink)" }}
+            >
+              For grown-ups: what they've learned
+            </button>
+          )}
+          <p className="ink-hand text-fs-2xs text-center opacity-80">
+            No ads, no accounts. Drawings are saved on this device;
+            the magic-dust artwork is made online.
+          </p>
+        </div>
       </div>
 
       {/* ── locked-world sheet ── */}
