@@ -355,6 +355,34 @@ export default function App() {
     startPolish(creature);
   };
 
+  /* The magic stamp: the youngest hands' way in. Tapping a stamp in the drawing
+     room makes that creature at once — same doodle-bodied creature as Word
+     World, so it stores tiny and stays sharp — and drops it straight into the
+     world the child was drawing for. No reveal-and-guess step: the child already
+     said what it is by choosing the stamp. */
+  const handleStamp = (kindId: string, doodleId: string) => {
+    const creature: Creature = {
+      id: uuid(),
+      kindId,
+      name: pickName(kindId, takenNames),
+      strokes: [],
+      doodleId,
+      createdAt: Date.now(),
+      wx: 0.5,
+      wy: 0.5,
+      dir: Math.random() > 0.5 ? 1 : -1,
+      speed: 0.03,
+      phase: Math.random() * 10,
+      scale: 0.8 + Math.random() * 0.35,
+    };
+    setCreatures((prev) => [...prev.slice(-(MAX_CREATURES - 1)), creature]);
+    setNewId(creature.id);
+    setWorldId(drawWorld);
+    go("world");
+    askedRef.current.add(creature.id);
+    startPolish(creature);
+  };
+
   /* ── turning a page ────────────────────────────────────────────────────────
      The app is a spiral pad bound at the top, so going deeper flips the current
      sheet up over the coil and coming back drops it down again. Which of those
@@ -424,7 +452,9 @@ export default function App() {
             {s === "draw" && (
               <DrawScreen
                 prompt={prompt}
+                worldId={drawWorld}
                 onDone={handleDrawn}
+                onStamp={handleStamp}
                 onPhoto={handlePhoto}
                 onBack={() => go("home")}
               />

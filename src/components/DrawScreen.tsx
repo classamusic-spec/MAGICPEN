@@ -7,6 +7,8 @@ import { hand, paperTile, roughEllipse, roughRect, seedOf, shade, waxTile } from
 import { InkButton, InkCard, Scribble } from "@/components/ink/Ink";
 import { usePrefersReducedMotion } from "@/components/ink/motion";
 import { Icon } from "@/components/ink/Icons";
+import { Doodle } from "@/components/ink/Doodles";
+import { stampsFor, type Stamp } from "@/lib/stamps";
 import ParentGate from "@/components/ParentGate";
 
 /* The crayon box. `short` is what's printed on the paper wrapper — kept to
@@ -383,14 +385,24 @@ function useBox<T extends HTMLElement>() {
   return [ref, box] as const;
 }
 
+/** "Stamp a fish" → "Fish": the creature's own name, for the label under a tile. */
+function stampName(label: string): string {
+  const n = label.replace(/^stamp an? /i, "");
+  return n.charAt(0).toUpperCase() + n.slice(1);
+}
+
 interface Props {
   prompt: string;
+  /** The world this drawing is bound for — picks the roster of magic stamps. */
+  worldId: string;
   onDone: (strokes: Stroke[]) => void;
   onPhoto: (photoData: string) => void;
+  /** Tap-once creature: App bakes the doodle-bodied kind and flies to the world. */
+  onStamp: (kindId: string, doodleId: string) => void;
   onBack: () => void;
 }
 
-export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
+export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, onBack }: Props) {
   /* The camera is the one control here a child must not reach alone. Its label
      has always said "Grown-ups:", but a label is not a gate and the child this
      is built for cannot read it — and a photograph of a paper drawing can
@@ -408,6 +420,12 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [sheet, setSheet] = useState({ w: 0, h: 0 });
+
+  /* Magic stamp: the rung below Drawing School. A child who can't draw yet taps
+     the stamp, taps a creature, and it's already swimming in the world. */
+  const [stampOpen, setStampOpen] = useState(false);
+  const stampTitleId = useId();
+  const stamps = useMemo(() => stampsFor(worldId), [worldId]);
 
   const land = useLandscapeRail();
   const reduced = usePrefersReducedMotion();
@@ -472,6 +490,14 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
   }, [redraw]);
 
   useEffect(() => { redraw(); }, [strokes, redraw]);
+
+  // Escape closes the stamp tray, the same courtesy the parent gate gives.
+  useEffect(() => {
+    if (!stampOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setStampOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [stampOpen]);
 
   const toLocal = (e: React.PointerEvent): Pt => {
     const r = canvasRef.current!.getBoundingClientRect();
@@ -546,6 +572,17 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
 
   const pickCrayon = (c: string) => { setColor(c); setErasing(false); sfxTap(); };
   const pickSize = (px: number) => { setSize(px); setErasing(false); sfxTap(); };
+
+  const openStamps = () => { sfxTap(); setStampOpen(true); };
+  const closeStamps = () => { sfxTap(); setStampOpen(false); };
+  const pickStamp = (stamp: Stamp) => {
+    // The whole payoff of this pathway: tap → the creature is made and gone to
+    // its world. Close first so the tray doesn't linger over the celebration.
+    setStampOpen(false);
+    sfxMagic();
+    if ("vibrate" in navigator) navigator.vibrate(12);
+    onStamp(stamp.kindId, stamp.doodleId);
+  };
 
   /* ── the sheet: deckled edge, spiral binding, real paper ─────────────── */
   const fibre = useMemo(() => paperTile(), []);
@@ -673,6 +710,26 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
             style={{ width: TOOL, height: TOOL }}
           >
             <Icon name="redo" size={22} />
+          </InkButton>
+
+          <span className="dw-sep" aria-hidden="true" />
+
+          {/* Magic stamp: for the youngest, who can't draw a fish yet — tap once,
+              tap a creature, and it's alive. Waxed plum so it reads as the one
+              "make magic" control here, a sibling of the MAKE IT ALIVE button. */}
+          <InkButton
+            onClick={openStamps}
+            tone="#8b46c7"
+            shape="ellipse"
+            seed={63}
+            aria-haspopup="dialog"
+            aria-expanded={stampOpen}
+            aria-label="Magic stamp"
+            title="Magic stamp"
+            className="dw-icon-btn dw-stamp-open"
+            style={{ width: TOOL, height: TOOL }}
+          >
+            <Icon name="sparkle" size={22} color="var(--sun)" fill="var(--sun)" />
           </InkButton>
 
           {land && <div className="dw-toolrow dw-toolrow-top">{toolRow}</div>}
@@ -913,6 +970,69 @@ export default function DrawScreen({ prompt, onDone, onPhoto, onBack }: Props) {
           </div>
         </div>
       </div>
+
+      {/* ── the magic stamp tray ────────────────────────────────────────
+          A sheet of the world's creatures. Tap one and it's already alive in
+          its world — the lowest-friction way in, below tracing and drawing. */}
+      {stampOpen && (
+        <div
+          className={`dw-stamp-scrim ${reduced ? "" : "dw-stamp-scrim-in"}`}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={stampTitleId}
+          onClick={closeStamps}
+        >
+          <InkCard
+            seed={57}
+            radius={22}
+            className={`dw-stamp-card ${reduced ? "" : "dw-stamp-card-in"}`}
+            contentClassName="dw-stamp-body"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="dw-stamp-head">
+              <div className="dw-stamp-heading">
+                <h2 id={stampTitleId} className="ink-title dw-stamp-title">
+                  Pick a magic stamp!
+                </h2>
+                <Scribble color="var(--sun)" height={9} seed={seedOf("magic stamp")} />
+              </div>
+              <InkButton
+                onClick={closeStamps}
+                shape="ellipse"
+                seed={22}
+                aria-label="Close stamps"
+                className="dw-icon-btn"
+                style={{ width: TOOL, height: TOOL }}
+              >
+                <Icon name="close" size={22} />
+              </InkButton>
+            </div>
+
+            <div className="dw-stamp-grid no-scrollbar">
+              {stamps.map((stamp, i) => (
+                <InkButton
+                  key={stamp.kindId}
+                  onClick={() => pickStamp(stamp)}
+                  aria-label={stamp.label}
+                  seed={seedOf(stamp.kindId)}
+                  radius={14}
+                  className={`dw-stamp-tile ${reduced ? "" : "dw-stamp-tile-in"}`}
+                  style={reduced ? undefined : { animationDelay: `${i * 24}ms` }}
+                >
+                  <span className="dw-stamp-tileinner">
+                    <span className="dw-stamp-thumb">
+                      <Doodle name={stamp.doodleId} size={44} />
+                    </span>
+                    <span className="dw-stamp-name ink-hand" aria-hidden="true">
+                      {stampName(stamp.label)}
+                    </span>
+                  </span>
+                </InkButton>
+              ))}
+            </div>
+          </InkCard>
+        </div>
+      )}
     </div>
   );
 }
@@ -1059,6 +1179,53 @@ const DW_CSS = `
 }
 .dw-hero-live { display: flex; align-items: center; justify-content: center; gap: 10px; }
 
+/* ── the magic stamp: entry button + tray ──
+   The tray is a sheet of paper laid over the room, the same idiom as the parent
+   gate: a scrim, a drawn card taped down, and the world's creatures inside. */
+.dw-stamp-scrim {
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center;
+  overflow-y: auto; padding: 16px;
+  background: rgba(45, 41, 38, 0.5);
+}
+.dw-stamp-scrim-in { animation: dw-stamp-fade var(--dur-2) var(--ease-out) both; }
+.dw-stamp-card { width: 100%; max-width: 380px; margin: auto; padding: 16px 16px 18px; }
+.dw-stamp-card-in { animation: dw-stamp-pop var(--dur-3) var(--ease-spring) both; }
+.dw-stamp-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 10px; margin-bottom: 8px;
+}
+.dw-stamp-heading { flex: 1 1 auto; min-width: 0; }
+.dw-stamp-title { font-size: var(--fs-lg); line-height: 1.08; }
+/* scrolls when the roster is long; never spills sideways on a 320px phone */
+.dw-stamp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+  max-height: min(52vh, 380px);
+  overflow-y: auto; overflow-x: hidden;
+  padding: 4px 2px 6px;
+}
+.dw-stamp-tile { padding: 8px 4px 6px !important; min-height: 74px; }
+.dw-stamp-tile-in { animation: dw-tumble var(--dur-3) var(--ease-out) both; }
+.dw-stamp-tileinner {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%;
+}
+.dw-stamp-thumb { display: grid; place-items: center; width: 44px; height: 44px; }
+.dw-stamp-name {
+  font-size: var(--fs-2xs); line-height: 1.05; text-align: center;
+  overflow-wrap: anywhere; color: var(--ink);
+}
+@keyframes dw-stamp-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dw-stamp-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+/* the roster is short enough to centre once the card is wide */
+@media (min-width: 420px) {
+  .dw-stamp-grid { justify-content: center; }
+}
+
 @keyframes dw-write { from { opacity: 0; transform: translateY(5px) rotate(-1.4deg); } to { opacity: 1; transform: none; } }
 @keyframes dw-tumble { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; } }
 @keyframes dw-breathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-2px) scale(1.012); } }
@@ -1138,5 +1305,6 @@ const DW_CSS = `
 @media (prefers-reduced-motion: reduce) {
   .dw-crayon, .dw-prompt, .dw-prompt-in { transition: none; animation: none; }
   .dw-breathe, .dw-twinkle { animation: none; }
+  .dw-stamp-scrim-in, .dw-stamp-card-in, .dw-stamp-tile-in { animation: none; }
 }
 `;
