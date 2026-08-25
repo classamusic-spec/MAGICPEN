@@ -12,9 +12,10 @@ export interface Sprite { frames: HTMLCanvasElement[]; w: number; h: number }
  * Silhouette of a canvas filled with a solid color (for sticker outlines).
  *
  * `source-in` keeps the source's *alpha*, which is exactly right for wax and
- * exactly wrong for watercolour: a transparent, feathered wash would hand back
- * a transparent, feathered silhouette, and `stampRing` stamps that ten times —
- * so a watercolour creature would wear a murky halo instead of a clean edge.
+ * wrong for anything part-transparent: paint's dry-scrape breaks and its
+ * translucent bristle passes would hand back a part-transparent silhouette, and
+ * `stampRing` stamps that ten times — so a painted creature would wear a murky
+ * halo instead of a clean edge.
  *
  * Drawing the source several times first drives the shape opaque before it is
  * filled, which costs nothing on an already-solid crayon and rescues the paint.

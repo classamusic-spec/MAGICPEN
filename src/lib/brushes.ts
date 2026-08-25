@@ -1,26 +1,34 @@
-// ─── Three ways to make a mark ──────────────────────────────────────────────
-// A crayon, a watercolour brush and a paintbrush. They are not three colours of
-// the same line: each one behaves the way its real material behaves, because
-// that difference is the whole point of being offered a choice.
+// ─── Two ways to make a mark ────────────────────────────────────────────────
+// A crayon and a paintbrush. They are not two colours of the same line: each
+// behaves the way its real material behaves, because that difference is the
+// whole point of being offered a choice.
 //
-//   crayon      wax dragged over paper. Opaque, grainy, and *broken* — the
-//               tooth of the paper shows through. Lives in `crayon.ts`.
-//   watercolour transparent. It stains rather than covers, so crossing your own
-//               line makes it darker, and pigment creeps to the edge of the wet
-//               patch and dries in a rim. That rim is the tell.
-//   paint       opaque and thick. It sits *on* the paper instead of in it,
-//               combed into grooves by the bristles, and it hides whatever it
-//               is laid over.
+//   crayon  wax dragged over paper. Opaque, grainy, and *broken* — the tooth of
+//           the paper shows through. Lives in `crayon.ts`.
+//   paint   opaque and thick. It sits *on* the paper instead of in it, combed
+//           into grooves by the bristles, and it hides whatever it is laid over.
 //
-// The one rule they share: the mark is the child's. None of these smooths,
-// straightens, or prettifies the line it was given.
+// The one rule they share: the mark is the child's. Neither smooths, straightens
+// or prettifies the line it was given.
+//
+// ── there was a third ──
+// A watercolour brush shipped here briefly and has been taken out. Its `Medium`
+// value survives as a legacy one, because it may be sitting in a drawing on a
+// child's device and a stroke that renders as nothing is a hole in their
+// picture — see `Medium` below.
 
 import type { Pt, Stroke } from "./types";
 import { drawCrayonStroke, mulberry, tracePath } from "./crayon";
 
-/** Which material a stroke was made with. Absent means crayon — every drawing
- *  made before there was a choice was made with one. */
-export type Medium = "crayon" | "water" | "paint";
+/**
+ * Which material a stroke was made with. Absent means crayon — every drawing
+ * made before there was a choice was made with one.
+ *
+ * This is the set a child can *pick* today. It is deliberately narrower than
+ * `Stroke["medium"]`, which also carries the retired `"water"`: nothing may
+ * write that any more, but plenty of things still have to read it.
+ */
+export type Medium = "crayon" | "paint";
 
 /**
  * Darken or lighten a colour without caring what notation it arrived in.
@@ -55,130 +63,16 @@ function dab(ctx: CanvasRenderingContext2D, p: Pt, color: string, size: number, 
   ctx.globalAlpha = 1;
 }
 
-/* ── watercolour ──────────────────────────────────────────────────────────── */
-
-/**
- * A wet, transparent wash.
- *
- * Built in the order water actually does it: the wash creeps into damp paper,
- * pigment drifts to the edge of the wet patch and dries darkest there, and the
- * middle stays lighter. The whole thing is laid at well under full alpha, so
- * crossing a line you already made *darkens* it — which is the behaviour a
- * child discovers in about four seconds and then does on purpose.
- *
- * No canvas blur filter anywhere: this is redrawn every frame by the replay,
- * and `filter` is far too expensive to put on that path. The softness is
- * several offset passes instead, the way the crayon's fur is.
- */
-export function drawWaterStroke(
-  ctx: CanvasRenderingContext2D,
-  pts: Pt[],
-  color: string,
-  size: number,
-  seed = 1,
-  progress = 1,
-) {
-  if (pts.length === 0) return;
-  if (pts.length === 1) { dab(ctx, pts[0], color, size, 0.4); return; }
-  const { rand, sub } = head(pts, seed, progress);
-
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.strokeStyle = color;
-
-  // ── the wash creeping outward into damp paper ──
-  // Wide and very faint, nudged off true, so the edge is soft without ever
-  // being blurred. Three of them read as water finding its own way.
-  for (let g = 0; g < 3; g++) {
-    ctx.save();
-    ctx.translate((rand() - 0.5) * size * 0.75, (rand() - 0.5) * size * 0.75);
-    ctx.globalAlpha = 0.05 + rand() * 0.035;
-    ctx.lineWidth = size * (1.55 - g * 0.2);
-    tracePath(ctx, sub);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  // ── the rim ──
-  // The one thing that says watercolour before any amount of colour does: as
-  // the water dries it pulls pigment to the edge of the patch, which ends up
-  // *darker than the middle*. Laid full width first…
-  ctx.strokeStyle = tone(color, -0.34);
-  ctx.globalAlpha = 0.34;
-  ctx.lineWidth = size;
-  tracePath(ctx, sub);
-  ctx.stroke();
-
-  /* …then the body inside it, which leaves the darker rim showing at the edges
-     rather than painting a separate outline around the stroke.
-
-     Laid in overlapping runs rather than as one path, and that is the whole
-     point rather than an implementation detail. Canvas composites a path *once*
-     at `globalAlpha`, so a single `stroke()` cannot darken where it crosses
-     itself — a child drawing a figure-of-eight in one motion would get no
-     pooling at the crossing, which is the first thing anyone tries with a wet
-     brush. Separate runs do compound, so the loop of an eight goes darker where
-     it passes over its own tail.
-
-     The runs are long and share one point, so the seams between them fall far
-     apart and read as the ordinary unevenness of a wet edge. */
-  ctx.strokeStyle = color;
-  ctx.globalAlpha = 0.4;
-  ctx.lineWidth = size * 0.72;
-  const RUN = 18;
-  for (let i = 0; i < sub.length - 1; i += RUN) {
-    const run = sub.slice(i, Math.min(sub.length, i + RUN + 1));
-    if (run.length < 2) break;
-    tracePath(ctx, run);
-    ctx.stroke();
-  }
-
-  // ── pooling ──
-  // Where the brush slowed or turned, water gathers and dries into a bloom.
-  const pools = Math.max(1, Math.floor(sub.length / 16));
-  ctx.fillStyle = tone(color, -0.22);
-  for (let i = 0; i < pools; i++) {
-    const p = sub[Math.floor(rand() * sub.length)];
-    ctx.globalAlpha = 0.1 + rand() * 0.1;
-    ctx.beginPath();
-    ctx.ellipse(
-      p.x + (rand() - 0.5) * size * 0.5,
-      p.y + (rand() - 0.5) * size * 0.5,
-      size * (0.3 + rand() * 0.4),
-      size * (0.24 + rand() * 0.34),
-      rand() * Math.PI, 0, Math.PI * 2,
-    );
-    ctx.fill();
-  }
-
-  // ── granulation ──
-  // Heavier pigment settles into the hollows of the paper. Sparse and small:
-  // this is a texture you notice without looking for it.
-  const grains = Math.floor(sub.length / 5);
-  for (let i = 0; i < grains; i++) {
-    const p = sub[Math.floor(rand() * sub.length)];
-    ctx.globalAlpha = 0.08 + rand() * 0.14;
-    ctx.beginPath();
-    ctx.arc(
-      p.x + (rand() - 0.5) * size * 0.8,
-      p.y + (rand() - 0.5) * size * 0.8,
-      size * (0.03 + rand() * 0.07), 0, Math.PI * 2,
-    );
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-}
-
 /* ── paint ────────────────────────────────────────────────────────────────── */
 
 /**
  * Thick, opaque poster paint.
  *
- * The opposite of the watercolour in every way that matters: it covers instead
- * of stains, so crossing your own line hides it rather than darkening it, and
- * it has no paper tooth at all — the paint fills the grain rather than skipping
- * it. What it has instead is bristles: a loaded brush combs the paint into
- * grooves, and that is what makes it read as paint rather than as a fat crayon.
+ * The opposite of the crayon in every way that matters: it covers instead of
+ * skipping, it has no paper tooth at all — the paint fills the grain rather
+ * than riding over it — and it hides whatever it is laid over. What it has
+ * instead is bristles: a loaded brush combs the paint into grooves, and that
+ * is what makes it read as paint rather than as a fat crayon.
  */
 export function drawPaintStroke(
   ctx: CanvasRenderingContext2D,
@@ -284,12 +178,25 @@ export function drawStroke(
   seed = 1,
   progress = 1,
 ) {
-  if (s.medium === "water") drawWaterStroke(ctx, s.pts, s.color, s.size, seed, progress);
-  else if (s.medium === "paint") drawPaintStroke(ctx, s.pts, s.color, s.size, seed, progress);
+  if (isBrush(s.medium)) drawPaintStroke(ctx, s.pts, s.color, s.size, seed, progress);
   else drawCrayonStroke(ctx, s.pts, s.color, s.size, seed, progress);
 }
 
-/** Is this material see-through? The sticker ring baked around a creature has
- *  to know: a translucent body needs its outline taken from a hard silhouette,
- *  or the ring stamps a murky halo instead of a clean edge. */
-export const isWet = (m: Medium | undefined): boolean => m === "water";
+/**
+ * Should this stroke be laid down with a brush?
+ *
+ * `"water"` is here on purpose. The watercolour brush was taken out, but a
+ * drawing made with it while it existed is still on some child's device, and
+ * the point of `Stroke.medium` is that a drawing always comes back the way it
+ * was made. It cannot come back *wet* any more — that renderer is gone — so it
+ * comes back as the other brush rather than as wax: the stroke was made with a
+ * brush in hand, at a brush's width, and paint is the nearest true thing left.
+ *
+ * Nothing writes `"water"`. This only ever reads it.
+ *
+ * A declaration rather than a const, like everything else here: the cycle with
+ * `crayon.ts` is only safe because these are hoisted.
+ */
+function isBrush(m: Stroke["medium"]): boolean {
+  return m === "paint" || m === "water";
+}

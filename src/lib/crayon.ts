@@ -3,13 +3,13 @@
 // so drawings feel hand-made and alive.
 
 import type { Pt, Stroke } from "./types";
-/* The wet materials live in `brushes.ts`, which is built on this file — so the
-   two import each other. That is safe and deliberate: both sides only ever call
-   the other's *functions*, at draw time, and function declarations are hoisted,
-   so neither module needs the other to have finished loading. It keeps the
-   crayon where it belongs (here, as one material among three) instead of
-   dragging watercolour and paint into it. */
-import { drawPaintStroke, drawWaterStroke } from "./brushes";
+/* The paint lives in `brushes.ts`, which is built on this file — so the two
+   import each other. That is safe and deliberate: both sides only ever call the
+   other's *functions*, at draw time, and function declarations are hoisted, so
+   neither module needs the other to have finished loading. It keeps the crayon
+   where it belongs (here, as one material among two) instead of dragging the
+   paint into it. */
+import { drawPaintStroke } from "./brushes";
 
 /** Deterministic pseudo-random from a seed (stable speckle per stroke). */
 export function mulberry(seed: number) {
@@ -226,13 +226,13 @@ export function drawCrayonStroke(
  *
  * This is `drawStroke`'s sibling for everything that has to *move* a drawing:
  * the world's baked sprite frames, the reveal, a drawn treat. The deformation
- * is the same whatever the mark is made of — a watercolour fish wiggles like a
- * wax one — so the points are bent first and only then handed to the material.
+ * is the same whatever the mark is made of — a painted fish wiggles like a wax
+ * one — so the points are bent first and only then handed to the material.
  *
  * The dispatch is spelled out here rather than delegating to `drawStroke`
  * because that takes a `Stroke`, and the bent points are not the stroke's own:
  * building one would allocate a copy per stroke per frame on the reveal's
- * animation loop. The three arms are the same three, in the same order.
+ * animation loop. The arms are the same arms, in the same order.
  */
 export function drawStrokeFull(
   ctx: CanvasRenderingContext2D,
@@ -243,9 +243,13 @@ export function drawStrokeFull(
 ) {
   const base = resample(stroke.pts, 3.5);
   const pts = wiggle ? wigglePoints(base, { ...wiggle, seed: (wiggle.seed ?? 0) + seed }) : base;
-  if (stroke.medium === "water") drawWaterStroke(ctx, pts, stroke.color, stroke.size, seed, progress);
-  else if (stroke.medium === "paint") drawPaintStroke(ctx, pts, stroke.color, stroke.size, seed, progress);
-  else drawCrayonStroke(ctx, pts, stroke.color, stroke.size, seed, progress);
+  // `"water"` is a retired medium that may still be on a device — it renders
+  // as the surviving brush, exactly as `drawStroke` does. See `brushes.ts`.
+  if (stroke.medium === "paint" || stroke.medium === "water") {
+    drawPaintStroke(ctx, pts, stroke.color, stroke.size, seed, progress);
+  } else {
+    drawCrayonStroke(ctx, pts, stroke.color, stroke.size, seed, progress);
+  }
 }
 
 export function strokesBounds(strokes: Stroke[]): { x: number; y: number; w: number; h: number } {

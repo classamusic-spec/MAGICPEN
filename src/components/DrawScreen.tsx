@@ -211,17 +211,16 @@ function CrayonArt({ color, short, seed, lifted }: {
   );
 }
 
-/* ── the other two tools ───────────────────────────────────────────────────
-   A watercolour brush and a paintbrush, drawn in the same box as a crayon so
-   all three stand level in the tray, and by the same hand: a wobbled
-   silhouette, a wax fill, an ink outline gone over twice.
+/* ── the other tool ────────────────────────────────────────────────────────
+   A paintbrush, drawn in the same box as a crayon so the two stand level in
+   the tray, and by the same hand: a wobbled silhouette, a wax fill, an ink
+   outline gone over twice.
 
    What separates them is the one thing a child who cannot read a label still
    reads instantly — the shape:
 
-     crayon       a fat wrapped stick worn down to a cone
-     watercolour  a slim stick, a small band, a long soft *point*, and a drip
-     paintbrush   a chunky stick, a wide band, a *square block* of bristles
+     crayon      a fat wrapped stick worn down to a cone
+     paintbrush  a chunky stick, a wide band, a square block of bristles
 
    The bristles carry the crayon colour the child has picked, so the tray
    recolours with the box and the tool shows what it would put down. */
@@ -233,56 +232,45 @@ interface BrushGeo {
   hairs: string; ferrule: string; handle: string;
   crimpA: string; crimpB: string; hiFerrule: string;
   hiHandle: string; loHandle: string;
-  comb: string[]; load: string; drop: string; wash: string[];
+  comb: string[]; load: string;
   rivet: { x: number; y: number };
 }
 
 const brushCache = new Map<string, BrushGeo>();
 
-function brushGeo(seed: number, kind: "water" | "paint"): BrushGeo {
-  const key = `${kind}:${seed}`;
+function brushGeo(seed: number): BrushGeo {
+  const key = String(seed);
   const hit = brushCache.get(key);
   if (hit) return hit;
   const r = hand(seed);
   const j = (n: number) => (r() - 0.5) * n;
-  const soft = kind === "water";
   const f = (n: number) => n.toFixed(2);
 
   const mx = TW / 2 + j(1.2);
   const bot = TH - 3 + j(0.9);
-  // slim versus chunky has to survive being drawn twenty-five pixels wide, so
-  // the two are a long way apart: the watercolour handle is barely half the
-  // paintbrush's, and a third of the crayon barrel below it.
-  const hw = soft ? 4.2 + r() * 0.4 : 7.3 + r() * 0.5;   // handle at the ferrule
-  const hb = hw * (soft ? 0.58 : 0.8);                   // handle at the butt
-  const fw = soft ? 5.4 + r() * 0.3 : 8.2 + r() * 0.4;   // the metal band
-  const bw = soft ? 5.9 + r() * 0.4 : 9.1 + r() * 0.4;   // the bristles
-  const tipY = (soft ? 3 : 6) + r() * 1.4;
-  const fy0 = (soft ? 31 : 30) + j(1.4);
-  const fy1 = fy0 + (soft ? 11.5 : 14.5);
-  const belly = tipY + (fy0 - tipY) * 0.66;              // where a round brush is fattest
+  // chunky has to survive being drawn twenty-five pixels wide, so the handle
+  // is deliberately fat — a slim one reads as a pencil at tray size
+  const hw = 7.3 + r() * 0.5;    // handle at the ferrule
+  const hb = hw * 0.8;           // handle at the butt
+  const fw = 8.2 + r() * 0.4;    // the metal band
+  const bw = 9.1 + r() * 0.4;    // the bristles
+  const tipY = 6 + r() * 1.4;
+  const fy0 = 30 + j(1.4);
+  const fy1 = fy0 + 14.5;
 
-  const hairs = soft
-    ? [
-        `M${f(mx)} ${f(tipY)}`,
-        `C${f(mx - bw * 0.42)} ${f(tipY + (belly - tipY) * 0.62)} ${f(mx - bw)} ${f(belly)} ${f(mx - bw * 0.86)} ${f(fy0)}`,
-        `L${f(mx + bw * 0.88)} ${f(fy0 + j(0.4))}`,
-        `C${f(mx + bw * 1.02)} ${f(belly - 0.6)} ${f(mx + bw * 0.46)} ${f(tipY + (belly - tipY) * 0.6)} ${f(mx)} ${f(tipY)}`,
-        "Z",
-      ].join(" ")
-    : [
-        // splayed a little wider than the band, and cut off square — bristle
-        // ends are ragged, never a ruled line
-        `M${f(mx - bw * 0.9)} ${f(fy0)}`,
-        `L${f(mx - bw)} ${f(tipY + 4)}`,
-        `Q${f(mx - bw + 0.4)} ${f(tipY + 1)} ${f(mx - bw * 0.6)} ${f(tipY + 1.6 + j(1))}`,
-        `L${f(mx - bw * 0.2)} ${f(tipY + 0.2 + j(0.9))}`,
-        `L${f(mx + bw * 0.24)} ${f(tipY + 1.8 + j(0.9))}`,
-        `L${f(mx + bw * 0.62)} ${f(tipY + 0.4 + j(0.9))}`,
-        `Q${f(mx + bw - 0.4)} ${f(tipY + 1)} ${f(mx + bw)} ${f(tipY + 4)}`,
-        `L${f(mx + bw * 0.9)} ${f(fy0 + j(0.4))}`,
-        "Z",
-      ].join(" ");
+  // splayed a little wider than the band, and cut off square — bristle ends
+  // are ragged, never a ruled line
+  const hairs = [
+    `M${f(mx - bw * 0.9)} ${f(fy0)}`,
+    `L${f(mx - bw)} ${f(tipY + 4)}`,
+    `Q${f(mx - bw + 0.4)} ${f(tipY + 1)} ${f(mx - bw * 0.6)} ${f(tipY + 1.6 + j(1))}`,
+    `L${f(mx - bw * 0.2)} ${f(tipY + 0.2 + j(0.9))}`,
+    `L${f(mx + bw * 0.24)} ${f(tipY + 1.8 + j(0.9))}`,
+    `L${f(mx + bw * 0.62)} ${f(tipY + 0.4 + j(0.9))}`,
+    `Q${f(mx + bw - 0.4)} ${f(tipY + 1)} ${f(mx + bw)} ${f(tipY + 4)}`,
+    `L${f(mx + bw * 0.9)} ${f(fy0 + j(0.4))}`,
+    "Z",
+  ].join(" ");
 
   const ferrule =
     `M${f(mx - fw)} ${f(fy0 - 1.4)} L${f(mx + fw)} ${f(fy0 - 1 + j(0.4))} ` +
@@ -303,60 +291,36 @@ function brushGeo(seed: number, kind: "water" | "paint"): BrushGeo {
   const hiHandle = `M${f(mx - hw * 0.44)} ${f(fy1 + 3)} L${f(mx - hb * 0.5)} ${f(bot - 6)}`;
   const loHandle = `M${f(mx + hw * 0.6)} ${f(fy1 + 4)} L${f(mx + hb * 0.62)} ${f(bot - 6)}`;
 
-  // the grain of the bristles: combed straight on a flat brush, drawn together
-  // into the point on a round one
+  // the grain of the bristles, combed straight down a flat brush
   const comb: string[] = [];
-  const n = soft ? 3 : 5;
+  const n = 5;
   for (let k = 1; k <= n; k++) {
     const x = mx - bw * 0.72 + ((bw * 1.44) * k) / (n + 1);
-    comb.push(
-      soft
-        ? `M${f(x)} ${f(fy0 - 2)} Q${f(mx + (x - mx) * 0.35)} ${f(belly)} ${f(mx)} ${f(tipY + 2.8)}`
-        : `M${f(x)} ${f(fy0 - 1.4)} L${f(x + j(0.8))} ${f(tipY + 2.6)}`,
-    );
+    comb.push(`M${f(x)} ${f(fy0 - 1.4)} L${f(x + j(0.8))} ${f(tipY + 2.6)}`);
   }
 
   // a loaded brush carries a band of thicker colour across the very end
-  const load = soft
-    ? ""
-    : `M${f(mx - bw * 0.94)} ${f(tipY + 7)} Q${f(mx)} ${f(tipY + 1.4)} ${f(mx + bw * 0.94)} ${f(tipY + 7)} ` +
-      `Q${f(mx)} ${f(tipY + 11)} ${f(mx - bw * 0.94)} ${f(tipY + 7)} Z`;
-
-  // …and a wet one is about to drip
-  const dx = mx + bw + 3.2 + j(0.6);
-  const dy = belly + 5;
-  const drop = soft
-    ? `M${f(dx)} ${f(dy - 4.4)} C${f(dx + 2.5)} ${f(dy - 1.2)} ${f(dx + 2.8)} ${f(dy + 1.6)} ${f(dx)} ${f(dy + 2.6)} ` +
-      `C${f(dx - 2.8)} ${f(dy + 1.6)} ${f(dx - 2.5)} ${f(dy - 1.2)} ${f(dx)} ${f(dy - 4.4)} Z`
-    : "";
-
-  // the damp halo, made the way the watercolour itself makes it: offset passes,
-  // never a blur filter
-  const wash = soft
-    ? [
-        `translate(${f(-1.5 + j(0.6))} ${f(0.9 + j(0.5))})`,
-        `translate(${f(1.7 + j(0.6))} ${f(-0.7 + j(0.5))})`,
-        `translate(${f(0.3 + j(0.8))} ${f(1.7 + j(0.5))})`,
-      ]
-    : [];
+  const load =
+    `M${f(mx - bw * 0.94)} ${f(tipY + 7)} Q${f(mx)} ${f(tipY + 1.4)} ${f(mx + bw * 0.94)} ${f(tipY + 7)} ` +
+    `Q${f(mx)} ${f(tipY + 11)} ${f(mx - bw * 0.94)} ${f(tipY + 7)} Z`;
 
   const geo: BrushGeo = {
     hairs, ferrule, handle, crimpA, crimpB, hiFerrule, hiHandle, loHandle,
-    comb, load, drop, wash,
+    comb, load,
     rivet: { x: mx + j(0.8), y: (fy0 + fy1) / 2 + 2.4 },
   };
   brushCache.set(key, geo);
   return geo;
 }
 
-function BrushArt({ kind, color, seed, lifted }: {
-  kind: "water" | "paint"; color: string; seed: number; lifted: boolean;
+function BrushArt({ color, seed, lifted }: {
+  color: string; seed: number; lifted: boolean;
 }) {
   const uid = useId().replace(/:/g, "");
-  const soft = kind === "water";
-  const g = brushGeo(seed, kind);
-  // two different woods, so the pair is still a pair in silhouette alone
-  const woodTone = soft ? "#e0a94a" : "#b4632f";
+  const g = brushGeo(seed);
+  // a different wood from the crayon's paper, so the pair is still a pair in
+  // silhouette alone
+  const woodTone = "#b4632f";
   const wood = waxTile(woodTone);
   const rim = shade(color, -0.32);
   const deep = shade(color, -0.24);
@@ -391,57 +355,32 @@ function BrushArt({ kind, color, seed, lifted }: {
       </defs>
 
       <g filter={`url(#bl-${uid})`}>
-        {/* the damp edge, before the colour that made it */}
-        {g.wash.map((t, i) => (
-          <path
-            key={i} d={g.hairs} fill="none" stroke={color}
-            strokeWidth={3.2 - i * 0.7} opacity="0.1"
-            strokeLinejoin="round" transform={t}
-          />
-        ))}
-
         {/* the bristles, carrying the colour the child picked */}
-        <path d={g.hairs} fill={color} opacity={soft ? 0.44 : 1} />
-        {soft && (
-          // the rim water dries to — the one thing that says watercolour
-          <path d={g.hairs} fill="none" stroke={rim} strokeWidth="1.7" opacity="0.55" strokeLinejoin="round" />
-        )}
-        {!soft && <path d={g.load} fill={deep} />}
+        <path d={g.hairs} fill={color} />
+        <path d={g.load} fill={deep} />
         {g.comb.map((d, i) => (
           <path
             key={i} d={d} fill="none" stroke={i % 2 ? lit : rim}
-            strokeWidth={soft ? 0.9 : 1.2} strokeLinecap="round"
-            opacity={soft ? 0.38 : 0.5}
+            strokeWidth="1.2" strokeLinecap="round" opacity="0.5"
           />
         ))}
-        {soft && (
-          <>
-            <path d={g.drop} fill={color} opacity="0.42" />
-            <path d={g.drop} fill="none" stroke={rim} strokeWidth="0.9" opacity="0.6" />
-          </>
-        )}
 
         {/* the metal band, crimped onto the handle */}
         <path d={g.ferrule} fill="#c9cfd7" />
-        <path d={g.hiFerrule} stroke="#ffffff" strokeOpacity="0.7" strokeWidth={soft ? 2 : 3.2} strokeLinecap="round" fill="none" />
+        <path d={g.hiFerrule} stroke="#ffffff" strokeOpacity="0.7" strokeWidth="3.2" strokeLinecap="round" fill="none" />
         <path d={g.crimpA} stroke="#7d8894" strokeWidth="1" fill="none" strokeLinecap="round" />
         <path d={g.crimpB} stroke="#7d8894" strokeWidth="1" fill="none" strokeLinecap="round" />
-        {!soft && <circle cx={g.rivet.x} cy={g.rivet.y} r="1.5" fill="#7d8894" opacity="0.75" />}
+        <circle cx={g.rivet.x} cy={g.rivet.y} r="1.5" fill="#7d8894" opacity="0.75" />
         <path d={g.ferrule} fill="none" stroke="var(--ink)" strokeWidth="1.9" strokeLinejoin="round" />
 
         {/* the handle */}
         <path d={g.handle} fill={wood ? `url(#bw-${uid})` : woodTone} />
-        <path d={g.hiHandle} stroke="#ffffff" strokeOpacity="0.28" strokeWidth={soft ? 2 : 3.2} strokeLinecap="round" fill="none" />
-        <path d={g.loHandle} stroke="#2d2926" strokeOpacity="0.2" strokeWidth={soft ? 1.6 : 2.4} strokeLinecap="round" fill="none" />
+        <path d={g.hiHandle} stroke="#ffffff" strokeOpacity="0.28" strokeWidth="3.2" strokeLinecap="round" fill="none" />
+        <path d={g.loHandle} stroke="#2d2926" strokeOpacity="0.2" strokeWidth="2.4" strokeLinecap="round" fill="none" />
 
-        {/* the hand that inked the outline. The wet tip is drawn with a lighter
-            pen than the handle: a soaked brush has no hard edge. */}
+        {/* the hand that inked the outline */}
         <path d={g.handle} fill="none" stroke="var(--ink)" strokeWidth="2.3" strokeLinejoin="round" strokeLinecap="round" />
-        <path
-          d={g.hairs} fill="none" stroke="var(--ink)"
-          strokeWidth={soft ? 1.5 : 2.2} strokeOpacity={soft ? 0.5 : 1}
-          strokeLinejoin="round" strokeLinecap="round"
-        />
+        <path d={g.hairs} fill="none" stroke="var(--ink)" strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" />
         <path
           d={g.handle} fill="none" stroke="var(--ink)" strokeWidth="1.2"
           strokeLinejoin="round" strokeLinecap="round" opacity="0.5"
@@ -452,9 +391,9 @@ function BrushArt({ kind, color, seed, lifted }: {
   );
 }
 
-/* The three ways to make a mark, in the order a child meets them. `word` is
-   what the tray calls the tool under the colour name ("Ocean blue paint");
-   `label` is the whole name, for a screen reader. */
+/* The two ways to make a mark, in the order a child meets them. `word` is what
+   the tray calls the tool under the colour name ("Ocean blue paint"); `label`
+   is the whole name, for a screen reader. */
 interface MediumChoice {
   id: Medium;
   label: string;
@@ -464,7 +403,6 @@ interface MediumChoice {
 
 const MEDIA: readonly MediumChoice[] = [
   { id: "crayon", label: "Crayon", word: "crayon", seed: 401 },
-  { id: "water", label: "Watercolour brush", word: "watercolour", seed: 419 },
   { id: "paint", label: "Paintbrush", word: "paint", seed: 433 },
 ];
 
@@ -575,7 +513,7 @@ function SizeMark({ px, color, w, h, medium }: { px: number; color: string; w: n
       });
     }
     // the swatch is a preview, so it has to be drawn with the tool in hand —
-    // a wax mark under a watercolour brush is just a small lie
+    // a wax mark under a paintbrush is just a small lie
     drawStroke(ctx, { color, size: px, pts, medium }, seedOf(`mark${px}`));
   }, [px, color, w, h, medium]);
   return <canvas ref={ref} aria-hidden="true" style={{ display: "block" }} />;
@@ -894,7 +832,7 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
   /* ── the tool tray ────────────────────────────────────────────────────
      What to draw *with*, above what colour to draw it in. Each is drawn as
      the thing itself and named only for a screen reader: the child this is
-     built for cannot read "watercolour", but they have held one. */
+     built for cannot read "paintbrush", but they have held one. */
   const mediaRow = (
     <div className="dw-media">
       {/* the colour and the tool, read as one thing: "Ocean blue paint" */}
@@ -932,7 +870,6 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
                     />
                   ) : (
                     <BrushArt
-                      kind={m.id === "water" ? "water" : "paint"}
                       color={erasing ? "#a99e93" : color}
                       seed={m.seed}
                       lifted={active}
@@ -1486,19 +1423,29 @@ const DW_CSS = `
 .dw-crayon:active { transition-duration: var(--dur-1); }
 
 /* ── the tool tray ──
-   What to draw *with*, on the line above what colour to draw it in. Three
-   equal shares of the row, none of which may fall below --tap, and the
+   What to draw *with*, on the line above what colour to draw it in. Equal
+   shares of the row, none of which may fall below --tap, and the
    colour-and-tool name beside them.
 
-   The name is what gives ground when the room runs out: at 320px the three
-   tools claim 3 x 48px and the name keeps a 4.6rem column, which is why the
-   name moved up here out of the thickness row — that row now holds only its
-   own tools and no longer has to wrap onto a second line, so the tray costs
-   the page about forty pixels rather than a whole extra row. */
+   The name is what gives ground when the room runs out: at 320px the tools
+   claim --tap each and the name keeps a 4.6rem column, which is why the name
+   moved up here out of the thickness row — that row now holds only its own
+   tools and no longer has to wrap onto a second line, so the tray costs the
+   page about forty pixels rather than a whole extra row.
+
+   The cap is what stops the shares growing into slabs. An equal share of the
+   row is the right *floor*, not the right size: with three tools a third was
+   about the width of a tool, and when the watercolour was taken out a half was
+   not — two tools stretched into wide white plates with a small brush adrift in
+   the middle. So they grow to fit and then stop, and the group stays centred so
+   the leftover room falls either side rather than all on the right. */
 .dw-media { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.dw-media-group { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
+.dw-media-group {
+  display: flex; align-items: center; justify-content: center;
+  gap: 6px; flex: 1 1 auto; min-width: 0;
+}
 .dw-media-btn {
-  flex: 1 1 0; min-width: var(--tap); padding: 0 !important;
+  flex: 1 1 0; min-width: var(--tap); max-width: 6.75rem; padding: 0 !important;
   transition: transform var(--dur-2) var(--ease-spring);
 }
 /* the picked tool is out of the tray and in the child's hand — the same lift
@@ -1651,7 +1598,7 @@ const DW_CSS = `
   gap: 4px; margin-bottom: 6px;
 }
 .dw-land .dw-media-group { flex-direction: column; align-items: stretch; gap: 4px; flex: none; }
-.dw-land .dw-media-btn { flex: none; width: 100%; }
+.dw-land .dw-media-btn { flex: none; width: 100%; max-width: none; }
 .dw-land .dw-media-btn.is-picked { transform: translateX(3px); }
 .dw-land .dw-media .dw-current {
   flex: none; min-width: 0; max-width: none; text-align: center; padding: 0 2px;

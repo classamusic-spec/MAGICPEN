@@ -9,8 +9,16 @@ export interface Stroke {
   color: string;
   size: number; // brush width in canvas units
   pts: Pt[];
-  /** What it was made with. Absent means crayon — every drawing made before
-   *  there was a choice was made with one, and must keep looking that way. */
+  /**
+   * What it was made with. Absent means crayon — every drawing made before
+   * there was a choice was made with one, and must keep looking that way.
+   *
+   * `"water"` is retired: a watercolour brush shipped briefly and was taken
+   * out. It stays in this union because it is a fact about what may be *on a
+   * device*, not about what can be chosen — a drawing made with it is still in
+   * some child's sketchbook. `Medium` in `lib/brushes` is the pickable set, and
+   * `drawStroke` is where a retired one is turned back into something drawable.
+   */
   medium?: "crayon" | "water" | "paint";
 }
 
