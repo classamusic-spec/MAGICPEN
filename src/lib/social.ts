@@ -217,3 +217,108 @@ export function trickPose(out: TrickPose, kind: number, u: number, calm = 1): vo
     out.sx = 1 + 0.1 * arc * calm;
   }
 }
+
+/* ── the states in between ────────────────────────────────────────────────
+   A trick is an event: something happens, it takes three quarters of a second,
+   it ends. Most of what a creature *is* is not an event — it is asleep, or it
+   has just reached a crumb, or it has been crowned. Those wanted the same
+   vocabulary as `trickPose` and none of them wanted its shape, so they are
+   three more poses written to the same contract rather than three more entries
+   in `TRICK_DUR`.
+
+   The contract, in full, because every one of these runs sixty times a second
+   for every creature on screen:
+
+     · the pose is written into the caller's own `TrickPose` slot and nothing
+       is returned — no `{dx, dy, …}` per creature per frame;
+     · `calm` scales the whole thing to nothing, so a viewer who asked for
+       reduced motion still *sleeps*, still *eats*, still gets crowned, and
+       simply is not thrown about while it happens;
+     · nothing here knows what a fin is. These run on a four-year-old's
+       three-stroke scribble and on a vector doodle, and the only way that can
+       be true is if they move the whole body and never a part of it.
+*/
+
+/** How long one breath takes, asleep. Slow enough to read as sleeping rather
+ *  than as panting: a child's own resting breath is about this. */
+export const SLEEP_PERIOD = 3.4;
+/** Precomputed so the per-frame path has no division in it. */
+const SLEEP_W = (Math.PI * 2) / SLEEP_PERIOD;
+/** How far a sleeping creature settles below where it was standing, in sprite
+ *  pixels — small on purpose, since the sprite is drawn about its centre. */
+const SLEEP_SETTLE = 2.6;
+/** How much the body swells on the in-breath. Volume-preserving: it widens by
+ *  exactly as much as it shortens, so a sleeping creature never inflates. */
+const SLEEP_BREATH = 0.045;
+
+/**
+ * Asleep: a slow breath and a slight settle downward.
+ *
+ * Unlike a trick this takes absolute seconds rather than a 0..1 progress,
+ * because sleeping is a state and not an event — there is no end to be part of
+ * the way towards. Pass the world clock plus the creature's own `phase` and a
+ * row of sleeping creatures breathes out of step, which is the difference
+ * between a nap and a chorus line.
+ */
+export function sleepPose(out: TrickPose, t: number, calm = 1): void {
+  const breath = Math.sin(t * SLEEP_W);       // -1 → 1 → -1, once per period
+  const k = SLEEP_BREATH * breath * calm;
+  out.dx = 0;
+  out.rot = 0;
+  out.sx = 1 + k;
+  out.sy = 1 - k;
+  // sinks a little, and lowest at the bottom of the breath
+  out.dy = (SLEEP_SETTLE - 1.2 * breath) * calm;
+}
+
+/** Seconds one bout of chewing runs for. Short: it is punctuation on reaching
+ *  a crumb, not a meal. */
+export const NIBBLE_DUR = 0.5;
+/** Chews per bout. Three reads as eating; one reads as a hiccup. */
+const NIBBLE_CHEWS = 3;
+/** How hard each chew squashes the body. */
+const NIBBLE_SQUASH = 0.075;
+
+/**
+ * A treat has been reached: a few quick small squashes, `u` in 0..1.
+ *
+ * The envelope is a half-sine, so the first chew grows out of whatever the
+ * creature was doing and the last one dies back into it — a bout that started
+ * and stopped at full squash would pop twice per crumb.
+ */
+export function nibblePose(out: TrickPose, u: number, calm = 1): void {
+  const p = u * Math.PI * 2 * NIBBLE_CHEWS;
+  const fade = Math.sin(Math.PI * u);         // 0 → 1 → 0
+  const bite = -Math.cos(p) * fade;           // +1 mid-chomp, -1 mid-open
+  const k = NIBBLE_SQUASH * bite * calm;
+  out.dx = 0;
+  out.dy = 2.2 * bite * calm;                 // dips into the crumb as it closes
+  out.rot = 0.05 * Math.sin(p) * fade * calm; // …and nods, a quarter beat behind
+  out.sx = 1 + k;
+  out.sy = 1 - k;
+}
+
+/** Seconds a celebration runs for. */
+export const CELEBRATE_DUR = 0.8;
+/** How high the first hop goes, in sprite pixels. */
+const CELEBRATE_HOP = 34;
+
+/**
+ * Finished a lesson, or been crowned: a double hop with a wiggle in it.
+ *
+ * Deliberately not shaped like `TRICK_BOUNCE`. That one is squash → launch →
+ * squash: it spends its first third crouching, and all of its charm is in the
+ * anticipation. This is already in the air on the first frame and hops twice,
+ * the second lower than the first, stretching rather than squashing. The two
+ * have to be told apart at a glance, because one of them means "watch this"
+ * and the other means "you did it".
+ */
+export function celebratePose(out: TrickPose, u: number, calm = 1): void {
+  const hop = Math.abs(Math.sin(Math.PI * 2 * u));  // two arcs, feet down between
+  const lift = hop * (1 - 0.45 * u);                // …the second one smaller
+  out.dx = Math.sin(u * Math.PI * 4) * 3.5 * calm;  // a sway, one per hop
+  out.dy = -CELEBRATE_HOP * lift * calm;
+  out.rot = Math.sin(u * Math.PI * 6) * 0.18 * calm;
+  out.sx = 1 - 0.06 * lift * calm;                  // stretched by the rising,
+  out.sy = 1 + 0.06 * lift * calm;                  // not squashed by a crouch
+}
