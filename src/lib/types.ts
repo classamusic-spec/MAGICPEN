@@ -9,6 +9,9 @@ export interface Stroke {
   color: string;
   size: number; // brush width in canvas units
   pts: Pt[];
+  /** What it was made with. Absent means crayon — every drawing made before
+   *  there was a choice was made with one, and must keep looking that way. */
+  medium?: "crayon" | "water" | "paint";
 }
 
 export type BehaviorKind =

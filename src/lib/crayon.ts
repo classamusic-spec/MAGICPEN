@@ -5,7 +5,7 @@
 import type { Pt, Stroke } from "./types";
 
 /** Deterministic pseudo-random from a seed (stable speckle per stroke). */
-function mulberry(seed: number) {
+export function mulberry(seed: number) {
   let a = seed >>> 0;
   return () => {
     a |= 0;
@@ -83,7 +83,7 @@ export function wigglePoints(pts: Pt[], o: WiggleOpts): Pt[] {
   return out;
 }
 
-function tracePath(ctx: CanvasRenderingContext2D, pts: Pt[]) {
+export function tracePath(ctx: CanvasRenderingContext2D, pts: Pt[]) {
   ctx.beginPath();
   ctx.moveTo(pts[0].x, pts[0].y);
   if (pts.length === 2) {
