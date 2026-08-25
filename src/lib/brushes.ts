@@ -104,7 +104,7 @@ export function drawWaterStroke(
   // the water dries it pulls pigment to the edge of the patch, which ends up
   // *darker than the middle*. Laid full width first…
   ctx.strokeStyle = tone(color, -0.34);
-  ctx.globalAlpha = 0.3;
+  ctx.globalAlpha = 0.34;
   ctx.lineWidth = size;
   tracePath(ctx, sub);
   ctx.stroke();
@@ -112,7 +112,7 @@ export function drawWaterStroke(
   // …then the body inside it, which leaves the darker rim showing at the edges
   // rather than painting a separate outline around the stroke.
   ctx.strokeStyle = color;
-  ctx.globalAlpha = 0.33;
+  ctx.globalAlpha = 0.4;
   ctx.lineWidth = size * 0.72;
   tracePath(ctx, sub);
   ctx.stroke();
@@ -192,18 +192,34 @@ export function drawPaintStroke(
   // paint, so the stroke is combed rather than printed. Offsetting the whole
   // path rather than computing a normal per point is both cheaper and truer:
   // a real brush wanders as a whole, it does not shear.
-  const hairs = 5;
+  const hairs = 7;
   for (let i = 0; i < hairs; i++) {
-    const off = ((i + 0.5) / hairs - 0.5) * size * 0.72;
+    const off = ((i + 0.5) / hairs - 0.5) * size * 0.78;
     ctx.save();
-    ctx.translate(off * (0.6 + rand() * 0.8), off * (0.6 + rand() * 0.8));
-    ctx.strokeStyle = tone(color, rand() < 0.5 ? 0.24 : -0.24);
-    ctx.globalAlpha = 0.16 + rand() * 0.16;
-    ctx.lineWidth = size * (0.06 + rand() * 0.1);
+    ctx.translate(off * (0.7 + rand() * 0.6), off * (0.7 + rand() * 0.6));
+    ctx.strokeStyle = tone(color, rand() < 0.5 ? 0.34 : -0.32);
+    ctx.globalAlpha = 0.24 + rand() * 0.24;
+    ctx.lineWidth = size * (0.1 + rand() * 0.13);
     tracePath(ctx, sub);
     ctx.stroke();
     ctx.restore();
   }
+
+  // ── where the bristles ran dry ──
+  // A loaded brush does not lay an even film all the way along. Short breaks
+  // scraped out of the paint, in the paper's own colour, are what stops this
+  // reading as a marker pen.
+  ctx.save();
+  ctx.strokeStyle = tone(color, 0.5);
+  ctx.setLineDash([size * (0.5 + rand() * 0.8), size * (1.6 + rand() * 2.4)]);
+  ctx.lineDashOffset = rand() * size * 4;
+  ctx.globalAlpha = 0.3;
+  ctx.lineWidth = size * 0.14;
+  ctx.translate((rand() - 0.5) * size * 0.4, (rand() - 0.5) * size * 0.4);
+  tracePath(ctx, sub);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
 
   // ── thickness ──
   // A light edge along one side and a dark one along the other. It is a cheap
