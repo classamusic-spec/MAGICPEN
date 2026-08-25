@@ -1,6 +1,6 @@
 // ─── Persistence (browser localStorage) ─────────────────────────────────────
 
-import type { Creature, DreamWorld } from "./types";
+import type { Creature, DreamWorld, Stroke } from "./types";
 
 const KEY = "magicpen.creatures.v1";
 const SEEN_KEY = "magicpen.seenIntro.v1";
@@ -93,6 +93,99 @@ export function saveCreatures(c: Creature[]): SaveResult {
     try { localStorage.removeItem(PHOTO_KEY); } catch { /* noop */ }
   }
   return out;
+}
+
+/* ── the pet ──────────────────────────────────────────────────────────────────
+   Which creature the child has crowned as theirs. Deliberately a *pointer in
+   its own key* rather than a flag on the creature: the sketchbook array is
+   round-tripped whole with no migration step, and — more to the point — the
+   thirty-creature cap evicts oldest-first, which is very often the pet. A
+   pointer can dangle harmlessly (an id nobody answers to simply means "no pet
+   today"); a flag on an evicted creature would take the pet with it.
+
+   `since` is kept for warmth, not mechanics: nothing counts down from it and
+   nothing is ever withheld because of it. */
+const PET_KEY = "magicpen.pet.v1";
+
+export interface PetRef {
+  /** The creature's id. May legitimately point at nothing. */
+  id: string;
+  /** When it was made the pet, ms. Shown warmly; never used to pressure. */
+  since: number;
+}
+
+export function loadPet(): PetRef | null {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PET_KEY) ?? "null") as unknown;
+    if (!raw || typeof raw !== "object") return null;
+    const p = raw as Partial<PetRef>;
+    return typeof p.id === "string" && p.id
+      ? { id: p.id, since: typeof p.since === "number" ? p.since : Date.now() }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function savePet(id: string): PetRef {
+  const ref: PetRef = { id, since: Date.now() };
+  try {
+    localStorage.setItem(PET_KEY, JSON.stringify(ref));
+  } catch {
+    /* out of room: the choice is lost, the creature is not */
+  }
+  return ref;
+}
+
+export function clearPet(): void {
+  try {
+    localStorage.removeItem(PET_KEY);
+  } catch {
+    /* noop */
+  }
+}
+
+/* ── food the child drew ──────────────────────────────────────────────────────
+   Strokes, not baked images — the same reasoning that keeps `doodleId` an id
+   rather than a PNG. A handful of strokes is a few hundred bytes and can be
+   re-baked at any size; a baked canvas would put us straight back into the
+   photo-quota trap this file exists to avoid.
+
+   Capped, oldest out. A crumb on the water is still never persisted — this is
+   the *recipe*, not the crumb. */
+const FOODS_KEY = "magicpen.foods.v1";
+
+/** How many hand-drawn foods are kept. Small on purpose: a tray, not a pantry. */
+export const MAX_DRAWN_FOODS = 6;
+
+export interface DrawnFood {
+  id: string;
+  strokes: Stroke[];
+  createdAt: number;
+}
+
+export function loadFoods(): DrawnFood[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FOODS_KEY) ?? "[]") as unknown;
+    if (!Array.isArray(raw)) return [];
+    return (raw as DrawnFood[]).filter(
+      (f) => f && typeof f.id === "string" && Array.isArray(f.strokes),
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Add one drawn food, keeping the newest `MAX_DRAWN_FOODS`. */
+export function saveFood(strokes: Stroke[]): DrawnFood[] {
+  const next = [...loadFoods(), { id: uuid(), strokes, createdAt: Date.now() }]
+    .slice(-MAX_DRAWN_FOODS);
+  try {
+    localStorage.setItem(FOODS_KEY, JSON.stringify(next));
+  } catch {
+    /* noop — the food simply is not remembered for tomorrow */
+  }
+  return next;
 }
 
 export function hasSeenIntro(): boolean {

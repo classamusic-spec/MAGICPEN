@@ -2,7 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { Creature, DreamWorld, RecognitionResult, Screen, Stroke, WritingWorldId } from "@/lib/types";
 import { recognize } from "@/lib/recognizer";
 import { kindById, rosterFor, WORLD_PACKS } from "@/lib/creatures";
-import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid, loadDream, saveDream } from "@/lib/storage";
+import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid, loadDream, saveDream, loadPet, savePet, clearPet, type PetRef } from "@/lib/storage";
+import { resolvePet, makeRoom, petGreeting } from "@/lib/pet";
 import { markVisit, dailyIdea, welcomeBack, type Visit } from "@/lib/daily";
 import { mayUseAiArt } from "@/lib/consent";
 import { CARE_PER_DAY } from "@/lib/social";
@@ -87,11 +88,38 @@ export default function App() {
   const [photoDraft, setPhotoDraft] = useState<string | null>(null);
   const [newId, setNewId] = useState<string | null>(null);
   const [polishingIds, setPolishingIds] = useState<Set<string>>(new Set());
+  /* ── the pet ──────────────────────────────────────────────────────────────
+     One creature the child has crowned as theirs. Held as a pointer, so a
+     creature that has been released (or was evicted by an older build) simply
+     resolves to nothing rather than breaking anything.
+
+     Nothing here decays. There is no hunger, no mood, no countdown — the pet
+     is exactly as it was however long it has been, and the only thing a long
+     absence changes is that its hello is warmer. */
+  const [petRef, setPetRef] = useState<PetRef | null>(() => loadPet());
+  const pet = useMemo(() => resolvePet(petRef, creatures), [petRef, creatures]);
+  const makePet = useCallback((id: string) => setPetRef(savePet(id)), []);
+  const dropPet = useCallback(() => { clearPet(); setPetRef(null); }, []);
+  /* A pet whose creature is gone for good stops being remembered, so the slot
+     is free next time. Runs only when it truly resolves to nothing. */
+  useEffect(() => {
+    if (petRef && !creatures.some((c) => c.id === petRef.id)) dropPet();
+  }, [petRef, creatures, dropPet]);
   const utils = trpc.useUtils();
   const worldIdRef = useRef(worldId);
   worldIdRef.current = worldId;
 
-  useEffect(() => { saveCreatures(creatures); }, [creatures]);
+  /* `saveCreatures` reports what it managed, and that report used to be thrown
+     away here — which is the worst of both worlds: the child keeps playing,
+     everything looks saved, and it is gone tomorrow. Now a failure is kept so
+     the grown-ups screen can say so plainly. Nothing is shown to the child:
+     a four-year-old can do nothing about a full disk, and telling them their
+     friends might not come back is a cruelty with no upside. */
+  const [saveTrouble, setSaveTrouble] = useState<null | "creatures" | "photos">(null);
+  useEffect(() => {
+    const r = saveCreatures(creatures);
+    setSaveTrouble(!r.creatures ? "creatures" : !r.photos ? "photos" : null);
+  }, [creatures]);
 
   /* ── growing up ───────────────────────────────────────────────────────────
      Every creature that already existed is a day older the first time the app
@@ -292,7 +320,7 @@ export default function App() {
       phase: Math.random() * 10,
       scale: 0.75 + Math.random() * 0.45,
     };
-    setCreatures((prev) => [...prev.slice(-(MAX_CREATURES - 1)), creature]);
+    setCreatures((prev) => [...makeRoom(prev, MAX_CREATURES, petRef?.id ?? null), creature]);
     setNewId(creature.id);
     setPhotoDraft(null);
     go("world");
@@ -320,7 +348,7 @@ export default function App() {
       phase: Math.random() * 10,
       scale: 0.8 + Math.random() * 0.35,
     };
-    setCreatures((prev) => [...prev.slice(-(MAX_CREATURES - 1)), creature]);
+    setCreatures((prev) => [...makeRoom(prev, MAX_CREATURES, petRef?.id ?? null), creature]);
     setNewId(creature.id);
     setSchoolWorld(undefined);
     setWorldId(intoWorld);
@@ -348,7 +376,7 @@ export default function App() {
       phase: Math.random() * 10,
       scale: 0.8 + Math.random() * 0.35,
     };
-    setCreatures((prev) => [...prev.slice(-(MAX_CREATURES - 1)), creature]);
+    setCreatures((prev) => [...makeRoom(prev, MAX_CREATURES, petRef?.id ?? null), creature]);
     setNewId(creature.id);
     go("world");
     askedRef.current.add(creature.id);
@@ -375,7 +403,7 @@ export default function App() {
       phase: Math.random() * 10,
       scale: 0.8 + Math.random() * 0.35,
     };
-    setCreatures((prev) => [...prev.slice(-(MAX_CREATURES - 1)), creature]);
+    setCreatures((prev) => [...makeRoom(prev, MAX_CREATURES, petRef?.id ?? null), creature]);
     setNewId(creature.id);
     setWorldId(drawWorld);
     go("world");
@@ -447,6 +475,16 @@ export default function App() {
                 onWrite={(id) => { setWriteWorld(id); go("write"); }}
                 onDrawSchool={() => go("school")}
                 onGrownUps={() => go("grownups")}
+                pet={pet}
+                petLine={pet ? petGreeting(visit, pet.name) : null}
+                onVisitPet={() => {
+                  /* Straight to where the pet lives. A pet made before worlds
+                     were tracked has no world of its own; the reef is the
+                     friendliest default. */
+                  setNewId(null);
+                  setWorldId(worldIdRef.current || "ocean");
+                  go("world");
+                }}
               />
             )}
             {s === "draw" && (
@@ -485,6 +523,9 @@ export default function App() {
                 onRepaint={() => go("paintworld")}
                 onCare={addCare}
                 visit={visit}
+                petId={petRef?.id ?? null}
+                onMakePet={makePet}
+                onReleasePet={dropPet}
               />
             )}
             {s === "paintworld" && (
@@ -522,6 +563,7 @@ export default function App() {
           <GrownUps
             creatures={creatures}
             onBack={() => go("home")}
+            saveTrouble={saveTrouble}
           />
         )}
         {s === "game" && (
