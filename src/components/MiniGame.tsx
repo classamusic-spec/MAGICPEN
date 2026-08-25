@@ -793,8 +793,22 @@ export default function MiniGame({
     let W = 0, H = 0;
     const fit = () => {
       const dpr = window.devicePixelRatio || 1;
-      const r = wrap.getBoundingClientRect();
-      W = r.width; H = r.height;
+      /* `clientWidth/Height`, never `getBoundingClientRect()`.
+         
+         A screen arrives by turning over the coil, and mid-turn it is really
+         rotated in 3D: `page-flip-in` starts at `translateZ(-46px)` under a
+         1800px perspective, so the sheet measures about 97.5% of itself.
+         `getBoundingClientRect()` reports that *projected* size, and this
+         function then froze it into inline pixels. The layout box never
+         changed, so the ResizeObserver never fired again and the canvas stayed
+         a little too small for good — leaving a strip of page showing down the
+         right edge and along the bottom of every world.
+
+         `clientWidth/Height` are layout numbers. No transform can bend them. */
+      const w = wrap.clientWidth;
+      const h = wrap.clientHeight;
+      if (w < 2 || h < 2) return;   // mid-mount, or hidden: nothing to size to
+      W = w; H = h;
       cv.width = Math.round(W * dpr);
       cv.height = Math.round(H * dpr);
       cv.style.width = `${W}px`;

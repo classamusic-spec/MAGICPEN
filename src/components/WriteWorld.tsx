@@ -93,6 +93,10 @@ interface PickerSection {
   /** Narrowest a tile may be; the grid auto-fills from there. */
   min: string;
   items: PickerItem[];
+  /** Lesson keys in *teaching* order, when that differs from the order the
+   *  tiles are shown in. Only "keep going" reads it — see `letterSections`,
+   *  where the shelf is alphabetical but the teaching order is by stroke. */
+  nextKeys?: string[];
 }
 
 /** Turn a written line into one a synthesizer says right: math glyphs become
@@ -127,30 +131,48 @@ function numeralFace(numeral: string, tone: string, size: number) {
 }
 
 function letterSections(lowercase: boolean, tone: string): PickerSection[] {
+  /* Two different right answers, so this keeps both.
+     
+     The shelf is A to Z, because that is how a child looks a letter up: it is
+     the order of the alphabet song, and of every wall frieze they have ever
+     seen. Hunting for "M" in a list that runs I, L, T, E, F, H is a puzzle
+     nobody asked for.
+
+     "Keep going" still follows `LETTER_LESSONS`' own order, which is by how
+     hard the *stroke* is — straight lines, then diagonals, then curves. A
+     four-year-old handed B as their second letter has been set up to fail. */
+  const item = (l: (typeof LETTER_LESSONS)[number]) => {
+    /* A separate progress key for each case (`letter:` / `lower:`) so a
+       child's lowercase stars are their own, and the lowercase glyph is what
+       gets traced — a different letterform, not a small capital. */
+    const c = lowercase ? l.char.toLowerCase() : l.char;
+    return {
+      lesson: {
+        key: `${lowercase ? "lower" : "letter"}:${c}`,
+        targets: [{ char: c, say: c }],
+        title: `Trace the letter ${c}`,
+        subtitle: `${c} is for ${l.word}`,
+        doodle: l.doodle,
+        count: 1,
+        rewardTitle: `${c} is for ${l.word}!`,
+        rewardLine: "You wrote a whole letter.",
+      },
+      face: () => glyphFace(c, tone),
+    };
+  };
+
+  const byStroke = LETTER_LESSONS.map(item);
+  const alphabetical = LETTER_LESSONS.slice()
+    .sort((a, b) => a.char.localeCompare(b.char))
+    .map(item);
+
   return [{
     id: "letters",
     title: lowercase ? "Small letters" : "Big letters",
     hint: "tap one to write it",
     min: "4.3rem",
-    items: LETTER_LESSONS.map((l) => {
-      /* A separate progress key for each case (`letter:` / `lower:`) so a
-         child's lowercase stars are their own, and the lowercase glyph is what
-         gets traced — a different letterform, not a small capital. */
-      const c = lowercase ? l.char.toLowerCase() : l.char;
-      return {
-        lesson: {
-          key: `${lowercase ? "lower" : "letter"}:${c}`,
-          targets: [{ char: c, say: c }],
-          title: `Trace the letter ${c}`,
-          subtitle: `${c} is for ${l.word}`,
-          doodle: l.doodle,
-          count: 1,
-          rewardTitle: `${c} is for ${l.word}!`,
-          rewardLine: "You wrote a whole letter.",
-        },
-        face: () => glyphFace(c, tone),
-      };
-    }),
+    items: alphabetical,
+    nextKeys: byStroke.map((i) => i.lesson.key),
   }];
 }
 
@@ -584,7 +606,12 @@ export default function WriteWorld({ world, onBack, onBorn }: {
   /* Where the stars say to go next: the first untried lesson, or once all are
      tried, the shakiest one for another gentle go. null once every lesson is a
      confident three stars — then there is nothing to nudge. */
-  const nextKey = useMemo(() => nextLessonKey(lessons.map((l) => l.key), progress), [lessons, progress]);
+  /* Teaching order, which is not always the order the tiles are shown in. */
+  const teachKeys = useMemo(
+    () => sections.flatMap((s) => s.nextKeys ?? s.items.map((i) => i.lesson.key)),
+    [sections]
+  );
+  const nextKey = useMemo(() => nextLessonKey(teachKeys, progress), [teachKeys, progress]);
   const anyStarted = done > 0;
 
   const open = (key: string) => { setActiveKey(key); setEarned(null); };

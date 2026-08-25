@@ -27,6 +27,7 @@ import { NotepadPage } from "@/components/ink/Notepad";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon, type IconName } from "@/components/ink/Icons";
 import { Doodle } from "@/components/ink/Doodles";
+import { usePrefersReducedMotion } from "@/components/ink/motion";
 import { roughEllipse } from "@/lib/ink";
 import { sfxTap } from "@/lib/audio";
 import { hush, sayLine } from "@/lib/speech";
@@ -295,6 +296,12 @@ const SHEETS: Sheet[] = [
   { key: "ready", seed: 29, spoken: "All set. Let's draw something.", Body: ReadyPage },
 ];
 
+/* How long the outgoing sheet stays mounted after a turn starts. A touch past
+   the longest of the two exits it has to cover — `page-flip-out` at --dur-3
+   (420ms) going forward, and the 480ms `page-flip-back-in` the *arriving*
+   sheet plays on top of it coming back — so a sheet is never cut short. */
+const TURN_MS = 500;
+
 export default function Onboarding({ onDone, onSkip }: {
   onDone: () => void;
   onSkip: () => void;
@@ -302,8 +309,39 @@ export default function Onboarding({ onDone, onSkip }: {
   const [i, setI] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
+  /* ── turning a sheet ───────────────────────────────────────────────────────
+     Onboarding is the same top-bound pad as the rest of the app, so it turns
+     the same way: the sheet being left lifts up over the coil (`page-flip-out`)
+     and the next one settles down underneath it (`page-flip-in`); going back,
+     the sheet that was lifted drops down over the top again
+     (`page-flip-back-in`) while the one being left simply waits underneath.
+
+     The part that has to be got right is that *both* sheets are mounted for the
+     length of the turn. Swapping the body in place — which is what this screen
+     used to do — leaves the exit with nothing to animate, and a 3D rotate with
+     no `.page-stage` ancestor to hand it a perspective is flat anyway. Hence
+     the stage below and the two stacked `.page-layer`s inside it. */
+  const [exiting, setExiting] = useState<{ index: number; back: boolean } | null>(null);
+  const [back, setBack] = useState(false);
+  const turnTimer = useRef<number | null>(null);
+  const reduced = usePrefersReducedMotion();
+
   const sheet = SHEETS[i];
   const last = i === SHEETS.length - 1;
+
+  const turn = useCallback((to: number, isBack: boolean) => {
+    if (to === i || to < 0 || to >= SHEETS.length) return;
+    // a child who has asked for less motion gets the next sheet, now, flat
+    if (!reduced) {
+      setBack(isBack);
+      setExiting({ index: i, back: isBack });
+      if (turnTimer.current) window.clearTimeout(turnTimer.current);
+      turnTimer.current = window.setTimeout(() => setExiting(null), TURN_MS);
+    }
+    setI(to);
+  }, [i, reduced]);
+
+  useEffect(() => () => { if (turnTimer.current) window.clearTimeout(turnTimer.current); }, []);
 
   // the app's voice reads the headline, and only the headline; it follows the
   // mute switch inside `speak`, and never trails a page the reader has left
@@ -317,23 +355,67 @@ export default function Onboarding({ onDone, onSkip }: {
     scrollRef.current?.scrollTo({ top: 0 });
   }, [i]);
 
-  const back = useCallback(() => {
+  const goBack = useCallback(() => {
     sfxTap();
-    setI((n) => Math.max(0, n - 1));
-  }, []);
+    turn(i - 1, true);
+  }, [i, turn]);
 
   const next = useCallback(() => {
     sfxTap();
-    if (i < SHEETS.length - 1) { setI(i + 1); return; }
+    if (i < SHEETS.length - 1) { turn(i + 1, false); return; }
     hush();
     onDone();
-  }, [i, onDone]);
+  }, [i, turn, onDone]);
 
   const skip = useCallback(() => {
     sfxTap();
     hush();
     onSkip();
   }, [onSkip]);
+
+  /* One sheet's worth of pad, as a function of *which* sheet — so the page
+     that is leaving can go on drawing itself while it flips away. `live` marks
+     the one the child is actually reading: it is the sheet that owns the
+     scroller. */
+  const renderSheet = (index: number, live: boolean) => {
+    const s = SHEETS[index];
+    return (
+      <NotepadPage
+        seed={s.seed}
+        className="h-full w-full"
+        contentClassName="h-full min-h-0 flex flex-col px-4 pb-3 landshort:px-5"
+      >
+        {/* where we are, and the way out — on every sheet, in the same place */}
+        <div className="flex items-center justify-between gap-3 shrink-0">
+          <PageMarks index={index} total={SHEETS.length} />
+          <InkButton
+            seed={33}
+            radius={14}
+            onClick={skip}
+            weight={2.6}
+            aria-label="Skip and go straight to drawing"
+            className="ink-title text-fs-xs shrink-0 !px-4"
+          >
+            Skip
+          </InkButton>
+        </div>
+
+        {/* `my-auto` centres a short sheet in the space it has and quietly
+            gives up when the sheet is taller, so nothing scrolls off the top */}
+        <div
+          ref={live ? scrollRef : undefined}
+          className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col"
+        >
+          {/* the body settles in as the sheet lands. Under reduced motion it
+              does not move at all: `anim-pop-in` degrades to a fade that still
+              carries a transform, and the ask here is *no* transform. */}
+          <div className={`my-auto w-full py-1${reduced ? "" : " anim-pop-in"}`}>
+            <s.Body />
+          </div>
+        </div>
+      </NotepadPage>
+    );
+  };
 
   return (
     <div className="screen ink-paper overflow-hidden">
@@ -345,34 +427,28 @@ export default function Onboarding({ onDone, onSkip }: {
           paddingBottom: "max(var(--sp-2), var(--safe-b))",
         }}
       >
-        <NotepadPage
-          seed={sheet.seed}
-          className="flex-1 min-h-0"
-          contentClassName="h-full min-h-0 flex flex-col px-4 pb-3 landshort:px-5"
-        >
-          {/* where we are, and the way out — on every sheet, in the same place */}
-          <div className="flex items-center justify-between gap-3 shrink-0">
-            <PageMarks index={i} total={SHEETS.length} />
-            <InkButton
-              seed={33}
-              radius={14}
-              onClick={skip}
-              weight={2.6}
-              aria-label="Skip and go straight to drawing"
-              className="ink-title text-fs-xs shrink-0 !px-4"
+        {/* the stage carries the perspective; the sheets inside it do the
+            rotating. Perspective is handed *down* from a parent, so it can
+            never live on the sheet that moves. */}
+        <div className="page-stage flex-1 min-h-0 w-full">
+          {/* the sheet being left, still on the pad for the length of the turn */}
+          {exiting && (
+            <div
+              key={SHEETS[exiting.index].key}
+              className={`page-layer ${exiting.back ? "" : "page-flip-out"}`}
+              aria-hidden="true"
+              inert
             >
-              Skip
-            </InkButton>
-          </div>
-
-          {/* `my-auto` centres a short sheet in the space it has and quietly
-              gives up when the sheet is taller, so nothing scrolls off the top */}
-          <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col">
-            <div key={sheet.key} className="anim-pop-in my-auto w-full py-1">
-              <sheet.Body />
+              {renderSheet(exiting.index, false)}
             </div>
+          )}
+          <div
+            key={sheet.key}
+            className={`page-layer ${exiting ? (back ? "page-flip-back-in" : "page-flip-in") : ""}`}
+          >
+            {renderSheet(i, true)}
           </div>
-        </NotepadPage>
+        </div>
 
         <nav aria-label="Turn the page" className="flex items-center gap-3 shrink-0">
           {/* held open so the hero button does not shuffle sideways on page 1 */}
@@ -381,7 +457,7 @@ export default function Onboarding({ onDone, onSkip }: {
               <InkButton
                 seed={9}
                 radius={16}
-                onClick={back}
+                onClick={goBack}
                 aria-label="Back a page"
                 style={{ width: "var(--tap)", height: "var(--tap)" }}
               >

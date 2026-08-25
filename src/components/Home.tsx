@@ -2,7 +2,7 @@
 // The child's own drawings are the point of this product, so they are the
 // hero of this screen — mounted into the book with tape, not listed in boxes.
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { Creature, WorldPack, WritingWorld, WritingWorldId } from "@/lib/types";
 import { WORLD_PACKS, WRITING_WORLDS, kindById } from "@/lib/creatures";
 import { LETTER_LESSONS, ALL_NUMBER_LESSONS, SUM_LESSONS, WORD_LESSONS } from "@/lib/writing";
@@ -23,8 +23,12 @@ import { hand } from "@/lib/ink";
  * A creature thumbnail. Uses the same baked sticker sprite the worlds use —
  * ink ring, white ring, then the wax — so a small drawing still reads clearly
  * instead of fading into a pale scribble.
+ *
+ * `size` is the longest edge of the drawn box, in CSS pixels. It defaults to
+ * the 104 every carousel thumbnail has always used; the pet card asks for more
+ * because it is the one drawing the child is meant to see from across a room.
  */
-export function Thumb({ c }: { c: Creature }) {
+export function Thumb({ c, size = 104 }: { c: Creature; size?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [, tick] = useState(0);
   useEffect(() => onArtLoaded(() => tick((n) => n + 1)), []);
@@ -48,7 +52,7 @@ export function Thumb({ c }: { c: Creature }) {
     const h = "height" in src ? src.height : 100;
     if (!w || !h) return;
     const dpr = Math.min(3, window.devicePixelRatio || 1);
-    const k = 104 / Math.max(w, h);
+    const k = size / Math.max(w, h);
     const cw = Math.max(1, Math.round(w * k));
     const ch = Math.max(1, Math.round(h * k));
     cv.width = Math.round(cw * dpr);
@@ -56,7 +60,7 @@ export function Thumb({ c }: { c: Creature }) {
     cv.style.width = `${cw}px`;
     cv.style.height = `${ch}px`;
     ctx.drawImage(src, 0, 0, cv.width, cv.height);
-  }, [c, art, photoImg]);
+  }, [c, art, photoImg, size]);
 
   return (
     <canvas
@@ -102,6 +106,57 @@ function PinnedDrawing({
     </button>
   );
 }
+
+/* ── my pet: the face the app is about ───────────────────────────────────────
+   The first thing on the page when there is one, because a child who has
+   crowned a pet came back for *it*, not for a menu. It says hello and nothing
+   else: no hunger, no happiness meter, no "last fed", no countdown. Coming
+   back is rewarded; staying away is never punished — a card that measured
+   anything would quietly break that promise, so this one measures nothing.
+   The greeting arrives ready-made from above; this card only renders it. */
+const PetCard = memo(function PetCard({
+  pet, line, onVisit,
+}: { pet: Creature; line?: string | null; onVisit: () => void }) {
+  const kind = kindById(pet.kindId);
+  return (
+    <button
+      onClick={() => { sfxHappy(); onVisit(); }}
+      aria-label={`Visit ${pet.name}, your pet`}
+      className="ink-pinned relative block w-full text-left"
+    >
+      <Tape
+        seed={4}
+        style={{
+          width: 66, height: 22, top: -10, left: 26,
+          transform: "rotate(-7deg)",
+        }}
+      />
+      <InkCard
+        seed={63}
+        radius={18}
+        className="px-3 py-3"
+        contentClassName="flex items-center gap-3 sm:gap-4"
+      >
+        <span
+          aria-hidden="true"
+          className="shrink-0 grid place-items-center anim-float-y"
+          style={{ width: 132 }}
+        >
+          <Thumb c={pet} size={132} />
+        </span>
+
+        <span className="min-w-0 flex-1">
+          <span className="ink-hand flex items-center gap-1 text-fs-2xs">
+            <Icon name="heart" size={15} color="var(--pink)" fill="var(--pink)" />
+            my pet
+          </span>
+          <span className="ink-title block text-fs-2xl leading-tight truncate">{pet.name}</span>
+          <span className="ink-hand block text-fs-xs">{line ?? `Your very own ${kind.label}`}</span>
+        </span>
+      </InkCard>
+    </button>
+  );
+});
 
 /* ── first-run explainer ─────────────────────────────────────────────────── */
 
@@ -433,6 +488,9 @@ export default function Home({
   idea,
   welcome,
   onDrawIdea,
+  pet,
+  petLine,
+  onVisitPet,
 }: {
   creatures: Creature[];
   onPlayWorld: (worldId: string) => void;
@@ -449,6 +507,14 @@ export default function Home({
    *  when there is one to mention, so nothing else on the page repeats it. */
   welcome?: string | null;
   onDrawIdea?: () => void;
+  /** The crowned creature, or nothing. Optional for the same reason as the
+   *  callbacks above — Home must keep rendering for a build without a pet. */
+  pet?: Creature | null;
+  /** The pet's ready-made hello, written upstream. Rendered as given. */
+  petLine?: string | null;
+  /** Go and see the pet. Without it the card has nowhere to send anyone, so
+   *  it is not shown at all. */
+  onVisitPet?: () => void;
 }) {
   const [grownUps, setGrownUps] = useState<WorldPack | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -458,6 +524,12 @@ export default function Home({
   const [writing] = useState(() => loadWriting());
   const isNew = creatures.length === 0;
   const homeWorld = WORLD_PACKS[0].id;
+  // No pet is the ordinary first-run state, and it must leave this page exactly
+  // as it was: nothing rendered, no empty slot, and no shifted entrances. The
+  // `--i` stagger below is hand-numbered, so it counts from the pet card when
+  // there is one and from zero when there is not.
+  const showPet = !!pet && !!onVisitPet;
+  const step = (n: number) => ({ "--i": showPet ? n + 1 : n } as React.CSSProperties);
 
   useEffect(() => {
     if (!grownUps) return;
@@ -495,8 +567,16 @@ export default function Home({
           </p>
         )}
 
+        {/* ── my pet ── */}
+        {pet && onVisitPet && (
+          <section className="mt-3 enter" style={{ "--i": 0 } as React.CSSProperties} aria-labelledby="pet-h">
+            <h2 id="pet-h" className="visually-hidden">My pet</h2>
+            <PetCard pet={pet} line={petLine} onVisit={onVisitPet} />
+          </section>
+        )}
+
         {idea && onDrawIdea && (
-          <section className="mt-3 enter" style={{ "--i": 0 } as React.CSSProperties} aria-labelledby="today-h">
+          <section className="mt-3 enter" style={step(0)} aria-labelledby="today-h">
             <h2 id="today-h" className="visually-hidden">Today's drawing idea</h2>
             <button
               onClick={() => { sfxHappy(); onDrawIdea(); }}
@@ -529,7 +609,7 @@ export default function Home({
         )}
 
         {/* ── the one thing to do ── */}
-        <section className="mt-3 enter" style={{ "--i": 1 } as React.CSSProperties} aria-labelledby="hero-h">
+        <section className="mt-3 enter" style={step(1)} aria-labelledby="hero-h">
           <h2 id="hero-h" className="visually-hidden">Start drawing</h2>
           <InkButton
             tone="#8b46c7"
@@ -554,7 +634,10 @@ export default function Home({
             </span>
           </InkButton>
 
-          {!isNew && (
+          {/* Absorbed by the pet card when there is one: tapping the pet goes
+              to the same place, and two doors to one room is one too many.
+              Without a pet this is still the only way in. */}
+          {!isNew && !showPet && (
             <InkButton
               tone="#00c2b9"
               seed={26}
@@ -577,7 +660,7 @@ export default function Home({
         </section>
 
         {/* ── the child's own work ── */}
-        <section className="mt-6 enter" style={{ "--i": 2 } as React.CSSProperties} aria-labelledby="mine-h">
+        <section className="mt-6 enter" style={step(2)} aria-labelledby="mine-h">
           <div className="flex items-baseline justify-between gap-3">
             <h2 id="mine-h" className="ink-title text-fs-xl">
               {isNew ? "How the magic works" : "Your creatures"}
@@ -610,7 +693,7 @@ export default function Home({
         </section>
 
         {/* ── worlds ── */}
-        <section className="mt-6 enter" style={{ "--i": 3 } as React.CSSProperties} aria-labelledby="worlds-h">
+        <section className="mt-6 enter" style={step(3)} aria-labelledby="worlds-h">
           <div className="flex items-baseline justify-between gap-3">
             <h2 id="worlds-h" className="ink-title text-fs-xl">Magic worlds</h2>
             <span className="ink-hand text-fs-2xs">swipe →</span>
@@ -631,7 +714,7 @@ export default function Home({
         </section>
 
         {/* ── writing worlds ── */}
-        <section className="mt-6 enter" style={{ "--i": 4 } as React.CSSProperties} aria-labelledby="write-h">
+        <section className="mt-6 enter" style={step(4)} aria-labelledby="write-h">
           <div className="flex items-baseline justify-between gap-3">
             <h2 id="write-h" className="ink-title text-fs-xl">Writing school</h2>
             <span className="ink-hand text-fs-2xs">letters, numbers &amp; words</span>
@@ -651,7 +734,7 @@ export default function Home({
         </section>
 
         {onDrawSchool && (
-          <section className="mt-6 enter" style={{ "--i": 5 } as React.CSSProperties} aria-labelledby="school-h">
+          <section className="mt-6 enter" style={step(5)} aria-labelledby="school-h">
             <div className="flex items-baseline justify-between gap-3">
               <h2 id="school-h" className="ink-title text-fs-xl">Drawing school</h2>
               <span className="ink-hand text-fs-2xs">learn to draw anything</span>

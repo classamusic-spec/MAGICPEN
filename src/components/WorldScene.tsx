@@ -37,6 +37,7 @@ import {
 } from "@/lib/social";
 import { welcomeBack, type Visit } from "@/lib/daily";
 import { drawCrayonStroke } from "@/lib/crayon";
+import { paintDoodle } from "@/lib/doodleArt";
 
 /* per-world wrapper colors + empty-state copy */
 const WORLD_BG: Record<string, string> = {
@@ -149,6 +150,15 @@ const DROP_HOME = 0.4;
 const W_FOOD = W_COH + W_ALIGN + W_PAL;
 /** Numbers per crumb in the ring: x, y, born, alive. */
 const FOOD_SLOT = 4;
+/** How wide a crumb that is a *particular* food is drawn, as a multiple of the
+ *  generic crumb's radius. An apple has to read as an apple from across the
+ *  room, and the generic crumb is deliberately tiny. */
+const FOOD_ART = 5.6;
+
+/** How often care earned in the scene is swept into the creature list. Slow on
+ *  purpose: a creature list can carry a photo per creature, so this is the one
+ *  cadence that must never follow the frame. */
+const CARE_COMMIT_MS = 60_000;
 
 /** One trick pose, borrowed by whichever creature is mid-trick this frame.
  *  Thirty creatures cost thirty records for the life of the scene, not thirty
@@ -388,6 +398,27 @@ function drawSpark(ctx: CanvasRenderingContext2D, x: number, y: number, r: numbe
   ctx.restore();
 }
 
+/* ── a particular food, baked once ─────────────────────────────────────────
+   A doodle is a stack of SVG paths, and `paintDoodle` builds a `Path2D` per
+   path every time it is called — fine for a card, not for something drawn
+   sixty times a second. So each food is painted once onto its own little
+   canvas and stamped from there afterwards: no allocation on the frame path,
+   and a name with no doodle behind it is remembered as a miss so it is never
+   tried twice. Keyed by name, and there are only ever a handful. */
+const FOOD_ART_PX = 128;
+const foodArtCache = new Map<string, HTMLCanvasElement | null>();
+function foodArt(name: string): HTMLCanvasElement | null {
+  const hit = foodArtCache.get(name);
+  if (hit !== undefined) return hit;
+  const cv = document.createElement("canvas");
+  cv.width = FOOD_ART_PX;
+  cv.height = FOOD_ART_PX;
+  const c2 = cv.getContext("2d");
+  const baked = !!c2 && paintDoodle(c2, name, FOOD_ART_PX) ? cv : null;
+  foodArtCache.set(name, baked);
+  return baked;
+}
+
 /**
  * A crumb of food, drawn the way the child drew everything else it is sitting
  * in: a lumpy wax morsel inside an inked edge, not a dot. The lumps come off
@@ -402,7 +433,24 @@ const CRUMB_XY = new Float64Array(CRUMB_PTS * 2);
 function drawCrumb(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, r: number, seed: number, alpha: number,
+  doodle: string,
 ) {
+  /* …unless somebody put down a *particular* thing to eat — an apple, a cake,
+     something the child drew themselves. Then the crumb is that drawing, in the
+     same ink as everything else in the scene. A name with no doodle behind it
+     is not an error, it is just lunch: `foodArt` hands back null and this falls
+     through to the crumb. */
+  if (doodle) {
+    const art = foodArt(doodle);
+    if (art) {
+      const size = r * FOOD_ART;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.drawImage(art, x - size / 2, y - size / 2, size, size);
+      ctx.restore();
+      return;
+    }
+  }
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.translate(x, y);
@@ -438,6 +486,29 @@ function drawCrumb(
   ctx.beginPath();
   ctx.arc(r * 1.05, -r * 0.8, Math.max(1.2, r * 0.22), 0, Math.PI * 2);
   ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * A small drawn heart, for the one creature the child has made their pet. Two
+ * lobes and a point, inked like everything else — it rides inside the name tag
+ * rather than floating over the world, so nothing new is drawn every frame and
+ * a pet is simply the friend whose tag has a heart on it.
+ */
+function drawHeartMark(ctx: CanvasRenderingContext2D, x: number, y: number, r: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  ctx.moveTo(0, r * 0.92);
+  ctx.bezierCurveTo(-r * 1.25, -r * 0.16, -r * 0.62, -r * 1.14, 0, -r * 0.42);
+  ctx.bezierCurveTo(r * 0.62, -r * 1.14, r * 1.25, -r * 0.16, 0, r * 0.92);
+  ctx.closePath();
+  ctx.fillStyle = "#ff6b6b";
+  ctx.fill();
+  ctx.lineWidth = Math.max(1.4, r * 0.34);
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#2d2926";
   ctx.stroke();
   ctx.restore();
 }
@@ -593,6 +664,10 @@ export default function WorldScene({
   onRepaint,
   onCare,
   visit,
+  petId,
+  onMakePet,
+  onReleasePet,
+  foodKind,
 }: {
   creatures: Creature[];
   newId: string | null;
@@ -617,6 +692,17 @@ export default function WorldScene({
   onCare?: (deltas: Record<string, number>) => void;
   /** How long the child has been away, so their creatures can say hello. */
   visit?: Visit;
+  /** The one creature the child has crowned as their pet, if they have. */
+  petId?: string | null;
+  /** Crown this creature. Choosing another one simply crowns that one instead:
+   *  there is no un-petting, and nothing is ever taken off anybody. */
+  onMakePet?: (id: string) => void;
+  /** Forget the pet entirely — only ever when that creature is let go. */
+  onReleasePet?: () => void;
+  /** Optional: the particular thing the next tap on empty water puts down (a
+   *  doodle name — "apple", "cake", something the child drew). Null or empty
+   *  and a tap drops the generic crumb, exactly as it always did. */
+  foodKind?: string | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -634,7 +720,20 @@ export default function WorldScene({
      way `burstRef` does. Never persisted, never on `Creature`: food is a treat,
      not a save file, and a crumb should not still be there tomorrow. */
   const foodRef = useRef(new Float32Array(FOOD_MAX * FOOD_SLOT));
+  /* What each of those six crumbs *is*, if it is anything in particular. One
+     name per ring slot, written at the same cursor as the numbers on the same
+     line, so the two can never drift apart. "" is the generic crumb. */
+  const foodDoodleRef = useRef<string[]>(new Array<string>(FOOD_MAX).fill(""));
   const foodAt = useRef(0);                                // the write cursor
+  const foodKindRef = useRef(foodKind);
+  foodKindRef.current = foodKind;
+  /** Who is the pet, for the render loop: one string compare per name tag, no
+   *  lookup and nothing new per frame. */
+  const petRef = useRef(petId ?? null);
+  petRef.current = petId ?? null;
+  /** Somebody was just crowned, at these world coords — drained by the loop
+   *  into a little burst of hearts, the way `popRef` is. */
+  const petFxRef = useRef<{ x: number; y: number }[]>([]);
   const seenArtRef = useRef<Set<string>>(new Set());
   const arrivalRef = useRef<string | null>(null);
   const [muted, setM] = useState(isMuted());
@@ -712,12 +811,16 @@ export default function WorldScene({
     }
     if (any) onCareRef.current?.(deltas);
   }, []);
-  const commitRef = useRef(commitCare);
-  commitRef.current = commitCare;
   useEffect(() => {
+    /* The slow cadence itself. A tab hidden and an unmount are the tidy ways a
+       visit ends; a phone that simply kills the app is the common one, and
+       without this every hello, trick and crumb of that session went with it.
+       Once a minute costs one sweep of a map of thirty flat records. */
+    const tick = window.setInterval(commitCare, CARE_COMMIT_MS);
     const onHide = () => { if (document.visibilityState === "hidden") commitCare(); };
     document.addEventListener("visibilitychange", onHide);
     return () => {
+      window.clearInterval(tick);
       document.removeEventListener("visibilitychange", onHide);
       commitCare();
     };
@@ -1064,8 +1167,22 @@ export default function WorldScene({
 
     const fit = () => {
       const dpr = window.devicePixelRatio || 1;
-      const r = wrap.getBoundingClientRect();
-      W = r.width; H = r.height;
+      /* `clientWidth/Height`, never `getBoundingClientRect()`.
+         
+         A screen arrives by turning over the coil, and mid-turn it is really
+         rotated in 3D: `page-flip-in` starts at `translateZ(-46px)` under a
+         1800px perspective, so the sheet measures about 97.5% of itself.
+         `getBoundingClientRect()` reports that *projected* size, and this
+         function then froze it into inline pixels. The layout box never
+         changed, so the ResizeObserver never fired again and the canvas stayed
+         a little too small for good — leaving a strip of page showing down the
+         right edge and along the bottom of every world.
+
+         `clientWidth/Height` are layout numbers. No transform can bend them. */
+      const w = wrap.clientWidth;
+      const h = wrap.clientHeight;
+      if (w < 2 || h < 2) return;   // mid-mount, or hidden: nothing to size to
+      W = w; H = h;
       cv.width = Math.round(W * dpr);
       cv.height = Math.round(H * dpr);
       cv.style.width = `${W}px`;
@@ -1486,6 +1603,7 @@ export default function WorldScene({
           5.5 * crumbF + 3,
           seed,
           a,
+          foodDoodleRef.current[k],
         );
       }
 
@@ -2015,7 +2133,11 @@ export default function WorldScene({
           ctx.save();
           ctx.font = `800 ${Math.round(15 * sizeF) + 8}px 'Baloo 2', sans-serif`;
           const label = `${c.name} the ${kind.label}`;
-          const tw = Math.round(ctx.measureText(label).width + 32);
+          /* The pet's tag carries a heart. One string compare, and the tag was
+             already being drawn — a pet is recognisable at a glance without
+             anything following it around the world. */
+          const pet = petRef.current === c.id;
+          const tw = Math.round(ctx.measureText(label).width + 32) + (pet ? 26 : 0);
           const th = 38;
           const ly = py - sp.h * scl * 0.62 - 18;
           const seed = (c.id.charCodeAt(0) * 37 + c.id.length * 11) % 997;
@@ -2029,7 +2151,8 @@ export default function WorldScene({
           ctx.stroke(tag);
           ctx.fillStyle = "#563e79";
           ctx.textAlign = "center";
-          ctx.fillText(label, tw / 2, th * 0.68);
+          ctx.fillText(label, tw / 2 + (pet ? 12 : 0), th * 0.68);
+          if (pet) drawHeartMark(ctx, 21, th * 0.5, 8.5);
           ctx.restore();
         }
 
@@ -2085,6 +2208,21 @@ export default function WorldScene({
             vx: Math.cos(a) * v,
             vy: Math.sin(a) * v - 40,
             life: 1 + Math.random() * 0.4,
+          });
+        }
+      }
+      // …and hearts wherever somebody has just been made the pet
+      while (petFxRef.current.length) {
+        const q = petFxRef.current.pop()!;
+        for (let k = 0; k < 14; k++) {
+          const a = Math.random() * Math.PI * 2;
+          const v = 34 + Math.random() * 80;
+          sparkles.push({
+            x: q.x * W + (Math.random() - 0.5) * 26,
+            y: q.y * H + (Math.random() - 0.5) * 20,
+            vx: Math.cos(a) * v,
+            vy: Math.sin(a) * v - 44,
+            life: 0.9 + Math.random() * 0.4, heart: 1,
           });
         }
       }
@@ -2166,8 +2304,12 @@ export default function WorldScene({
   /** Drop a crumb where the finger went. Never refuses: the oldest goes. */
   const dropCrumb = useCallback((nx: number, ny: number) => {
     const food = foodRef.current;
-    const o = foodAt.current * FOOD_SLOT;
+    const slot = foodAt.current;
+    const o = slot * FOOD_SLOT;
     foodAt.current = (foodAt.current + 1) % FOOD_MAX;
+    // what it is goes down on the same line as where it is, so the two rings
+    // can never disagree about which crumb is the apple
+    foodDoodleRef.current[slot] = foodKindRef.current || "";
     food[o] = nx;
     food[o + 1] = ny;
     food[o + 2] = performance.now() / 1000;
@@ -2326,7 +2468,28 @@ export default function WorldScene({
     pushBanner(`Say hello to ${name}!`, "pencil");
   }, [onRenameCreature, pushBanner]);
 
+  /* ── the crown ────────────────────────────────────────────────────────────
+     One creature at a time, and never taken away: a child who decides somebody
+     else is their pet simply crowns that one, and the first is still exactly as
+     welcome as it was. Nothing here can make anybody sad. */
+  const crownPet = useCallback((c: Creature) => {
+    if (petId === c.id) return;
+    onMakePet?.(c.id);
+    const rt = rtRef.current.get(c.id);
+    if (rt) {
+      rt.excite = 1;
+      // late enough that the tag is still popping when the card is put down
+      rt.labelT = performance.now() + 900;
+      petFxRef.current.push({ x: rt.x, y: rt.y });
+    }
+    sfxHappy();
+    pushBanner(`${c.name} is your pet now!`, "heart");
+  }, [petId, onMakePet, pushBanner]);
+
   const releaseCreature = useCallback((c: Creature) => {
+    // a pet that has gone off to explore is not a pet any more — the crown must
+    // never dangle on somebody who has left
+    if (petId === c.id) onReleasePet?.();
     if (onDeleteCreature) onDeleteCreature(c.id);
     else {
       editedRef.current = true;
@@ -2336,7 +2499,7 @@ export default function WorldScene({
     pushBanner(`${c.name} went off to explore. Bye!`, "globe");
     setConfirmDel(false);
     setSheet(view.length > 1 ? { mode: "roster" } : null);
-  }, [onDeleteCreature, pushBanner, view.length]);
+  }, [onDeleteCreature, pushBanner, view.length, petId, onReleasePet]);
 
   /* Fallback persistence. The timeout deliberately lands after the parent's own
      save effect (child effects run first), so a background art update can't
@@ -3096,6 +3259,39 @@ export default function WorldScene({
                       <span className="ink-on-wax font-display font-extrabold whitespace-nowrap" style={{ fontSize: "var(--fs-md)" }}>Play</span>
                     </InkButton>
                   </div>
+
+                  {/* …and, right beside saying hello, the biggest thing a child
+                      can say about a creature. Once it is theirs the row goes
+                      calm and stops being a button: there is nothing here to
+                      undo, only somebody else to crown instead. */}
+                  {petId === detail.id ? (
+                    <InkCard
+                      className="mt-2"
+                      contentClassName="flex items-center justify-center gap-2 px-3 py-3.5"
+                      seed={877}
+                      weight={2.8}
+                      lifted={false}
+                    >
+                      <Icon name="heart" size={20} color="#2d2926" fill="#ff6b6b" weight={2.2} />
+                      <span className="ink-title text-center" style={{ fontSize: "var(--fs-md)" }}>
+                        {detail.name} is your pet
+                      </span>
+                    </InkCard>
+                  ) : (
+                    <InkButton
+                      tone={TONE.sun.wax}
+                      seed={877}
+                      className="hud-focus w-full mt-2"
+                      style={{ minHeight: 52 }}
+                      labelColor="#2d2926"
+                      onClick={() => crownPet(detail)}
+                    >
+                      <Icon name="heart" size={20} color="#2d2926" fill="#ff6b6b" weight={2.2} />
+                      <span className="font-display font-extrabold text-center px-1" style={{ fontSize: "var(--fs-md)" }}>
+                        Make {detail.name} my pet
+                      </span>
+                    </InkButton>
+                  )}
 
                   {!confirmDel ? (
                     <button

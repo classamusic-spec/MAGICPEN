@@ -18,7 +18,7 @@ import type { Pt, Stroke } from "@/lib/types";
 import { drawCrayonStroke } from "@/lib/crayon";
 import { ALL_GLYPHS, DIGIT_GLYPHS, GLYPH_BOX, LOWER_GLYPHS, LOWER_BOX, LOWER_RULE, densify, type Glyph } from "@/lib/glyphs";
 import { scoreTrace, toGlyphSpace, tracePraise, type TraceScore } from "@/lib/tracing";
-import { hand, paperTile, roughEllipse, roughRect, shade, waxTile } from "@/lib/ink";
+import { paperTile, roughEllipse, roughRect, shade, waxTile } from "@/lib/ink";
 import { sfxHappy, sfxMagic, sfxPop, sfxTap } from "@/lib/audio";
 import { primeVoices, hush, sayLetter, sayNumber, sayLine, canSpeak } from "@/lib/speech";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
@@ -141,21 +141,16 @@ const sameBox = (a: Box, b: Box) => a.x === b.x && a.y === b.y && a.w === b.w &&
 const RULE = "#8fb2cf";       // the pale blue a workbook rules its lines in
 const BADGE_INK = "#7b4fb0";  // the teacher's pen: stroke numbers and arrows
 
-/** The deckled edge and spiral binding — the page is torn from a sketchbook. */
+/**
+ * The deckled edge — the page is torn free of the sketchbook and taped down,
+ * so it carries no binding of its own; the tape at the top corners holds it.
+ */
 function SheetDeco({ w, h }: { w: number; h: number }) {
   const uid = useId().replace(/:/g, "");
   const deckle = useMemo(
     () => (w > 20 && h > 20 ? roughRect(w - 8, h - 8, { seed: 41, wobble: 3.6, radius: 16 }) : ""),
     [w, h],
   );
-  const rings = useMemo(() => {
-    const n = Math.max(4, Math.floor((w - 30) / 42));
-    const r = hand(19);
-    return Array.from({ length: n }, (_, i) => ({
-      x: 22 + ((w - 44) * i) / Math.max(1, n - 1),
-      j: (r() - 0.5) * 1.6,
-    }));
-  }, [w]);
 
   if (!deckle) return null;
   return (
@@ -180,32 +175,6 @@ function SheetDeco({ w, h }: { w: number; h: number }) {
           transform="translate(1 1.2)"
         />
       </g>
-      {rings.map((k, i) => (
-        <g key={i}>
-          <ellipse cx={k.x + k.j} cy="15" rx="5" ry="4.2" fill="#e3d2b6" />
-          <path
-            d={`M${k.x + k.j - 4.6} 15.6 Q${k.x + k.j} 11.6 ${k.x + k.j + 4.6} 14.6`}
-            fill="none"
-            stroke="#b9a382"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-          />
-          <path
-            d={`M${k.x + k.j - 7} 20 C${k.x + k.j - 9.5} -1 ${k.x + k.j + 9.5} -3 ${k.x + k.j + 6.6} 17`}
-            fill="none"
-            stroke="#8d949c"
-            strokeWidth="3.6"
-            strokeLinecap="round"
-          />
-          <path
-            d={`M${k.x + k.j - 7.8} 19 C${k.x + k.j - 10} -1.6 ${k.x + k.j + 8.6} -3.6 ${k.x + k.j + 5.8} 16`}
-            fill="none"
-            stroke="#dfe3e7"
-            strokeWidth="1.3"
-            strokeLinecap="round"
-          />
-        </g>
-      ))}
     </svg>
   );
 }
