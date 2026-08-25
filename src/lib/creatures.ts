@@ -244,6 +244,20 @@ export const BEHAVIOR_COPY: Record<string, Record<string, { arrival: string }>> 
    share one tracing screen; only the content and the palette differ. */
 
 export const WRITING_WORLDS: WritingWorld[] = [
+  /* Shapes comes first because it comes first: a line, a circle and a cross are
+     the hand controls a letter is built out of, and a child who is not ready for
+     "A" is ready for this. It used to be a section buried at the bottom of Math
+     World, behind a hundred numbers — which is the last place a three-year-old
+     was ever going to find it. */
+  {
+    id: "shapes",
+    name: "Shapes World",
+    tagline: "Lines, wiggles & shapes!",
+    teaches: "Pre-writing strokes and shapes: lines, zig zags, loops, circles and more",
+    gradient: "linear-gradient(160deg,#166534 0%,#4ade80 58%,#fef9c3 100%)",
+    tone: "#15803d",
+    verb: "Trace",
+  },
   {
     id: "letters",
     name: "Letter World",
@@ -251,14 +265,16 @@ export const WRITING_WORLDS: WritingWorld[] = [
     teaches: "Capital and lowercase letters, and their first sounds, A to Z",
     gradient: "linear-gradient(160deg,#8b46c7 0%,#c084fc 58%,#fbcfe8 100%)",
     tone: "#8b46c7",
+    verb: "Write",
   },
   {
     id: "numbers",
     name: "Math World",
     tagline: "Write numbers & sums!",
-    teaches: "Writing numbers to 100, counting, sums, and first shapes",
+    teaches: "Writing numbers to 100, counting and first sums",
     gradient: "linear-gradient(160deg,#0369a1 0%,#00c2b9 58%,#bbf7d0 100%)",
     tone: "#00838a",
+    verb: "Write",
   },
   {
     id: "words",
@@ -267,6 +283,7 @@ export const WRITING_WORLDS: WritingWorld[] = [
     teaches: "Blending letters into words, three to six letters long",
     gradient: "linear-gradient(160deg,#c2410c 0%,#f59e0b 55%,#fde68a 100%)",
     tone: "#d1490b",
+    verb: "Write",
   },
 ];
 

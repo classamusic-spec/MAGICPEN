@@ -24,7 +24,8 @@ import {
   spokenName,
 } from "./writing";
 import { DOODLES, DOODLE_NAMES } from "./doodles";
-import { DIGIT_GLYPHS, LETTER_GLYPHS, SHAPES } from "./glyphs";
+import { DIGIT_GLYPHS, LETTER_GLYPHS } from "./glyphs";
+import { SHAPE_LESSONS } from "./shapes";
 import { ALL_KINDS } from "./creatures";
 
 /* Rebuilt exactly as WriteWorld builds them. If these two ever disagree the
@@ -35,7 +36,7 @@ const lessonKeys = (): string[] => [
   ...LETTER_LESSONS.map((l) => `lower:${l.char.toLowerCase()}`),
   ...NUMBER_CATEGORIES.flatMap((c) => c.lessons.map((n) => `${c.prefix}${n.numeral}`)),
   ...SUM_LESSONS.map((s) => `sum:${s.a}${s.op}${s.b}`),
-  ...SHAPES.map((s) => `shape:${s}`),
+  ...SHAPE_LESSONS.map((s) => `shape:${s.id}`),
   ...WORD_LESSONS.map((w) => `word:${w.word}`),
 ];
 

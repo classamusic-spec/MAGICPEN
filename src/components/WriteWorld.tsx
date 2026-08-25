@@ -17,7 +17,8 @@ import {
   COUNTABLE_MAX, spokenName,
   type NumberCategory, type NumberLesson,
 } from "@/lib/writing";
-import { SHAPES, SHAPE_GLYPHS, SHAPE_BOX } from "@/lib/glyphs";
+import { SHAPE_GLYPHS, SHAPE_BOX } from "@/lib/glyphs";
+import { SHAPE_GROUPS, bareName } from "@/lib/shapes";
 import { loadWriting, saveWriting, nextLessonKey, type WritingProgress } from "@/lib/storage";
 import { sfxTap, sfxHappy } from "@/lib/audio";
 import { sayLine, sayLetter, sayWord, hush, canSpeak } from "@/lib/speech";
@@ -214,16 +215,8 @@ function numberItem(cat: NumberCategory, n: NumberLesson, tone: string): PickerI
   };
 }
 
-const SHAPE_HINT: Record<string, string> = {
-  circle: "round and round, back to the start",
-  square: "four straight sides, four corners",
-  triangle: "three straight sides",
-  star: "five points, without lifting your finger",
-  diamond: "a square, tilted on its point",
-  heart: "two bumps at the top, down to a point",
-};
-
-/** Numbers by group, then sums, then shapes. */
+/** Numbers by group, then sums. Shapes used to live on the end of this list;
+ *  they are their own world now — see `shapeSections`. */
 function numberSections(tone: string): PickerSection[] {
   const numbers: PickerSection[] = NUMBER_CATEGORIES.map((cat) => ({
     id: cat.prefix,
@@ -259,30 +252,49 @@ function numberSections(tone: string): PickerSection[] {
     }),
   };
 
-  /* Shapes — the marks a hand learns to make before any letter. Traced like a
-     drawing (their own square box, no penmanship lines), never counted. */
-  const shapes: PickerSection = {
-    id: "shapes",
-    title: "Shapes",
-    hint: "the first thing a hand learns to draw",
-    min: "4.3rem",
-    items: SHAPES.map((name) => ({
-      lesson: {
-        key: `shape:${name}`,
-        targets: [{ char: name, say: name, guide: SHAPE_GLYPHS[name], space: SHAPE_BOX }],
-        title: `Trace a ${name}`,
-        subtitle: SHAPE_HINT[name],
-        doodle: "",
-        count: 1,
-        rewardTitle: `A ${name}!`,
-        rewardLine: "You traced a whole shape.",
-        shape: name,
-      },
-      face: () => <GlyphMark char={name} size={38} color={tone} weight={7} />,
-    })),
-  };
+  return [...numbers, sums];
+}
 
-  return [...numbers, sums, shapes];
+/* ── Shapes World ────────────────────────────────────────────────────────────
+   The marks a hand learns to make before any letter, in the order a hand learns
+   them: a line down, then across, then the crosses, then the wiggles, then the
+   closed shapes. Traced like a drawing — their own square box, no penmanship
+   lines, because cap height and a baseline are facts about letters and mean
+   nothing under a spiral.
+
+   Every word on screen comes from `lib/shapes`, so the tile, the sheet and the
+   reward can never drift apart or from the glyph they all draw. */
+function shapeSections(tone: string): PickerSection[] {
+  return SHAPE_GROUPS.map((g) => ({
+    id: g.id,
+    title: g.title,
+    hint: g.hint,
+    min: "4.6rem",
+    items: g.lessons.map((sh) => ({
+      lesson: {
+        key: `shape:${sh.id}`,
+        /* `say` is the bare noun, not the label: the sheet praises with
+           "Perfect ${say}!", and an article in there reads "Perfect a zig
+           zag!". Everything with a title in it keeps the article. */
+        targets: [{ char: sh.id, say: bareName(sh), guide: SHAPE_GLYPHS[sh.id], space: SHAPE_BOX }],
+        title: `Trace ${sh.label}`,
+        subtitle: sh.hint,
+        doodle: sh.doodle ?? "",
+        count: 1,
+        rewardTitle: `${capitalise(sh.label)}!`,
+        /* Where there is an honest thing that *is* this shape, say so — that is
+           the actual lesson, not the tracing. Where there is not, the praise is
+           for the shape itself rather than a picture forced onto it. */
+        rewardLine: sh.like ?? "You traced the whole thing.",
+        /* Said out loud: the shape, then the thing that is that shape. The
+           repetition is the lesson — this is how "circle" stops being a word
+           about a picture on a screen and starts being a word about balls. */
+        say: sh.like ? `${capitalise(sh.label)}. ${sh.like}` : undefined,
+        shape: sh.id,
+      },
+      face: () => <GlyphMark char={sh.id} size={38} color={tone} weight={7} />,
+    })),
+  }));
 }
 
 /** Words, in the world each one belongs to. */
@@ -445,8 +457,29 @@ function Reward({ world, lesson, stars, hasNext, onNext, onPicker, onBorn }: {
 
           <span className="grid place-items-center min-h-[7.5rem] py-1">
             {lesson.shape ? (
-              <span className="anim-float-y block">
-                <GlyphMark char={lesson.shape} size={112} color={w.tone} weight={9} />
+              /* The shape, and — where there is an honest one — a thing that is
+                 that shape beside it. Spotting shapes in things is the whole
+                 point of learning them; tracing is only how you get there. */
+              <span className="flex items-center justify-center gap-2.5">
+                <span className="anim-float-y block">
+                  <GlyphMark
+                    char={lesson.shape}
+                    /* A glyph fills its box edge to edge; a doodle keeps its
+                       own margin, so matching the two numbers makes the shape
+                       look twice the size of the thing beside it. */
+                    size={lesson.doodle ? 86 : 112}
+                    color={w.tone}
+                    weight={9}
+                  />
+                </span>
+                {lesson.doodle && (
+                  <>
+                    <Icon name="sparkle" size={20} color="var(--sun)" fill="var(--sun)" className="anim-sparkle shrink-0" />
+                    <span className="anim-pop-in block" style={{ animationDelay: "220ms" }}>
+                      <Doodle name={lesson.doodle} size={102} />
+                    </span>
+                  </>
+                )}
               </span>
             ) : lesson.numeral ? (
               /* Too many to count, so the number itself is the prize: the
@@ -579,9 +612,10 @@ export default function WriteWorld({ world, onBack, onBorn }: {
      ends and the next begins. */
   const sections = useMemo(
     () =>
-      world === "letters" ? letterSections(lowercase, w.tone)
-        : world === "numbers" ? numberSections(w.tone)
-          : wordSections(w.tone),
+      world === "shapes" ? shapeSections(w.tone)
+        : world === "letters" ? letterSections(lowercase, w.tone)
+          : world === "numbers" ? numberSections(w.tone)
+            : wordSections(w.tone),
     [world, lowercase, w.tone]
   );
   const lessons = useMemo(() => sections.flatMap((s) => s.items.map((i) => i.lesson)), [sections]);

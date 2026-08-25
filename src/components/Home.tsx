@@ -6,7 +6,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { Creature, WorldPack, WritingWorld, WritingWorldId } from "@/lib/types";
 import { WORLD_PACKS, WRITING_WORLDS, kindById } from "@/lib/creatures";
 import { LETTER_LESSONS, ALL_NUMBER_LESSONS, SUM_LESSONS, WORD_LESSONS } from "@/lib/writing";
-import { SHAPES } from "@/lib/glyphs";
+import { SHAPE_LESSONS } from "@/lib/shapes";
 import { DRAW_LESSONS } from "@/lib/lessons";
 import { loadWriting } from "@/lib/storage";
 import { sfxTap, sfxHappy, sfxPop, sfxSplash } from "@/lib/audio";
@@ -558,15 +558,19 @@ function PackCard({
 
 /** How many lessons each writing world holds, so a card can show progress. */
 const WRITING_TOTAL: Record<WritingWorldId, number> = {
+  shapes: SHAPE_LESSONS.length,
   letters: LETTER_LESSONS.length,
-  numbers: ALL_NUMBER_LESSONS.length + SUM_LESSONS.length + SHAPES.length,
+  numbers: ALL_NUMBER_LESSONS.length + SUM_LESSONS.length,
   words: WORD_LESSONS.length,
 };
 
 /** Which progress keys belong to which world. Keys are persisted — see storage. */
 const WRITING_PREFIX: Record<WritingWorldId, string[]> = {
+  /* `shape:` moved worlds, not keys — every star a child earned tracing a
+     circle in Math World is still theirs, and now counts here. */
+  shapes: ["shape:"],
   letters: ["letter:"],
-  numbers: ["digit:", "teen:", "tens:", "big:", "sum:", "shape:"],
+  numbers: ["digit:", "teen:", "tens:", "big:", "sum:"],
   words: ["word:"],
 };
 
@@ -597,6 +601,21 @@ function WritingPreview({ id }: { id: WritingWorldId }) {
         ))}
         <Icon name="sparkle" size={20} color={cream} fill={cream} className="anim-sparkle" />
         <span className="anim-float-y block"><Doodle name="dog" size={48} /></span>
+      </span>
+    );
+  }
+  if (id === "shapes") {
+    /* The three that say what this world is at a glance: a closed shape, a
+       straight-sided one, and the wiggle nobody expects to find in a writing
+       school. Smaller than the letters because a shape fills its whole square
+       box, where a letter only fills two thirds of its width. */
+    return (
+      <span className="flex items-center gap-2.5 relative">
+        {["circle", "triangle", "zigzag"].map((c, i) => (
+          <span key={c} className="anim-letter" style={{ animationDelay: `${i * 220}ms` }}>
+            <GlyphMark char={c} size={44} color={cream} weight={9} />
+          </span>
+        ))}
       </span>
     );
   }
@@ -647,7 +666,7 @@ function WritingCard({
             contentClassName="flex items-center justify-center gap-1.5 ink-on-wax"
           >
             <Icon name="pencil" size={17} color="#fffaf0" weight={2.4} />
-            Write
+            {world.verb}
           </InkCard>
         </div>
 
@@ -1000,7 +1019,7 @@ export default function Home({
         <section className="mt-6 enter" style={step(4)} aria-labelledby="write-h">
           <div className="flex items-baseline justify-between gap-3">
             <h2 id="write-h" className="ink-title text-fs-xl">Writing school</h2>
-            <span className="ink-hand text-fs-2xs">letters, numbers &amp; words</span>
+            <span className="ink-hand text-fs-2xs">shapes, letters, numbers &amp; words</span>
           </div>
           <ul className="flex gap-4 overflow-x-auto no-scrollbar pt-3 pb-2 -mx-1 px-1">
             {WRITING_WORLDS.map((w, i) => (

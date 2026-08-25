@@ -110,11 +110,15 @@ export interface WorldPack {
 }
 
 /* ── writing worlds ──────────────────────────────────────────────────────────
-   Letters, numbers and words are a different kind of world: nothing lives in
-   them, you go there to *make* something. They share the tracing screen, so
-   they are described by data rather than by three near-identical components. */
+   Shapes, letters, numbers and words are a different kind of world: nothing
+   lives in them, you go there to *make* something. They share the tracing
+   screen, so they are described by data rather than by four near-identical
+   components.
 
-export type WritingWorldId = "letters" | "numbers" | "words";
+   Shapes is first because it comes first: a line, a circle and a cross are the
+   controls a hand needs before a letter is possible at all. */
+
+export type WritingWorldId = "shapes" | "letters" | "numbers" | "words";
 
 export interface WritingWorld {
   id: WritingWorldId;
@@ -125,6 +129,8 @@ export interface WritingWorld {
   gradient: string;
   /** Wax colour for this world's controls. */
   tone: string;
+  /** What the card's button says. Shapes are traced, not written. */
+  verb: string;
 }
 
 /* ── Dream World ──────────────────────────────────────────────────────────────

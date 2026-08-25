@@ -168,10 +168,24 @@ export const ALL_GLYPHS: Record<string, Glyph> = { ...LETTER_GLYPHS, ...DIGIT_GL
 
 
 /* ── shapes ──────────────────────────────────────────────────────────────────
-   The first thing a hand learns to make on purpose, before any letter: a
-   circle, a square, a triangle. Pre-writing in the truest sense — a child who
-   can close a circle can begin an "a". They trace like a drawing (no baseline,
-   no cap height — those are facts about letters), in their own square box. */
+   The first things a hand learns to make on purpose, before any letter: a line
+   down, a line across, a circle, a square. Pre-writing in the truest sense — a
+   child who can close a circle can begin an "a", and one who can hold a zig zag
+   has the wrist control that "M" and "W" are going to ask for. They trace like
+   a drawing (no baseline, no cap height — those are facts about letters), in
+   their own square box.
+
+   Everything here is authored so a hand can *draw* it in one go where a hand
+   would: top to bottom, left to right, closing where it started. That matters
+   more here than anywhere else in this file, because the guide animation is
+   the lesson — a child copying a circle drawn anticlockwise learns to draw it
+   anticlockwise.
+
+   ── never rename a key ──
+   A shape's key is written into a child's device as `shape:<key>` the first
+   time they trace it. Renaming one silently wipes the stars they earned for it.
+   And no key may be a single character: `GlyphMark` looks here before it looks
+   at the letters, so a shape called "x" would quietly replace the lowercase x. */
 
 const SHAPE_BOX_H = 100;
 export const SHAPE_BOX = { w: 100, h: SHAPE_BOX_H };
@@ -204,13 +218,153 @@ function heartPts(): Pt[] {
   return raw.map(([x, y]) => p(ox + x * sc, oy + y * sc));
 }
 
+/** A regular polygon with `n` sides, drawn clockwise from `rot`. */
+function polyPts(cx: number, cy: number, r: number, n: number, rot = -Math.PI / 2): Pt[] {
+  const out: Pt[] = [];
+  for (let i = 0; i <= n; i++) {
+    const a = rot + (i * 2 * Math.PI) / n;
+    out.push(p(cx + Math.cos(a) * r, cy + Math.sin(a) * r));
+  }
+  return out;
+}
+
+/**
+ * Scale and centre a path into the shape box, keeping its proportions.
+ *
+ * For the shapes whose natural size falls out of the maths rather than being
+ * chosen — the loops and the heart — so the numbers in the formula can stay the
+ * ones that make the *shape* right, and the fitting is done once, here.
+ */
+function fitShape(raw: Pt[], w = 78, h = 78): Pt[] {
+  let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+  for (const q of raw) {
+    minx = Math.min(minx, q.x); maxx = Math.max(maxx, q.x);
+    miny = Math.min(miny, q.y); maxy = Math.max(maxy, q.y);
+  }
+  const s = Math.min(w / Math.max(1e-6, maxx - minx), h / Math.max(1e-6, maxy - miny));
+  const ox = 50 - ((minx + maxx) / 2) * s;
+  const oy = 50 - ((miny + maxy) / 2) * s;
+  return raw.map((q) => p(ox + q.x * s, oy + q.y * s));
+}
+
+/** Sharp corners, left to right: down, up, down, up. */
+function zigPts(n: number, top: number, bot: number): Pt[] {
+  const out: Pt[] = [];
+  for (let i = 0; i <= n; i++) out.push(p(12 + (76 * i) / n, i % 2 ? bot : top));
+  return out;
+}
+
+/** The same journey as the zig zag, but rounded — this is the pair that teaches
+ *  a child the difference between a corner and a curve. */
+function wavePts(cycles: number, amp: number, n = 64): Pt[] {
+  const out: Pt[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    out.push(p(12 + 76 * t, 50 - Math.sin(t * cycles * 2 * Math.PI) * amp));
+  }
+  return out;
+}
+
+/**
+ * A wiggly line that never repeats itself.
+ *
+ * Two waves of different lengths added together, which is the cheapest way to
+ * get something that reads as *hand*-wiggly rather than as a machine's wave —
+ * and the point of having both: a wave is a pattern to keep, a squiggle is one
+ * to follow.
+ */
+function squigglePts(n = 76): Pt[] {
+  const out: Pt[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const y = 50 - Math.sin(t * 5.2 * Math.PI) * 17 - Math.sin(t * 2.1 * Math.PI + 0.7) * 11;
+    out.push(p(12 + 76 * t, y));
+  }
+  return out;
+}
+
+/**
+ * A chain of cursive loops — the stroke that becomes joined-up writing.
+ *
+ * A prolate cycloid: the pen circles at radius `d` while the hand travels right
+ * at `R` per radian. `d > R` is exactly the condition that makes the path cross
+ * itself, which is what makes it a loop rather than a bump.
+ */
+function loopPts(count = 3, per = 30): Pt[] {
+  const raw: Pt[] = [];
+  /* Chosen by rendering all of them: at R=5 the loops overlap into a knot, at
+     R=7.5 they flatten into bumps. 6.5 advances about four fifths of a loop's
+     width, which is what cursive actually does — three separate loops that
+     still touch. */
+  const R = 6.5;
+  const d = 26;
+  const total = count * 2 * Math.PI;
+  const n = count * per;
+  for (let i = 0; i <= n; i++) {
+    const t = (i / n) * total;
+    raw.push(p(R * t - d * Math.sin(t), -d * Math.cos(t)));
+  }
+  return fitShape(raw, 86, 86);
+}
+
+/** Round and round, from the middle outwards — the way a hand actually does it. */
+function spiralPts(turns = 2.25, n = 96): Pt[] {
+  const out: Pt[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const a = -Math.PI / 2 + t * turns * 2 * Math.PI;
+    const r = 6 + t * 34;
+    out.push(p(50 + Math.cos(a) * r, 50 + Math.sin(a) * r));
+  }
+  return out;
+}
+
 export const SHAPE_GLYPHS: Record<string, Glyph> = {
+  /* ── lines and wiggles ──
+     One unbroken stroke each, except the two crosses. Every one starts where a
+     hand starts: at the top, or at the left. */
+  line: [[p(50, 10), p(50, 90)]],
+  across: [[p(10, 50), p(90, 50)]],
+  // the first half of an X, and the stroke inside A, K, M, N, V, W, Y and Z
+  slant: [[p(16, 12), p(84, 88)]],
+  cross: [[p(50, 10), p(50, 90)], [p(12, 50), p(88, 50)]],
+  xcross: [[p(16, 14), p(84, 86)], [p(84, 14), p(16, 86)]],
+  arch: [arc(50, 66, 38, 42, Math.PI, 2 * Math.PI)],
+  /* Two big rolls, not three small ones: at tile size a 2.5-cycle wave and the
+     6-segment zig zag read as the same squiggle, and telling a corner from a
+     curve is the entire reason both are here. */
+  wave: [wavePts(2, 28)],
+  zigzag: [zigPts(6, 25, 75)],
+  squiggle: [squigglePts()],
+  loops: [loopPts()],
+  spiral: [spiralPts()],
+
+  /* ── first shapes ──
+     The four a nursery teaches, plus the two that are one of those stretched or
+     tipped over. All closed, all clockwise, all returning to their first point,
+     because closing the shape is half of what is being learned. */
   circle: [arc(50, 50, 40, 40, -Math.PI / 2, 1.5 * Math.PI)],
+  oval: [arc(50, 50, 42, 28, -Math.PI / 2, 1.5 * Math.PI)],
   square: [[p(15, 15), p(85, 15), p(85, 85), p(15, 85), p(15, 15)]],
+  rectangle: [[p(10, 28), p(90, 28), p(90, 72), p(10, 72), p(10, 28)]],
   triangle: [[p(50, 12), p(88, 84), p(12, 84), p(50, 12)]],
-  star: [starPts(50, 52, 40, 16, 5)],
   diamond: [[p(50, 12), p(86, 50), p(50, 88), p(14, 50), p(50, 12)]],
+
+  /* ── trickier shapes ──
+     Where the hand has to count, or change direction more than twice. */
+  star: [starPts(50, 52, 40, 16, 5)],
   heart: [heartPts()],
+  /* Two arcs meeting at the same two tips: the fat outer edge, then the bite
+     taken out of it. One stroke, so it is traced the way it is drawn. */
+  moon: [[
+    ...arc(70, 50, 40, 40, 1.5 * Math.PI, 0.5 * Math.PI, 22),
+    ...arc(103, 50, 51.86, 51.86, 2.261, 4.022, 18),
+  ]],
+  arrow: [[p(14, 50), p(84, 50)], [p(58, 26), p(84, 50), p(58, 74)]],
+  pentagon: [polyPts(50, 54, 40, 5)],
+  hexagon: [polyPts(50, 50, 40, 6)],
+  // flat side up, the way the road sign is
+  octagon: [polyPts(50, 50, 41, 8, -Math.PI / 2 + Math.PI / 8)],
 };
 
 export const SHAPES = Object.keys(SHAPE_GLYPHS);

@@ -18,7 +18,7 @@ import { loadWriting } from "@/lib/storage";
 import { peekVisit } from "@/lib/daily";
 import { LETTER_LESSONS, NUMBER_CATEGORIES, SUM_LESSONS, WORD_LESSONS } from "@/lib/writing";
 import { DRAW_LESSONS } from "@/lib/lessons";
-import { SHAPES } from "@/lib/glyphs";
+import { SHAPE_GROUPS } from "@/lib/shapes";
 import { InkButton, InkCard, Scribble } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
 import ParentGate from "@/components/ParentGate";
@@ -34,6 +34,9 @@ function tried(progress: Record<string, number>, prefix: string): number {
 
 /** A teal-to-blue ramp, one shade per group of numbers, in curriculum order. */
 const NUMBER_TONES = ["#0e8a86", "#0d7f92", "#0c6f9e", "#0b5fa8"];
+
+/** A green ramp for the shape groups, matching Shapes World's own colour. */
+const SHAPE_TONES = ["#166534", "#15803d", "#2f9e44"];
 
 interface Row {
   label: string;
@@ -72,6 +75,17 @@ export default function GrownUps({ creatures, onBack, saveTrouble = null }: {
   };
 
   const rows: Row[] = [
+    /* One row per group of shapes, the same three sections the child sees —
+       so "has she started the wiggly ones yet?" is answerable at a glance.
+       They all share the one `shape:` prefix, so each row counts its own
+       lessons by name rather than by prefix. */
+    ...SHAPE_GROUPS.map((g, i) => ({
+      label: g.title,
+      done: g.lessons.filter((l) => (progress[`shape:${l.id}`] ?? 0) > 0).length,
+      total: g.lessons.length,
+      tone: SHAPE_TONES[i % SHAPE_TONES.length],
+      unit: "shapes",
+    })),
     { label: "Capital letters", done: tried(progress, "letter:"), total: LETTER_LESSONS.length, tone: "#8b46c7", unit: "letters" },
     { label: "Lowercase letters", done: tried(progress, "lower:"), total: LETTER_LESSONS.length, tone: "#a855f7", unit: "letters" },
     /* One row per group of numbers, straight off the curriculum — the picker
@@ -87,7 +101,6 @@ export default function GrownUps({ creatures, onBack, saveTrouble = null }: {
       unit: "numbers",
     })),
     { label: "Sums", done: tried(progress, "sum:"), total: SUM_LESSONS.length, tone: "#0369a1", unit: "sums" },
-    { label: "Shapes", done: tried(progress, "shape:"), total: SHAPES.length, tone: "#0891b2", unit: "shapes" },
     { label: "Words written", done: tried(progress, "word:"), total: WORD_LESSONS.length, tone: "#c2600c", unit: "words" },
     { label: "Drawings learned", done: tried(progress, "draw:"), total: DRAW_LESSONS.length, tone: "#0e7fd6", unit: "drawings" },
   ];
