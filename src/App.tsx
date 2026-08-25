@@ -104,6 +104,29 @@ export default function App() {
   const pet = useMemo(() => resolvePet(petRef, creatures), [petRef, creatures]);
   const makePet = useCallback((id: string) => setPetRef(savePet(id)), []);
   const dropPet = useCallback(() => { clearPet(); setPetRef(null); }, []);
+
+  /* Saying goodbye to a drawing, from wherever it is said.
+     
+     App owns this rather than the world scene, which used to write straight to
+     storage on a timeout whenever these handlers were missing. That worked, but
+     it left App's `creatures` — the very state the sketchbook shelf renders
+     from — disagreeing with the disk until a reload, and raced App's own save
+     effect. One owner, one path.
+
+     The crown never dangles on somebody who has left: a released pet stops
+     being the pet in the same breath. */
+  const renameCreature = useCallback((id: string, name: string) => {
+    setCreatures((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
+  }, []);
+
+  const deleteCreature = useCallback((id: string) => {
+    setCreatures((prev) => prev.filter((c) => c.id !== id));
+    setPetRef((ref) => {
+      if (!ref || ref.id !== id) return ref;
+      clearPet();
+      return null;
+    });
+  }, []);
   /* A pet whose creature is gone for good stops being remembered, so the slot
      is free next time. Runs only when it truly resolves to nothing. */
   useEffect(() => {
@@ -492,6 +515,7 @@ export default function App() {
                 onDrawSchool={() => go("school")}
                 onGrownUps={() => go("grownups")}
                 pet={pet}
+                onForget={deleteCreature}
                 petLine={pet ? petGreeting(visit, pet.name) : null}
                 onVisitPet={() => {
                   /* Straight to where the pet lives. A pet made before worlds
@@ -544,6 +568,8 @@ export default function App() {
                 petId={petRef?.id ?? null}
                 onMakePet={makePet}
                 onReleasePet={dropPet}
+                onRenameCreature={renameCreature}
+                onDeleteCreature={deleteCreature}
                 foodKind={armedTreat}
                 onArmTreat={setArmedTreat}
                 onDrawTreat={() => { setDrawingTreat(true); setDrawWorld(worldId); go("draw"); }}

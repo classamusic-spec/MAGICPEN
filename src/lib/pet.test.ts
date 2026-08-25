@@ -125,3 +125,41 @@ describe("makeRoom — the pet must survive the cap", () => {
     expect(out[0].id).toBe("c1");
   });
 });
+
+/* Saying goodbye is the one irreversible act in the app, and the crown must
+   never be left pointing at somebody who has left. App owns both halves; these
+   pin the contract that logic has to satisfy. */
+describe("saying goodbye", () => {
+  const remove = (cs: Creature[], id: string) => cs.filter((c) => c.id !== id);
+  const petAfter = (ref: PetRef | null, id: string) => (ref && ref.id === id ? null : ref);
+
+  it("takes the drawing out of the sketchbook", () => {
+    const cs = [creature("a"), creature("b")];
+    expect(remove(cs, "a").map((c) => c.id)).toEqual(["b"]);
+  });
+
+  it("clears the crown when the pet is the one leaving", () => {
+    expect(petAfter(ref("a"), "a")).toBeNull();
+  });
+
+  it("leaves the crown alone when somebody else leaves", () => {
+    expect(petAfter(ref("a"), "b")?.id).toBe("a");
+  });
+
+  it("is a no-op for an id nobody answers to", () => {
+    const cs = [creature("a")];
+    expect(remove(cs, "nobody")).toHaveLength(1);
+    expect(petAfter(ref("a"), "nobody")?.id).toBe("a");
+  });
+
+  it("is idempotent", () => {
+    const once = remove([creature("a"), creature("b")], "a");
+    expect(remove(once, "a")).toEqual(once);
+  });
+
+  /* The pet resolving to nothing is the state the app must survive, since the
+     pointer and the list are written separately. */
+  it("resolves to no pet once the creature is gone", () => {
+    expect(resolvePet(ref("a"), remove([creature("a")], "a"))).toBeNull();
+  });
+});

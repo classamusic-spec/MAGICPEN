@@ -19,7 +19,7 @@ import { drawOcean, drawSpace, drawFarm, drawDino, drawDream, newFxState, floorR
 import { sampleFrame, clearLayers } from "./world/shared";
 import { artSprite, onArtLoaded, stickerizeImage } from "@/lib/polish";
 import { bakeCrayonSprite, silhouette, stampRing, type Sprite } from "@/lib/sprites";
-import { saveCreatures, loadFoods } from "@/lib/storage";
+import { loadFoods } from "@/lib/storage";
 import { InkButton, InkCard, InkShape, Scribble, Tape } from "@/components/ink/Ink";
 import PickTray, { type PickTile } from "@/components/ink/PickTray";
 import { Doodle } from "@/components/ink/Doodles";
@@ -41,6 +41,7 @@ import {
 import { welcomeBack, type Visit } from "@/lib/daily";
 import { drawCrayonStroke, drawStrokeFull, normalizeStrokes } from "@/lib/crayon";
 import { paintDoodle } from "@/lib/doodleArt";
+import ReleaseConfirm from "@/components/ink/ReleaseConfirm";
 
 /* per-world wrapper colors + empty-state copy */
 const WORLD_BG: Record<string, string> = {
@@ -2574,15 +2575,16 @@ export default function WorldScene({
   /* ── creature edits ───────────────────────────────────────────────────── */
   // When the app hands us callbacks it owns the data. Otherwise we keep the
   // edit locally and write it back ourselves — see the persistence effect.
-  const appOwnsEdits = !!onRenameCreature || !!onDeleteCreature;
-  const editedRef = useRef(false);
+  /* App owns renames and goodbyes now, so both go straight into its creature
+     list and are persisted by its own save effect. The local branches below are
+     kept only so this scene still behaves if it is ever mounted without those
+     handlers — they hold the change for the session, they do not save it. */
 
   const commitRename = useCallback((c: Creature, raw: string) => {
     const name = raw.trim().replace(/\s+/g, " ").slice(0, MAX_NAME);
     if (!name || name === c.name) return;
     if (onRenameCreature) onRenameCreature(c.id, name);
     else {
-      editedRef.current = true;
       setRenames((r) => ({ ...r, [c.id]: name }));
     }
     sfxHappy();
@@ -2613,7 +2615,6 @@ export default function WorldScene({
     if (petId === c.id) onReleasePet?.();
     if (onDeleteCreature) onDeleteCreature(c.id);
     else {
-      editedRef.current = true;
       setReleased((s) => new Set(s).add(c.id));
     }
     sfxSplash();
@@ -2621,18 +2622,6 @@ export default function WorldScene({
     setConfirmDel(false);
     setSheet(view.length > 1 ? { mode: "roster" } : null);
   }, [onDeleteCreature, pushBanner, view.length, petId, onReleasePet]);
-
-  /* Fallback persistence. The timeout deliberately lands after the parent's own
-     save effect (child effects run first), so a background art update can't
-     resurrect a released creature or an old name. Wiring
-     onRenameCreature/onDeleteCreature in App.tsx removes the need for this. */
-  useEffect(() => {
-    if (appOwnsEdits || !editedRef.current) return;
-    const t = window.setTimeout(() => {
-      try { saveCreatures(view); } catch { /* storage full / private mode */ }
-    }, 0);
-    return () => window.clearTimeout(t);
-  }, [view, appOwnsEdits]);
 
   /* ── share card ───────────────────────────────────────────────────────────
      This is the artifact that leaves the app, so it is built the same way the
@@ -3584,40 +3573,3 @@ export default function WorldScene({
   );
 }
 
-/* ── letting a creature go: never silent, never one tap ──────────────────── */
-function ReleaseConfirm({
-  name, onKeep, onRelease,
-}: { name: string; onKeep: () => void; onRelease: () => void }) {
-  const [ref, box] = useBox<HTMLDivElement>();
-  // a destructive choice must never open below the fold
-  useEffect(() => {
-    ref.current?.scrollIntoView({ block: "end" });
-  }, [ref]);
-  return (
-    <div ref={ref} className="relative isolate mt-4 mb-1 p-3 text-center">
-      <InkShape
-        w={box.w}
-        h={box.h}
-        seed={950}
-        weight={3}
-        lifted={false}
-        ink="var(--coral)"
-        fill={{ kind: "none" }}
-      />
-      <div className="relative">
-        <p className="ink-title" style={{ fontSize: "var(--fs-md)" }}>Really let {name} go?</p>
-        <p className="ink-hand mb-2.5" style={{ fontSize: "var(--fs-2xs)" }}>This drawing can't come back.</p>
-        <div className="grid grid-cols-2 gap-2">
-          <InkButton seed={31} className="hud-focus" style={{ height: 50 }} onClick={onKeep}>
-            <Icon name="heart" size={20} color="#2d2926" fill="#3aae3a" weight={2} />
-            <span className="ink-title whitespace-nowrap" style={{ fontSize: "var(--fs-md)" }}>Keep!</span>
-          </InkButton>
-          <InkButton tone={TONE.go.wax} seed={97} className="hud-focus" style={{ height: 50 }} onClick={onRelease}>
-            <Icon name="globe" size={20} color="#fff6e6" weight={2.2} />
-            <span className="ink-on-wax font-display font-extrabold whitespace-nowrap" style={{ fontSize: "var(--fs-md)" }}>Let go</span>
-          </InkButton>
-        </div>
-      </div>
-    </div>
-  );
-}
