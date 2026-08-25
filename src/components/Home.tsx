@@ -187,13 +187,18 @@ function PinnedDrawing({
   /* The tile leans up out of the page for as long as it is held and pops when
      the threshold lands, so the hold is never a tap that did nothing — and it
      drops straight back the instant a finger lifts early, which is what makes
-     "let go and nothing happens" legible without a word of instruction. */
-  const transform = still || !(holding || popped)
-    ? `rotate(${tilt}deg)`
+     "let go and nothing happens" legible without a word of instruction.
+
+     It rides an inner wrapper rather than the button, because the button is
+     still filling `enter-pop` forwards and a filling animation outranks any
+     inline transform, however specific. Idle is `none` there, so a tile that
+     is not being held sits exactly where it has always sat. */
+  const lift = still || !(holding || popped)
+    ? "none"
     : popped
-      ? "rotate(0deg) translateY(-6px) scale(1.09)"
-      : "rotate(0deg) translateY(-4px) scale(1.05)";
-  const transition = still
+      ? "translateY(-7px) scale(1.09)"
+      : "translateY(-5px) scale(1.05)";
+  const liftEase = still
     ? "none"
     : holding ? `transform ${HOLD_MS}ms linear` : "transform 220ms var(--ease-spring)";
 
@@ -216,71 +221,72 @@ function PinnedDrawing({
       className="ink-pinned relative block w-36 shrink-0 enter-pop"
       style={{
         "--i": index,
-        transform,
-        transition,
+        transform: `rotate(${tilt}deg)`,
         touchAction: "pan-x pan-y",
         userSelect: "none",
         WebkitUserSelect: "none",
         WebkitTouchCallout: "none",
       } as React.CSSProperties}
     >
-      {/* The hold, drawn: a ring that fills while the tile is held. It is
-          always mounted so the sweep has somewhere to start from, and it winds
-          back much faster than it filled — letting go undoes the hold at once.
-          With reduced motion it simply appears, whole, and no sweep is run. */}
-      {onGoodbye && (
-        <span
-          aria-hidden="true"
-          className="absolute grid place-items-center pointer-events-none"
-          style={{
-            top: -6, right: -8, width: 38, height: 38, zIndex: 25,
-            opacity: holding || popped ? 1 : 0,
-            transform: still || !popped ? "none" : "scale(1.16)",
-            transition: still
-              ? "opacity 120ms ease"
-              : "opacity 140ms ease, transform 200ms var(--ease-spring)",
-          }}
-        >
-          <svg width={38} height={38} viewBox="0 0 38 38">
-            <circle cx={19} cy={19} r={RING_R} fill="#fffaf0" stroke="var(--ink)" strokeWidth={2.5} />
-            <circle
-              cx={19}
-              cy={19}
-              r={RING_R}
-              fill="none"
-              stroke="var(--coral)"
-              strokeWidth={4.5}
-              strokeLinecap="round"
-              strokeDasharray={RING_C}
-              strokeDashoffset={holding || popped ? 0 : RING_C}
-              transform="rotate(-90 19 19)"
-              style={{
-                transition: still
-                  ? "none"
-                  : holding ? `stroke-dashoffset ${HOLD_MS}ms linear` : "stroke-dashoffset 160ms ease",
-              }}
-            />
-          </svg>
-          <span className="absolute">
-            <Icon name="globe" size={16} color="var(--ink)" weight={2.2} />
+      <span className="relative block" style={{ transform: lift, transition: liftEase }}>
+        {/* The hold, drawn: a ring that fills while the tile is held. It is
+            always mounted so the sweep has somewhere to start from, and it winds
+            back much faster than it filled — letting go undoes the hold at once.
+            With reduced motion it simply appears, whole, and no sweep is run. */}
+        {onGoodbye && (
+          <span
+            aria-hidden="true"
+            className="absolute grid place-items-center pointer-events-none"
+            style={{
+              top: -6, right: -8, width: 38, height: 38, zIndex: 25,
+              opacity: holding || popped ? 1 : 0,
+              transform: still || !popped ? "none" : "scale(1.16)",
+              transition: still
+                ? "opacity 120ms ease"
+                : "opacity 140ms ease, transform 200ms var(--ease-spring)",
+            }}
+          >
+            <svg width={38} height={38} viewBox="0 0 38 38">
+              <circle cx={19} cy={19} r={RING_R} fill="#fffaf0" stroke="var(--ink)" strokeWidth={2.5} />
+              <circle
+                cx={19}
+                cy={19}
+                r={RING_R}
+                fill="none"
+                stroke="var(--coral)"
+                strokeWidth={4.5}
+                strokeLinecap="round"
+                strokeDasharray={RING_C}
+                strokeDashoffset={holding || popped ? 0 : RING_C}
+                transform="rotate(-90 19 19)"
+                style={{
+                  transition: still
+                    ? "none"
+                    : holding ? `stroke-dashoffset ${HOLD_MS}ms linear` : "stroke-dashoffset 160ms ease",
+                }}
+              />
+            </svg>
+            <span className="absolute">
+              <Icon name="globe" size={16} color="var(--ink)" weight={2.2} />
+            </span>
           </span>
-        </span>
-      )}
+        )}
 
-      <Tape
-        seed={index + 1}
-        style={{
-          width: 62, height: 22, top: -9, left: "50%",
-          marginLeft: -31, transform: `rotate(${(r() - 0.5) * 14}deg)`,
-        }}
-      />
-      <InkCard seed={index * 17 + 40} className="p-3 pt-4 text-center" radius={14}>
-        <span className="h-24 grid place-items-center">
-          <Thumb c={c} />
-        </span>
-        <span className="ink-title block text-fs-md truncate mt-1">{c.name}</span>
-        <span className="ink-hand block text-fs-2xs truncate">{kind.label}</span>
-      </InkCard>
+        <Tape
+          seed={index + 1}
+          style={{
+            width: 62, height: 22, top: -9, left: "50%",
+            marginLeft: -31, transform: `rotate(${(r() - 0.5) * 14}deg)`,
+          }}
+        />
+        <InkCard seed={index * 17 + 40} className="p-3 pt-4 text-center" radius={14}>
+          <span className="h-24 grid place-items-center">
+            <Thumb c={c} />
+          </span>
+          <span className="ink-title block text-fs-md truncate mt-1">{c.name}</span>
+          <span className="ink-hand block text-fs-2xs truncate">{kind.label}</span>
+        </InkCard>
+      </span>
     </button>
   );
 }
@@ -1047,7 +1053,7 @@ export default function Home({
             className="max-w-sm w-full my-auto outline-none"
             onClick={(e) => e.stopPropagation()}
           >
-            <InkCard seed={57} className="p-4 pt-5 text-center anim-pop-in" radius={18}>
+            <InkCard seed={57} className="p-3 pt-4 text-center anim-pop-in" radius={18}>
               <Tape
                 seed={2}
                 style={{
@@ -1055,8 +1061,13 @@ export default function Home({
                   marginLeft: -37, transform: "rotate(-4deg)",
                 }}
               />
-              <span className="h-32 grid place-items-center">
-                <Thumb c={goodbye} size={124} />
+              {/* Big where there is room for big. On a short screen — a tablet
+                  held sideways — the drawing gives way rather than pushing
+                  "Keep!" off the bottom of the glass. */}
+              <span className="h-32 [@media(max-height:560px)]:h-24 grid place-items-center">
+                <span className="block [@media(max-height:560px)]:scale-75">
+                  <Thumb c={goodbye} size={124} />
+                </span>
               </span>
               <h3 id="bye-title" className="ink-title text-fs-2xl leading-tight mt-1">{goodbye.name}</h3>
               <p className="ink-hand text-fs-2xs">your {kindById(goodbye.kindId).label}</p>
