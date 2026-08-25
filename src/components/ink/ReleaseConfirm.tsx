@@ -21,7 +21,17 @@ import { Icon } from "@/components/ink/Icons";
 /** The "let go" wax, kept in step with the world's own palette. */
 const GO_WAX = "#e0533f";
 
-/** Measured box, rounded so a press micro-resize doesn't redraw the hand. */
+/**
+ * Measured box, rounded so a press micro-resize doesn't redraw the hand.
+ *
+ * `clientWidth/Height`, never `getBoundingClientRect()`. This card can open
+ * inside something that is still animating — the sketchbook's goodbye sheet
+ * pops in from `scale(0.96)` — and a rect reports the *projected* size while a
+ * transform is running. Worse, a transform never moves the layout box, so the
+ * ResizeObserver has nothing to fire on afterwards and the too-small number
+ * sticks: the hand-drawn border ends up as a little box beside the words
+ * instead of a frame around them.
+ */
 function useBox<T extends HTMLElement>() {
   const ref = useRef<T>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
@@ -29,9 +39,8 @@ function useBox<T extends HTMLElement>() {
     const el = ref.current;
     if (!el) return;
     const read = () => {
-      const r = el.getBoundingClientRect();
-      const w = Math.round(r.width / 2) * 2;
-      const h = Math.round(r.height / 2) * 2;
+      const w = Math.round(el.clientWidth / 2) * 2;
+      const h = Math.round(el.clientHeight / 2) * 2;
       setBox((p) => (p.w === w && p.h === h ? p : { w, h }));
     };
     read();

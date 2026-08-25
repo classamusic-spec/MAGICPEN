@@ -2,14 +2,14 @@
 // The child's own drawings are the point of this product, so they are the
 // hero of this screen — mounted into the book with tape, not listed in boxes.
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { Creature, WorldPack, WritingWorld, WritingWorldId } from "@/lib/types";
 import { WORLD_PACKS, WRITING_WORLDS, kindById } from "@/lib/creatures";
 import { LETTER_LESSONS, ALL_NUMBER_LESSONS, SUM_LESSONS, WORD_LESSONS } from "@/lib/writing";
 import { SHAPES } from "@/lib/glyphs";
 import { DRAW_LESSONS } from "@/lib/lessons";
 import { loadWriting } from "@/lib/storage";
-import { sfxTap, sfxHappy } from "@/lib/audio";
+import { sfxTap, sfxHappy, sfxPop, sfxSplash } from "@/lib/audio";
 import { artSprite, onArtLoaded } from "@/lib/polish";
 import { bakeCrayonSprite } from "@/lib/sprites";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
@@ -17,6 +17,8 @@ import { Icon } from "@/components/ink/Icons";
 import { Wordmark } from "@/components/ink/Wordmark";
 import { GlyphMark } from "@/components/ink/GlyphMark";
 import { Doodle } from "@/components/ink/Doodles";
+import ReleaseConfirm from "@/components/ink/ReleaseConfirm";
+import { usePrefersReducedMotion } from "@/components/ink/motion";
 import { hand } from "@/lib/ink";
 
 /**
@@ -73,22 +75,198 @@ export function Thumb({ c, size = 104 }: { c: Creature; size?: number }) {
   );
 }
 
-/* ── a drawing taped into the book ───────────────────────────────────────── */
+/* ── a drawing taped into the book ───────────────────────────────────────────
+   Tap to go and see it; press and hold to wave it goodbye.
+
+   The hold borrows the world's gesture vocabulary whole — 520ms, 14px of
+   finger slop — rather than inventing a second one. A child who has learned to
+   hold a creature in the world already knows how to do this, and the two
+   screens cannot drift into two different holds.
+
+   The shelf scrolls sideways under these tiles, which is the whole difficulty:
+   a swipe that begins on a drawing has to move the shelf and must never say
+   goodbye. The slop settles it exactly as it does in the world — past 14px the
+   press stops being a hold *and* stops being a tap, so a scroll can only ever
+   scroll. `touch-action` is left panning on both axes for the same reason:
+   `none` would strand the carousel, and `pan-x` alone would strand the page
+   behind it, which a finger that lands on a tile also has to be able to move.
+
+   Nothing is destroyed here. The hold only asks the question. */
+
+/** Same hold as the world's creature cards. */
+const HOLD_MS = 520;
+/** Same finger slop, in px: past this it is a scroll, not a press. */
+const HOLD_SLOP = 14;
+/** The progress ring the hold fills, and its circumference for the sweep. */
+const RING_R = 15.5;
+const RING_C = 2 * Math.PI * RING_R;
 
 function PinnedDrawing({
-  c, index, onOpen,
-}: { c: Creature; index: number; onOpen: () => void }) {
+  c, index, onOpen, onGoodbye, saying = false,
+}: {
+  c: Creature;
+  index: number;
+  onOpen: () => void;
+  /** Ask about saying goodbye to this drawing. Without it the tile is exactly
+   *  the tap-to-visit tile it has always been — no hold, no ring, no mention
+   *  of it to a screen reader. */
+  onGoodbye?: () => void;
+  /** True while this is the drawing the confirm is asking about, so the tile
+   *  stays lifted and it is never a mystery which one is leaving. */
+  saying?: boolean;
+}) {
   const kind = kindById(c.kindId);
   const r = hand(index * 31 + 7);
   const tilt = (r() - 0.5) * 5.2;
+  const still = usePrefersReducedMotion();
+  const [holding, setHolding] = useState(false);
+  /** The live press: where the finger landed, and the timer it is racing. */
+  const press = useRef<{ x: number; y: number; timer: number } | null>(null);
+  /** Set once a gesture has already meant something else — a scroll, a hold —
+   *  so the click the browser sends afterwards cannot *also* open the world. */
+  const skipClick = useRef(false);
+
+  const clearPress = useCallback(() => {
+    if (press.current) window.clearTimeout(press.current.timer);
+    press.current = null;
+  }, []);
+  // a pending hold must never fire into a tile that has already gone
+  useEffect(() => clearPress, [clearPress]);
+
+  const down = (e: React.PointerEvent) => {
+    if (!onGoodbye || e.button !== 0 || press.current) return;
+    skipClick.current = false;
+    const timer = window.setTimeout(() => {
+      press.current = null;
+      skipClick.current = true;
+      // the hold is over; from here the question itself holds the tile up
+      setHolding(false);
+      sfxPop();
+      if ("vibrate" in navigator) navigator.vibrate(18);
+      onGoodbye();
+    }, HOLD_MS);
+    press.current = { x: e.clientX, y: e.clientY, timer };
+    setHolding(true);
+  };
+  const move = (e: React.PointerEvent) => {
+    const p = press.current;
+    if (!p || Math.hypot(e.clientX - p.x, e.clientY - p.y) <= HOLD_SLOP) return;
+    skipClick.current = true;
+    clearPress();
+    setHolding(false);
+  };
+  /** Let go. Early, and the tile drops straight back where it was. */
+  const up = () => {
+    clearPress();
+    setHolding(false);
+  };
+  /** The browser took the gesture over — it is scrolling the shelf. */
+  const cancel = () => { skipClick.current = true; up(); };
+
+  const click = () => {
+    if (skipClick.current) { skipClick.current = false; return; }
+    sfxHappy();
+    onOpen();
+  };
+
+  /* A hold is unreachable from a keyboard or a switch, so the same question
+     has a key of its own. Enter and Space keep their old job, and clear the
+     suppression flag in case a stray touch left it set. */
+  const key = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") { skipClick.current = false; return; }
+    if (!onGoodbye || (e.key !== "Delete" && e.key !== "Backspace")) return;
+    e.preventDefault();
+    sfxPop();
+    onGoodbye();
+  };
+
+  /* Being asked about is the pop: the threshold hands the tile straight over
+     to `saying`, in the same commit, so there is one lifted state and not two
+     that could disagree. */
+  const popped = saying;
+  /* The tile leans up out of the page for as long as it is held and pops when
+     the threshold lands, so the hold is never a tap that did nothing — and it
+     drops straight back the instant a finger lifts early, which is what makes
+     "let go and nothing happens" legible without a word of instruction. */
+  const transform = still || !(holding || popped)
+    ? `rotate(${tilt}deg)`
+    : popped
+      ? "rotate(0deg) translateY(-6px) scale(1.09)"
+      : "rotate(0deg) translateY(-4px) scale(1.05)";
+  const transition = still
+    ? "none"
+    : holding ? `transform ${HOLD_MS}ms linear` : "transform 220ms var(--ease-spring)";
 
   return (
     <button
-      onClick={() => { sfxHappy(); onOpen(); }}
-      aria-label={`Visit ${c.name} the ${kind.label} in your world`}
+      onClick={click}
+      onPointerDown={down}
+      onPointerMove={move}
+      onPointerUp={up}
+      onPointerCancel={cancel}
+      onKeyDown={key}
+      // a long press on a drawing is ours; it must not raise the platform's
+      // text-selection bubble or a context menu on top of the answer
+      onContextMenu={(e) => e.preventDefault()}
+      aria-label={
+        onGoodbye
+          ? `Visit ${c.name} the ${kind.label} in your world. Press and hold, or press Delete, to say goodbye to ${c.name}.`
+          : `Visit ${c.name} the ${kind.label} in your world`
+      }
       className="ink-pinned relative block w-36 shrink-0 enter-pop"
-      style={{ "--i": index, transform: `rotate(${tilt}deg)` } as React.CSSProperties}
+      style={{
+        "--i": index,
+        transform,
+        transition,
+        touchAction: "pan-x pan-y",
+        userSelect: "none",
+        WebkitUserSelect: "none",
+        WebkitTouchCallout: "none",
+      } as React.CSSProperties}
     >
+      {/* The hold, drawn: a ring that fills while the tile is held. It is
+          always mounted so the sweep has somewhere to start from, and it winds
+          back much faster than it filled — letting go undoes the hold at once.
+          With reduced motion it simply appears, whole, and no sweep is run. */}
+      {onGoodbye && (
+        <span
+          aria-hidden="true"
+          className="absolute grid place-items-center pointer-events-none"
+          style={{
+            top: -6, right: -8, width: 38, height: 38, zIndex: 25,
+            opacity: holding || popped ? 1 : 0,
+            transform: still || !popped ? "none" : "scale(1.16)",
+            transition: still
+              ? "opacity 120ms ease"
+              : "opacity 140ms ease, transform 200ms var(--ease-spring)",
+          }}
+        >
+          <svg width={38} height={38} viewBox="0 0 38 38">
+            <circle cx={19} cy={19} r={RING_R} fill="#fffaf0" stroke="var(--ink)" strokeWidth={2.5} />
+            <circle
+              cx={19}
+              cy={19}
+              r={RING_R}
+              fill="none"
+              stroke="var(--coral)"
+              strokeWidth={4.5}
+              strokeLinecap="round"
+              strokeDasharray={RING_C}
+              strokeDashoffset={holding || popped ? 0 : RING_C}
+              transform="rotate(-90 19 19)"
+              style={{
+                transition: still
+                  ? "none"
+                  : holding ? `stroke-dashoffset ${HOLD_MS}ms linear` : "stroke-dashoffset 160ms ease",
+              }}
+            />
+          </svg>
+          <span className="absolute">
+            <Icon name="globe" size={16} color="var(--ink)" weight={2.2} />
+          </span>
+        </span>
+      )}
+
       <Tape
         seed={index + 1}
         style={{
@@ -491,6 +669,7 @@ export default function Home({
   pet,
   petLine,
   onVisitPet,
+  onForget,
 }: {
   creatures: Creature[];
   onPlayWorld: (worldId: string) => void;
@@ -515,6 +694,11 @@ export default function Home({
   /** Go and see the pet. Without it the card has nowhere to send anyone, so
    *  it is not shown at all. */
   onVisitPet?: () => void;
+  /** Say goodbye to a drawing for good: above us it leaves the list, is
+   *  written to the device, and gives up the crown if it wore one. This screen
+   *  only ever asks the question — without this callback the shelf keeps its
+   *  old single job, tapping to visit, and no hold is offered. */
+  onForget?: (id: string) => void;
 }) {
   const [grownUps, setGrownUps] = useState<WorldPack | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -538,6 +722,53 @@ export default function Home({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [grownUps]);
+
+  /* ── saying goodbye ─────────────────────────────────────────────────────────
+     The hold on a tile arrives here and does exactly one thing: it puts the
+     drawing on the table and asks. Nothing has happened to it yet, and nothing
+     will until the shared confirm is answered — the same confirm the world
+     shows, word for word, so there is only ever one wording of the only
+     irreversible thing in this app. */
+  const [goodbye, setGoodbye] = useState<Creature | null>(null);
+  /** The farewell, in the world's own register: nobody is deleted here. */
+  const [farewell, setFarewell] = useState<string | null>(null);
+  const byeRef = useRef<HTMLDivElement>(null);
+  /** Where the focus was, so a keyboard finds its place again on "Keep!". */
+  const byeFrom = useRef<HTMLElement | null>(null);
+  /** True only when a press *began* on the paper around the question — the
+   *  finger that finished the hold is still coming up somewhere over this
+   *  backdrop, and it must not answer the question it has just asked. */
+  const byeOutside = useRef(false);
+  const byeTimer = useRef(0);
+  useEffect(() => () => window.clearTimeout(byeTimer.current), []);
+
+  const askGoodbye = (c: Creature) => {
+    byeFrom.current = document.activeElement as HTMLElement | null;
+    byeOutside.current = false;
+    setGoodbye(c);
+  };
+  const keepGoodbye = useCallback(() => {
+    setGoodbye(null);
+    byeFrom.current?.focus?.();
+    byeFrom.current = null;
+  }, []);
+  const letGo = (c: Creature) => {
+    setGoodbye(null);
+    byeFrom.current = null;
+    onForget?.(c.id);
+    sfxSplash();
+    setFarewell(`${c.name} went off to explore. Bye!`);
+    window.clearTimeout(byeTimer.current);
+    byeTimer.current = window.setTimeout(() => setFarewell(null), 2800);
+  };
+
+  useEffect(() => {
+    if (!goodbye) return;
+    byeRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { sfxTap(); keepGoodbye(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [goodbye, keepGoodbye]);
 
   return (
     <div className="screen ink-paper overflow-y-auto no-scrollbar">
@@ -665,8 +896,23 @@ export default function Home({
             <h2 id="mine-h" className="ink-title text-fs-xl">
               {isNew ? "How the magic works" : "Your creatures"}
             </h2>
-            {!isNew && <span className="ink-hand text-fs-2xs">tap one to visit it</span>}
+            {!isNew && (
+              <span className="ink-hand text-fs-2xs shrink-0">
+                {onForget ? "tap to visit · hold to wave bye" : "tap one to visit it"}
+              </span>
+            )}
           </div>
+
+          {/* Said out loud, the way the world says it. */}
+          {farewell && (
+            <p
+              role="status"
+              className="ink-title text-fs-sm mt-1 anim-pop-in"
+              style={{ color: "var(--plum)" }}
+            >
+              {farewell}
+            </p>
+          )}
 
           {isNew ? (
             <div className="mt-2"><HowItWorks /></div>
@@ -674,7 +920,13 @@ export default function Home({
             <ul className="flex gap-4 overflow-x-auto no-scrollbar pt-3 pb-2 -mx-1 px-1">
               {recent.map((c, i) => (
                 <li key={c.id}>
-                  <PinnedDrawing c={c} index={i} onOpen={() => onPlayWorld(homeWorld)} />
+                  <PinnedDrawing
+                    c={c}
+                    index={i}
+                    onOpen={() => onPlayWorld(homeWorld)}
+                    onGoodbye={onForget ? () => askGoodbye(c) : undefined}
+                    saying={goodbye?.id === c.id}
+                  />
                 </li>
               ))}
               <li className="self-stretch">
@@ -767,6 +1019,56 @@ export default function Home({
           </p>
         </div>
       </div>
+
+      {/* ── saying goodbye to a drawing ──────────────────────────────────────
+          Over the shelf rather than inside it: the tiles are 144px wide and a
+          question this size cannot be asked in a column that narrow. The
+          drawing itself comes along, big, above its own name — a child cannot
+          be asked to agree to something leaving without being shown which
+          thing it is. Tapping the paper around it is a "Keep!", but not for
+          the first moment: the finger that finished the hold is still coming
+          up, and it must not answer the question it just asked. */}
+      {goodbye && (
+        <div
+          className="fixed inset-0 bg-black/45 grid place-items-center p-5 z-50 overflow-y-auto"
+          onPointerDown={(e) => { byeOutside.current = e.target === e.currentTarget; }}
+          onClick={(e) => {
+            const outside = byeOutside.current && e.target === e.currentTarget;
+            byeOutside.current = false;
+            if (outside) { sfxTap(); keepGoodbye(); }
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="bye-title"
+        >
+          <div
+            ref={byeRef}
+            tabIndex={-1}
+            className="max-w-sm w-full my-auto outline-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <InkCard seed={57} className="p-4 pt-5 text-center anim-pop-in" radius={18}>
+              <Tape
+                seed={2}
+                style={{
+                  width: 74, height: 24, top: -11, left: "50%",
+                  marginLeft: -37, transform: "rotate(-4deg)",
+                }}
+              />
+              <span className="h-32 grid place-items-center">
+                <Thumb c={goodbye} size={124} />
+              </span>
+              <h3 id="bye-title" className="ink-title text-fs-2xl leading-tight mt-1">{goodbye.name}</h3>
+              <p className="ink-hand text-fs-2xs">your {kindById(goodbye.kindId).label}</p>
+              <ReleaseConfirm
+                name={goodbye.name}
+                onKeep={() => { sfxTap(); keepGoodbye(); }}
+                onRelease={() => letGo(goodbye)}
+              />
+            </InkCard>
+          </div>
+        </div>
+      )}
 
       {/* ── locked-world sheet ── */}
       {grownUps && (
