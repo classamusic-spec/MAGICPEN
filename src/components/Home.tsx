@@ -679,6 +679,7 @@ export default function Home({
   pet,
   petLine,
   onVisitPet,
+  onStickerBook,
   onForget,
 }: {
   creatures: Creature[];
@@ -704,6 +705,9 @@ export default function Home({
   /** Go and see the pet. Without it the card has nowhere to send anyone, so
    *  it is not shown at all. */
   onVisitPet?: () => void;
+  /** Open the sticker book — every drawing ever made, including the ones the
+   *  world has since made room for. Optional, like the other routes here. */
+  onStickerBook?: () => void;
   /** Say goodbye to a drawing for good: above us it leaves the list, is
    *  written to the device, and gives up the crown if it wore one. This screen
    *  only ever asks the question — without this callback the shelf keeps its
@@ -955,6 +959,23 @@ export default function Home({
         </section>
 
         {/* ── worlds ── */}
+        {/* Everything ever drawn, including what the world has since made room
+            for. It sits under the shelf rather than in its header, because that
+            is where a child looking for a drawing that is no longer here looks. */}
+        {!isNew && onStickerBook && (
+          <button
+            onClick={() => { sfxTap(); onStickerBook(); }}
+            aria-label="Open the sticker book — every drawing you have made"
+            className="hud-focus mt-3 w-full flex items-center justify-center gap-2 py-2"
+            style={{ color: "var(--ink-soft)" }}
+          >
+            <Icon name="star" size={16} color="var(--ink-soft)" weight={2.1} />
+            <span className="ink-hand text-fs-xs underline decoration-2 underline-offset-2">
+              open the sticker book
+            </span>
+          </button>
+        )}
+
         <section className="mt-6 enter" style={step(3)} aria-labelledby="worlds-h">
           <div className="flex items-baseline justify-between gap-3">
             <h2 id="worlds-h" className="ink-title text-fs-xl">Magic worlds</h2>

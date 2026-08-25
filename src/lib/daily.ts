@@ -45,6 +45,42 @@ export function warmth(now: Date = new Date()): number {
 
 export const isNight = (now: Date = new Date()) => daypart(now) === "night";
 
+/* ── the year ─────────────────────────────────────────────────────────────── */
+
+/** The four seasons, in the order the year runs them. */
+export const SEASONS = ["winter", "spring", "summer", "autumn"] as const;
+export type Season = (typeof SEASONS)[number];
+
+/**
+ * Where in the year we are, as a season and how far *into* it, 0..1.
+ *
+ * A blend rather than a switch, for the same reason `daylight` is a curve and
+ * not a `daypart`: the worlds tint themselves by this, and a season that
+ * snapped on at midnight on the first of the month would read as a bug. The
+ * last tenth of a season crossfades into the next one, so snow thins out
+ * rather than stopping.
+ *
+ * Northern-hemisphere dates. That is a real limitation — an Australian child
+ * gets snow in July — and the honest fix is a grown-up setting rather than
+ * guessing from a timezone, which is both unreliable and a location signal
+ * this app has no business collecting.
+ */
+export function season(now: Date = new Date()): { now: Season; next: Season; blend: number } {
+  // day-of-year, 0..365
+  const start = Date.UTC(now.getFullYear(), 0, 0);
+  const doy = Math.floor((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - start) / 86_400_000);
+  // winter owns the turn of the year, so the ramp is offset rather than wrapped
+  const k = ((doy - 335 + 365) % 365) / 365;   // 0 at 1 December
+  const i = Math.min(3, Math.floor(k * 4));
+  const within = k * 4 - i;
+  return {
+    now: SEASONS[i],
+    next: SEASONS[(i + 1) % 4],
+    // flat for the first nine tenths, then a crossfade into the next season
+    blend: within < 0.9 ? 0 : (within - 0.9) / 0.1,
+  };
+}
+
 /* ── today ────────────────────────────────────────────────────────────────── */
 
 /** Days since the epoch, in local time — the same all day, different tomorrow. */

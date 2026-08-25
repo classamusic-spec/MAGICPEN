@@ -4,6 +4,7 @@ import { recognize } from "@/lib/recognizer";
 import { kindById, rosterFor, WORLD_PACKS } from "@/lib/creatures";
 import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid, loadDream, saveDream, loadPet, savePet, clearPet, saveFood, type PetRef } from "@/lib/storage";
 import { resolvePet, makeRoom, petGreeting } from "@/lib/pet";
+import { remember as rememberInAlbum, forget as forgetFromAlbum } from "@/lib/album";
 import { markVisit, dailyIdea, welcomeBack, type Visit } from "@/lib/daily";
 import { mayUseAiArt } from "@/lib/consent";
 import { CARE_PER_DAY } from "@/lib/social";
@@ -42,6 +43,7 @@ const PaintWorld = lazy(() => import("@/components/PaintWorld"));
 const GrownUps = lazy(() => import("@/components/GrownUps"));
 const Onboarding = lazy(() => import("@/components/Onboarding"));
 const DrawSchool = lazy(() => import("@/components/DrawSchool"));
+const StickerBook = lazy(() => import("@/components/StickerBook"));
 
 /**
  * How many creatures a world holds.
@@ -116,8 +118,16 @@ export default function App() {
      The crown never dangles on somebody who has left: a released pet stops
      being the pet in the same breath. */
   const renameCreature = useCallback((id: string, name: string) => {
-    setCreatures((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
+    setCreatures((prev) => prev.map((c) => {
+      if (c.id !== id) return c;
+      const renamed = { ...c, name };
+      // the book knows it by name too, and `remember` updates in place rather
+      // than making a second sticker of the same drawing
+      rememberInAlbum(renamed);
+      return renamed;
+    }));
   }, []);
+
 
   const deleteCreature = useCallback((id: string) => {
     setCreatures((prev) => prev.filter((c) => c.id !== id));
@@ -127,6 +137,15 @@ export default function App() {
       return null;
     });
   }, []);
+  /* Saying goodbye from inside the book is the only thing that forgets a
+     sticker. Letting a creature go from a world does *not* — the album is a
+     record of what the child drew, and a drawing they said goodbye to is still
+     a drawing they made. */
+  const forgetSticker = useCallback((id: string) => {
+    forgetFromAlbum(id);
+    deleteCreature(id);
+  }, [deleteCreature]);
+
   /* A pet whose creature is gone for good stops being remembered, so the slot
      is free next time. Runs only when it truly resolves to nothing. */
   useEffect(() => {
@@ -347,6 +366,10 @@ export default function App() {
       phase: Math.random() * 10,
       scale: 0.75 + Math.random() * 0.45,
     };
+    /* Into the book as it is *made*, not as it is evicted — so a drawing the
+       child let go of by hand is remembered too. The album records what they
+       drew, not what happens to still be swimming. */
+    rememberInAlbum(creature);
     setCreatures((prev) => [...makeRoom(prev, MAX_CREATURES, petRef?.id ?? null), creature]);
     setNewId(creature.id);
     setPhotoDraft(null);
@@ -375,6 +398,10 @@ export default function App() {
       phase: Math.random() * 10,
       scale: 0.8 + Math.random() * 0.35,
     };
+    /* Into the book as it is *made*, not as it is evicted — so a drawing the
+       child let go of by hand is remembered too. The album records what they
+       drew, not what happens to still be swimming. */
+    rememberInAlbum(creature);
     setCreatures((prev) => [...makeRoom(prev, MAX_CREATURES, petRef?.id ?? null), creature]);
     setNewId(creature.id);
     setSchoolWorld(undefined);
@@ -403,6 +430,10 @@ export default function App() {
       phase: Math.random() * 10,
       scale: 0.8 + Math.random() * 0.35,
     };
+    /* Into the book as it is *made*, not as it is evicted — so a drawing the
+       child let go of by hand is remembered too. The album records what they
+       drew, not what happens to still be swimming. */
+    rememberInAlbum(creature);
     setCreatures((prev) => [...makeRoom(prev, MAX_CREATURES, petRef?.id ?? null), creature]);
     setNewId(creature.id);
     go("world");
@@ -430,6 +461,10 @@ export default function App() {
       phase: Math.random() * 10,
       scale: 0.8 + Math.random() * 0.35,
     };
+    /* Into the book as it is *made*, not as it is evicted — so a drawing the
+       child let go of by hand is remembered too. The album records what they
+       drew, not what happens to still be swimming. */
+    rememberInAlbum(creature);
     setCreatures((prev) => [...makeRoom(prev, MAX_CREATURES, petRef?.id ?? null), creature]);
     setNewId(creature.id);
     setWorldId(drawWorld);
@@ -461,7 +496,7 @@ export default function App() {
      no old page, and the flip would start from a blank. */
   const DEPTH: Record<Screen, number> = {
     splash: 0, onboarding: 0, home: 1,
-    world: 2, draw: 2, write: 2, school: 2, paintworld: 2, grownups: 2,
+    world: 2, draw: 2, write: 2, school: 2, paintworld: 2, grownups: 2, album: 2,
     reveal: 3, game: 3,
   };
   const [exiting, setExiting] = useState<{ screen: Screen; back: boolean } | null>(null);
@@ -514,6 +549,7 @@ export default function App() {
                 onWrite={(id) => { setWriteWorld(id); go("write"); }}
                 onDrawSchool={() => go("school")}
                 onGrownUps={() => go("grownups")}
+                onStickerBook={() => go("album")}
                 pet={pet}
                 onForget={deleteCreature}
                 petLine={pet ? petGreeting(visit, pet.name) : null}
@@ -605,6 +641,9 @@ export default function App() {
                 }}
                 onDrawn={handleTraced}
               />
+            )}
+            {s === "album" && (
+              <StickerBook onBack={() => go("home")} onForget={forgetSticker} />
             )}
             {s === "grownups" && (
           <GrownUps
