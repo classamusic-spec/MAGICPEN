@@ -400,9 +400,17 @@ interface Props {
   /** Tap-once creature: App bakes the doodle-bodied kind and flies to the world. */
   onStamp: (kindId: string, doodleId: string) => void;
   onBack: () => void;
+  /** Drawing a *treat* rather than a creature.
+   *
+   *  A treat is not alive and must never be guessed at: it skips the recogniser
+   *  and the reveal screen entirely and goes straight back to the world as
+   *  something to give. The screen is otherwise identical — same crayons, same
+   *  paper — because to a child it is the same act. */
+  treat?: boolean;
+  onTreat?: (strokes: Stroke[]) => void;
 }
 
-export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, onBack }: Props) {
+export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, onBack, treat = false, onTreat }: Props) {
   /* The camera is the one control here a child must not reach alone. Its label
      has always said "Grown-ups:", but a label is not a gate and the child this
      is built for cannot read it — and a photograph of a paper drawing can
@@ -717,20 +725,24 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
           {/* Magic stamp: for the youngest, who can't draw a fish yet — tap once,
               tap a creature, and it's alive. Waxed plum so it reads as the one
               "make magic" control here, a sibling of the MAKE IT ALIVE button. */}
-          <InkButton
-            onClick={openStamps}
-            tone="#8b46c7"
-            shape="ellipse"
-            seed={63}
-            aria-haspopup="dialog"
-            aria-expanded={stampOpen}
-            aria-label="Magic stamp"
-            title="Magic stamp"
-            className="dw-icon-btn dw-stamp-open"
-            style={{ width: TOOL, height: TOOL }}
-          >
-            <Icon name="sparkle" size={22} color="var(--sun)" fill="var(--sun)" />
-          </InkButton>
+          {/* A stamp makes a *creature*, so it has no business here when the
+              child is drawing something to give away. */}
+          {!treat && (
+            <InkButton
+              onClick={openStamps}
+              tone="#8b46c7"
+              shape="ellipse"
+              seed={63}
+              aria-haspopup="dialog"
+              aria-expanded={stampOpen}
+              aria-label="Magic stamp"
+              title="Magic stamp"
+              className="dw-icon-btn dw-stamp-open"
+              style={{ width: TOOL, height: TOOL }}
+            >
+              <Icon name="sparkle" size={22} color="var(--sun)" fill="var(--sun)" />
+            </InkButton>
+          )}
 
           {land && <div className="dw-toolrow dw-toolrow-top">{toolRow}</div>}
 
@@ -945,7 +957,8 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
                 if (empty) return;
                 sfxPop();
                 if ("vibrate" in navigator) navigator.vibrate(12);
-                onDone(strokes);
+                if (treat) onTreat?.(strokes);
+                else onDone(strokes);
               }}
               disabled={empty}
               tone={empty ? undefined : "#8b46c7"}
@@ -957,12 +970,12 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
               {empty ? (
                 <span className="dw-hero-idle ink-hand">
                   <Icon name="pencil" size={20} color="var(--ink-soft)" />
-                  Draw something first
+                  {treat ? "Draw a treat first" : "Draw something first"}
                 </span>
               ) : (
                 <span className="dw-hero-live ink-on-wax">
                   <Icon name="sparkle" size={22} color="var(--sun)" fill="var(--sun)" />
-                  MAKE IT ALIVE!
+                  {treat ? "GIVE IT!" : "MAKE IT ALIVE!"}
                   <Icon name="sparkle" size={22} color="var(--sun)" fill="var(--sun)" />
                 </span>
               )}

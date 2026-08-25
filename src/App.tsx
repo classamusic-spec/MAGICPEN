@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { Creature, DreamWorld, RecognitionResult, Screen, Stroke, WritingWorldId } from "@/lib/types";
 import { recognize } from "@/lib/recognizer";
 import { kindById, rosterFor, WORLD_PACKS } from "@/lib/creatures";
-import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid, loadDream, saveDream, loadPet, savePet, clearPet, type PetRef } from "@/lib/storage";
+import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid, loadDream, saveDream, loadPet, savePet, clearPet, saveFood, type PetRef } from "@/lib/storage";
 import { resolvePet, makeRoom, petGreeting } from "@/lib/pet";
 import { markVisit, dailyIdea, welcomeBack, type Visit } from "@/lib/daily";
 import { mayUseAiArt } from "@/lib/consent";
@@ -88,6 +88,10 @@ export default function App() {
   const [photoDraft, setPhotoDraft] = useState<string | null>(null);
   const [newId, setNewId] = useState<string | null>(null);
   const [polishingIds, setPolishingIds] = useState<Set<string>>(new Set());
+  /* Drawing a treat rather than a creature, and which treat the world has
+     armed. A treat is a present, so nothing here counts anything down. */
+  const [drawingTreat, setDrawingTreat] = useState(false);
+  const [armedTreat, setArmedTreat] = useState<string | null>(null);
   /* ── the pet ──────────────────────────────────────────────────────────────
      One creature the child has crowned as theirs. Held as a pointer, so a
      creature that has been released (or was evicted by an older build) simply
@@ -411,6 +415,18 @@ export default function App() {
     startPolish(creature);
   };
 
+  /* A treat the child drew. It is never run through the recogniser and never
+     reaches the reveal screen — it is not alive, it is lunch. Stored as strokes
+     (a few hundred bytes, re-baked at any size) and armed on the way back, so
+     the very next tap on the water puts it down. */
+  const handleTreatDrawn = (strokes: Stroke[]) => {
+    const foods = saveFood(strokes);
+    const made = foods[foods.length - 1];
+    setDrawingTreat(false);
+    if (made) setArmedTreat(`drawn:${made.id}`);
+    go("world");
+  };
+
   /* ── turning a page ────────────────────────────────────────────────────────
      The app is a spiral pad bound at the top, so going deeper flips the current
      sheet up over the coil and coming back drops it down again. Which of those
@@ -494,7 +510,9 @@ export default function App() {
                 onDone={handleDrawn}
                 onStamp={handleStamp}
                 onPhoto={handlePhoto}
-                onBack={() => go("home")}
+                treat={drawingTreat}
+                onTreat={handleTreatDrawn}
+                onBack={() => { if (drawingTreat) { setDrawingTreat(false); go("world"); } else go("home"); }}
               />
             )}
             {s === "reveal" && (
@@ -526,6 +544,9 @@ export default function App() {
                 petId={petRef?.id ?? null}
                 onMakePet={makePet}
                 onReleasePet={dropPet}
+                foodKind={armedTreat}
+                onArmTreat={setArmedTreat}
+                onDrawTreat={() => { setDrawingTreat(true); setDrawWorld(worldId); go("draw"); }}
               />
             )}
             {s === "paintworld" && (
