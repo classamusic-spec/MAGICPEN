@@ -191,10 +191,15 @@ function PinnedDrawing({
 
      It rides an inner wrapper rather than the button, because the button is
      still filling `enter-pop` forwards and a filling animation outranks any
-     inline transform, however specific. Idle is `none` there, so a tile that
-     is not being held sits exactly where it has always sat. */
+     inline transform, however specific.
+
+     The tile's pinned-on-the-page tilt has to live here for the same reason —
+     on the button it was being silently overruled, which is why these drawings
+     have been hanging perfectly straight rather than at the jaunty angles they
+     were drawn to sit at. Picking one up squares it, the way lifting a taped
+     photo off a page would. */
   const lift = still || !(holding || popped)
-    ? "none"
+    ? `rotate(${tilt}deg)`
     : popped
       ? "translateY(-7px) scale(1.09)"
       : "translateY(-5px) scale(1.05)";
@@ -221,7 +226,6 @@ function PinnedDrawing({
       className="ink-pinned relative block w-36 shrink-0 enter-pop"
       style={{
         "--i": index,
-        transform: `rotate(${tilt}deg)`,
         touchAction: "pan-x pan-y",
         userSelect: "none",
         WebkitUserSelect: "none",
@@ -903,7 +907,7 @@ export default function Home({
               {isNew ? "How the magic works" : "Your creatures"}
             </h2>
             {!isNew && (
-              <span className="ink-hand text-fs-2xs shrink-0">
+              <span className="ink-hand text-fs-2xs">
                 {onForget ? "tap to visit · hold to wave bye" : "tap one to visit it"}
               </span>
             )}
@@ -1053,7 +1057,13 @@ export default function Home({
             className="max-w-sm w-full my-auto outline-none"
             onClick={(e) => e.stopPropagation()}
           >
-            <InkCard seed={57} className="p-3 pt-4 text-center anim-pop-in" radius={18}>
+            {/* The drawing pops in; the sheet holding it does not. Everything
+                under a scaling box measures small while the scale is running,
+                and `ReleaseConfirm` draws its border from a box it measures on
+                mount — so a pop on this card would leave that hand-drawn frame
+                stuck at a fraction of its size. The pop belongs to the drawing,
+                which is the thing worth announcing anyway. */}
+            <InkCard seed={57} className="p-3 pt-4 text-center" radius={18}>
               <Tape
                 seed={2}
                 style={{
@@ -1065,8 +1075,12 @@ export default function Home({
                   held sideways — the drawing gives way rather than pushing
                   "Keep!" off the bottom of the glass. */}
               <span className="h-32 [@media(max-height:560px)]:h-24 grid place-items-center">
-                <span className="block [@media(max-height:560px)]:scale-75">
-                  <Thumb c={goodbye} size={124} />
+                {/* two wrappers, because the pop is an animation and would
+                    otherwise outrank the shrink and undo it */}
+                <span className="block anim-pop-in">
+                  <span className="block [@media(max-height:560px)]:scale-75">
+                    <Thumb c={goodbye} size={124} />
+                  </span>
                 </span>
               </span>
               <h3 id="bye-title" className="ink-title text-fs-2xl leading-tight mt-1">{goodbye.name}</h3>
