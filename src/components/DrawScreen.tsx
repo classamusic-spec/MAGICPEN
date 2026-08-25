@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { Pt, Stroke } from "@/lib/types";
-import { drawCrayonStroke } from "@/lib/crayon";
+import { drawStroke } from "@/lib/brushes";
+import type { Medium } from "@/lib/brushes";
 import { sfxTap, sfxPop, sfxMagic } from "@/lib/audio";
 import { extractDrawingFromPhoto } from "@/lib/photo";
 import { hand, paperTile, roughEllipse, roughRect, seedOf, shade, waxTile } from "@/lib/ink";
@@ -210,6 +211,263 @@ function CrayonArt({ color, short, seed, lifted }: {
   );
 }
 
+/* ── the other two tools ───────────────────────────────────────────────────
+   A watercolour brush and a paintbrush, drawn in the same box as a crayon so
+   all three stand level in the tray, and by the same hand: a wobbled
+   silhouette, a wax fill, an ink outline gone over twice.
+
+   What separates them is the one thing a child who cannot read a label still
+   reads instantly — the shape:
+
+     crayon       a fat wrapped stick worn down to a cone
+     watercolour  a slim stick, a small band, a long soft *point*, and a drip
+     paintbrush   a chunky stick, a wide band, a *square block* of bristles
+
+   The bristles carry the crayon colour the child has picked, so the tray
+   recolours with the box and the tool shows what it would put down. */
+
+const TW = CW;
+const TH = CH;
+
+interface BrushGeo {
+  hairs: string; ferrule: string; handle: string;
+  crimpA: string; crimpB: string; hiFerrule: string;
+  hiHandle: string; loHandle: string;
+  comb: string[]; load: string; drop: string; wash: string[];
+  rivet: { x: number; y: number };
+}
+
+const brushCache = new Map<string, BrushGeo>();
+
+function brushGeo(seed: number, kind: "water" | "paint"): BrushGeo {
+  const key = `${kind}:${seed}`;
+  const hit = brushCache.get(key);
+  if (hit) return hit;
+  const r = hand(seed);
+  const j = (n: number) => (r() - 0.5) * n;
+  const soft = kind === "water";
+  const f = (n: number) => n.toFixed(2);
+
+  const mx = TW / 2 + j(1.2);
+  const bot = TH - 3 + j(0.9);
+  // slim versus chunky has to survive being drawn twenty-five pixels wide, so
+  // the two are a long way apart: the watercolour handle is barely half the
+  // paintbrush's, and a third of the crayon barrel below it.
+  const hw = soft ? 4.2 + r() * 0.4 : 7.3 + r() * 0.5;   // handle at the ferrule
+  const hb = hw * (soft ? 0.58 : 0.8);                   // handle at the butt
+  const fw = soft ? 5.4 + r() * 0.3 : 8.2 + r() * 0.4;   // the metal band
+  const bw = soft ? 5.9 + r() * 0.4 : 9.1 + r() * 0.4;   // the bristles
+  const tipY = (soft ? 3 : 6) + r() * 1.4;
+  const fy0 = (soft ? 31 : 30) + j(1.4);
+  const fy1 = fy0 + (soft ? 11.5 : 14.5);
+  const belly = tipY + (fy0 - tipY) * 0.66;              // where a round brush is fattest
+
+  const hairs = soft
+    ? [
+        `M${f(mx)} ${f(tipY)}`,
+        `C${f(mx - bw * 0.42)} ${f(tipY + (belly - tipY) * 0.62)} ${f(mx - bw)} ${f(belly)} ${f(mx - bw * 0.86)} ${f(fy0)}`,
+        `L${f(mx + bw * 0.88)} ${f(fy0 + j(0.4))}`,
+        `C${f(mx + bw * 1.02)} ${f(belly - 0.6)} ${f(mx + bw * 0.46)} ${f(tipY + (belly - tipY) * 0.6)} ${f(mx)} ${f(tipY)}`,
+        "Z",
+      ].join(" ")
+    : [
+        // splayed a little wider than the band, and cut off square — bristle
+        // ends are ragged, never a ruled line
+        `M${f(mx - bw * 0.9)} ${f(fy0)}`,
+        `L${f(mx - bw)} ${f(tipY + 4)}`,
+        `Q${f(mx - bw + 0.4)} ${f(tipY + 1)} ${f(mx - bw * 0.6)} ${f(tipY + 1.6 + j(1))}`,
+        `L${f(mx - bw * 0.2)} ${f(tipY + 0.2 + j(0.9))}`,
+        `L${f(mx + bw * 0.24)} ${f(tipY + 1.8 + j(0.9))}`,
+        `L${f(mx + bw * 0.62)} ${f(tipY + 0.4 + j(0.9))}`,
+        `Q${f(mx + bw - 0.4)} ${f(tipY + 1)} ${f(mx + bw)} ${f(tipY + 4)}`,
+        `L${f(mx + bw * 0.9)} ${f(fy0 + j(0.4))}`,
+        "Z",
+      ].join(" ");
+
+  const ferrule =
+    `M${f(mx - fw)} ${f(fy0 - 1.4)} L${f(mx + fw)} ${f(fy0 - 1 + j(0.4))} ` +
+    `L${f(mx + fw * 0.9)} ${f(fy1)} L${f(mx - fw * 0.9)} ${f(fy1 + j(0.4))} Z`;
+  const crimpA = `M${f(mx - fw * 0.95)} ${f(fy0 + 2.6)} Q${f(mx)} ${f(fy0 + 3.7)} ${f(mx + fw * 0.95)} ${f(fy0 + 2.4)}`;
+  const crimpB = `M${f(mx - fw * 0.9)} ${f(fy1 - 2.6)} Q${f(mx)} ${f(fy1 - 1.5)} ${f(mx + fw * 0.9)} ${f(fy1 - 2.9)}`;
+  const hiFerrule = `M${f(mx - fw * 0.46)} ${f(fy0 + 0.6)} L${f(mx - fw * 0.46)} ${f(fy1 - 1.6)}`;
+
+  const handle = [
+    `M${f(mx - hw)} ${f(fy1 - 1)}`,
+    `L${f(mx + hw)} ${f(fy1 - 1 + j(0.4))}`,
+    `C${f(mx + hw * 1.02)} ${f(fy1 + 16)} ${f(mx + hb + 0.6)} ${f(bot - 12)} ${f(mx + hb)} ${f(bot - 3.5)}`,
+    `Q${f(mx + hb)} ${f(bot)} ${f(mx + j(0.5))} ${f(bot)}`,
+    `Q${f(mx - hb)} ${f(bot)} ${f(mx - hb)} ${f(bot - 3.5)}`,
+    `C${f(mx - hb - 0.6)} ${f(bot - 12)} ${f(mx - hw * 1.02)} ${f(fy1 + 16)} ${f(mx - hw)} ${f(fy1 - 1)}`,
+    "Z",
+  ].join(" ");
+  const hiHandle = `M${f(mx - hw * 0.44)} ${f(fy1 + 3)} L${f(mx - hb * 0.5)} ${f(bot - 6)}`;
+  const loHandle = `M${f(mx + hw * 0.6)} ${f(fy1 + 4)} L${f(mx + hb * 0.62)} ${f(bot - 6)}`;
+
+  // the grain of the bristles: combed straight on a flat brush, drawn together
+  // into the point on a round one
+  const comb: string[] = [];
+  const n = soft ? 3 : 5;
+  for (let k = 1; k <= n; k++) {
+    const x = mx - bw * 0.72 + ((bw * 1.44) * k) / (n + 1);
+    comb.push(
+      soft
+        ? `M${f(x)} ${f(fy0 - 2)} Q${f(mx + (x - mx) * 0.35)} ${f(belly)} ${f(mx)} ${f(tipY + 2.8)}`
+        : `M${f(x)} ${f(fy0 - 1.4)} L${f(x + j(0.8))} ${f(tipY + 2.6)}`,
+    );
+  }
+
+  // a loaded brush carries a band of thicker colour across the very end
+  const load = soft
+    ? ""
+    : `M${f(mx - bw * 0.94)} ${f(tipY + 7)} Q${f(mx)} ${f(tipY + 1.4)} ${f(mx + bw * 0.94)} ${f(tipY + 7)} ` +
+      `Q${f(mx)} ${f(tipY + 11)} ${f(mx - bw * 0.94)} ${f(tipY + 7)} Z`;
+
+  // …and a wet one is about to drip
+  const dx = mx + bw + 3.2 + j(0.6);
+  const dy = belly + 5;
+  const drop = soft
+    ? `M${f(dx)} ${f(dy - 4.4)} C${f(dx + 2.5)} ${f(dy - 1.2)} ${f(dx + 2.8)} ${f(dy + 1.6)} ${f(dx)} ${f(dy + 2.6)} ` +
+      `C${f(dx - 2.8)} ${f(dy + 1.6)} ${f(dx - 2.5)} ${f(dy - 1.2)} ${f(dx)} ${f(dy - 4.4)} Z`
+    : "";
+
+  // the damp halo, made the way the watercolour itself makes it: offset passes,
+  // never a blur filter
+  const wash = soft
+    ? [
+        `translate(${f(-1.5 + j(0.6))} ${f(0.9 + j(0.5))})`,
+        `translate(${f(1.7 + j(0.6))} ${f(-0.7 + j(0.5))})`,
+        `translate(${f(0.3 + j(0.8))} ${f(1.7 + j(0.5))})`,
+      ]
+    : [];
+
+  const geo: BrushGeo = {
+    hairs, ferrule, handle, crimpA, crimpB, hiFerrule, hiHandle, loHandle,
+    comb, load, drop, wash,
+    rivet: { x: mx + j(0.8), y: (fy0 + fy1) / 2 + 2.4 },
+  };
+  brushCache.set(key, geo);
+  return geo;
+}
+
+function BrushArt({ kind, color, seed, lifted }: {
+  kind: "water" | "paint"; color: string; seed: number; lifted: boolean;
+}) {
+  const uid = useId().replace(/:/g, "");
+  const soft = kind === "water";
+  const g = brushGeo(seed, kind);
+  // two different woods, so the pair is still a pair in silhouette alone
+  const woodTone = soft ? "#e0a94a" : "#b4632f";
+  const wood = waxTile(woodTone);
+  const rim = shade(color, -0.32);
+  const deep = shade(color, -0.24);
+  const lit = shade(color, 0.34);
+  return (
+    <svg
+      aria-hidden="true"
+      width={TW}
+      height={TH}
+      viewBox={`0 0 ${TW} ${TH}`}
+      style={{ overflow: "visible", display: "block" }}
+    >
+      <defs>
+        {wood && (
+          <pattern
+            id={`bw-${uid}`}
+            patternUnits="userSpaceOnUse"
+            width="128"
+            height="128"
+            patternTransform={`translate(${-(seed % 47)} ${-(seed % 61)})`}
+          >
+            <image href={wood} width="128" height="128" />
+          </pattern>
+        )}
+        <filter id={`bl-${uid}`} x="-60%" y="-30%" width="220%" height="170%">
+          <feDropShadow
+            dx="0" dy={lifted ? 5 : 2}
+            stdDeviation={lifted ? 3.4 : 1.6}
+            floodColor="#4a3a28" floodOpacity={lifted ? 0.4 : 0.24}
+          />
+        </filter>
+      </defs>
+
+      <g filter={`url(#bl-${uid})`}>
+        {/* the damp edge, before the colour that made it */}
+        {g.wash.map((t, i) => (
+          <path
+            key={i} d={g.hairs} fill="none" stroke={color}
+            strokeWidth={3.2 - i * 0.7} opacity="0.1"
+            strokeLinejoin="round" transform={t}
+          />
+        ))}
+
+        {/* the bristles, carrying the colour the child picked */}
+        <path d={g.hairs} fill={color} opacity={soft ? 0.44 : 1} />
+        {soft && (
+          // the rim water dries to — the one thing that says watercolour
+          <path d={g.hairs} fill="none" stroke={rim} strokeWidth="1.7" opacity="0.55" strokeLinejoin="round" />
+        )}
+        {!soft && <path d={g.load} fill={deep} />}
+        {g.comb.map((d, i) => (
+          <path
+            key={i} d={d} fill="none" stroke={i % 2 ? lit : rim}
+            strokeWidth={soft ? 0.9 : 1.2} strokeLinecap="round"
+            opacity={soft ? 0.38 : 0.5}
+          />
+        ))}
+        {soft && (
+          <>
+            <path d={g.drop} fill={color} opacity="0.42" />
+            <path d={g.drop} fill="none" stroke={rim} strokeWidth="0.9" opacity="0.6" />
+          </>
+        )}
+
+        {/* the metal band, crimped onto the handle */}
+        <path d={g.ferrule} fill="#c9cfd7" />
+        <path d={g.hiFerrule} stroke="#ffffff" strokeOpacity="0.7" strokeWidth={soft ? 2 : 3.2} strokeLinecap="round" fill="none" />
+        <path d={g.crimpA} stroke="#7d8894" strokeWidth="1" fill="none" strokeLinecap="round" />
+        <path d={g.crimpB} stroke="#7d8894" strokeWidth="1" fill="none" strokeLinecap="round" />
+        {!soft && <circle cx={g.rivet.x} cy={g.rivet.y} r="1.5" fill="#7d8894" opacity="0.75" />}
+        <path d={g.ferrule} fill="none" stroke="var(--ink)" strokeWidth="1.9" strokeLinejoin="round" />
+
+        {/* the handle */}
+        <path d={g.handle} fill={wood ? `url(#bw-${uid})` : woodTone} />
+        <path d={g.hiHandle} stroke="#ffffff" strokeOpacity="0.28" strokeWidth={soft ? 2 : 3.2} strokeLinecap="round" fill="none" />
+        <path d={g.loHandle} stroke="#2d2926" strokeOpacity="0.2" strokeWidth={soft ? 1.6 : 2.4} strokeLinecap="round" fill="none" />
+
+        {/* the hand that inked the outline. The wet tip is drawn with a lighter
+            pen than the handle: a soaked brush has no hard edge. */}
+        <path d={g.handle} fill="none" stroke="var(--ink)" strokeWidth="2.3" strokeLinejoin="round" strokeLinecap="round" />
+        <path
+          d={g.hairs} fill="none" stroke="var(--ink)"
+          strokeWidth={soft ? 1.5 : 2.2} strokeOpacity={soft ? 0.5 : 1}
+          strokeLinejoin="round" strokeLinecap="round"
+        />
+        <path
+          d={g.handle} fill="none" stroke="var(--ink)" strokeWidth="1.2"
+          strokeLinejoin="round" strokeLinecap="round" opacity="0.5"
+          transform="translate(0.7 0.9)"
+        />
+      </g>
+    </svg>
+  );
+}
+
+/* The three ways to make a mark, in the order a child meets them. `word` is
+   what the tray calls the tool under the colour name ("Ocean blue paint");
+   `label` is the whole name, for a screen reader. */
+interface MediumChoice {
+  id: Medium;
+  label: string;
+  word: string;
+  seed: number;
+}
+
+const MEDIA: readonly MediumChoice[] = [
+  { id: "crayon", label: "Crayon", word: "crayon", seed: 401 },
+  { id: "water", label: "Watercolour brush", word: "watercolour", seed: 419 },
+  { id: "paint", label: "Paintbrush", word: "paint", seed: 433 },
+];
+
 /* ── the cardboard box the crayons live in ───────────────────────────────── */
 
 const BOX_FONT = '"Baloo 2", "Nunito", ui-rounded, system-ui, sans-serif';
@@ -293,7 +551,7 @@ function BoxFront({ w, h, axis }: { w: number; h: number; axis: "x" | "y" }) {
 
 /* ── a real crayon mark, at the weight it would draw ─────────────────────── */
 
-function SizeMark({ px, color, w, h }: { px: number; color: string; w: number; h: number }) {
+function SizeMark({ px, color, w, h, medium }: { px: number; color: string; w: number; h: number; medium: Medium }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const cv = ref.current;
@@ -316,8 +574,10 @@ function SizeMark({ px, color, w, h }: { px: number; color: string; w: number; h
         y: h / 2 + Math.sin(t * Math.PI * 1.7 + 0.5) * (h * 0.5 - pad) * 0.85,
       });
     }
-    drawCrayonStroke(ctx, pts, color, px, seedOf(`mark${px}`));
-  }, [px, color, w, h]);
+    // the swatch is a preview, so it has to be drawn with the tool in hand —
+    // a wax mark under a watercolour brush is just a small lie
+    drawStroke(ctx, { color, size: px, pts, medium }, seedOf(`mark${px}`));
+  }, [px, color, w, h, medium]);
   return <canvas ref={ref} aria-hidden="true" style={{ display: "block" }} />;
 }
 
@@ -345,22 +605,26 @@ function PickRing({ w, h, color, seed }: { w: number; h: number; color: string; 
 /* ── layout mode ─────────────────────────────────────────────────────────── */
 
 const LAND_Q = "(orientation: landscape) and (max-height: 560px)";
+/* the same query the stylesheet grows --cs on: a tablet, where the whole box is
+   drawn bigger and the tool tray has to grow with it or look like a toy beside
+   it */
+const ROOMY_Q = "(min-width: 700px) and (min-height: 620px)";
 
-function useLandscapeRail(): boolean {
-  const [land, setLand] = useState(() =>
+function useMedia(query: string): boolean {
+  const [on, setOn] = useState(() =>
     typeof window !== "undefined" && typeof window.matchMedia === "function"
-      ? window.matchMedia(LAND_Q).matches
+      ? window.matchMedia(query).matches
       : false,
   );
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
-    const mq = window.matchMedia(LAND_Q);
-    const on = () => setLand(mq.matches);
-    on();
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
-  return land;
+    const mq = window.matchMedia(query);
+    const read = () => setOn(mq.matches);
+    read();
+    mq.addEventListener("change", read);
+    return () => mq.removeEventListener("change", read);
+  }, [query]);
+  return on;
 }
 
 function useBox<T extends HTMLElement>() {
@@ -422,6 +686,10 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
   const [undone, setUndone] = useState<Stroke[]>([]);
   const [color, setColor] = useState(CRAYONS[5].c);
   const [size, setSize] = useState(SIZES[1].px);
+  /* What the *next* line will be made of. Stamped onto each stroke as it is
+     begun, never onto the drawing: switching tools half way through leaves
+     everything already on the page in the material it was made with. */
+  const [medium, setMedium] = useState<Medium>("crayon");
   const [erasing, setErasing] = useState(false);
   const liveRef = useRef<Stroke | null>(null);
   const strokesRef = useRef<Stroke[]>([]);
@@ -435,7 +703,8 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
   const stampTitleId = useId();
   const stamps = useMemo(() => stampsFor(worldId), [worldId]);
 
-  const land = useLandscapeRail();
+  const land = useMedia(LAND_Q);
+  const roomy = useMedia(ROOMY_Q);
   const reduced = usePrefersReducedMotion();
   const [boxRef, boxBox] = useBox<HTMLDivElement>();
 
@@ -465,11 +734,8 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
     const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cv.width, cv.height);
-    strokesRef.current.forEach((s, i) => drawCrayonStroke(ctx, s.pts, s.color, s.size, i + 1));
-    if (liveRef.current) {
-      const s = liveRef.current;
-      drawCrayonStroke(ctx, s.pts, s.color, s.size, 999);
-    }
+    strokesRef.current.forEach((s, i) => drawStroke(ctx, s, i + 1));
+    if (liveRef.current) drawStroke(ctx, liveRef.current, 999);
   }, []);
 
   // resize canvas to fill wrapper
@@ -535,7 +801,7 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
       eraseAt([p]);
       return;
     }
-    liveRef.current = { color, size, pts: [p] };
+    liveRef.current = { color, size, pts: [p], medium };
   };
 
   const onMove = (e: React.PointerEvent) => {
@@ -580,6 +846,7 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
 
   const pickCrayon = (c: string) => { setColor(c); setErasing(false); sfxTap(); };
   const pickSize = (px: number) => { setSize(px); setErasing(false); sfxTap(); };
+  const pickMedium = (m: Medium) => { setMedium(m); setErasing(false); sfxTap(); };
 
   const openStamps = () => { sfxTap(); setStampOpen(true); };
   const closeStamps = () => { sfxTap(); setStampOpen(false); };
@@ -612,22 +879,85 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
   }, [sheet.w]);
 
   const current = CRAYONS.find((k) => k.c === color) ?? CRAYONS[5];
+  const kit = MEDIA.find((m) => m.id === medium) ?? MEDIA[0];
   const TOOL = land ? 48 : 50;
   const MARK_W = land ? 46 : 56;
   const MARK_H = land ? 26 : 30;
+
+  /* How big the three tools are drawn. Portrait stands them up beside the
+     colour name; a landscape phone lays them down the side of the page the
+     same way it lays the crayons down. */
+  const MS = land ? 0.86 : roomy ? 0.95 : 0.7;
+  const SLOT_W = Math.round((land ? TH : TW) * MS);
+  const SLOT_H = Math.round((land ? TW : TH) * MS);
+
+  /* ── the tool tray ────────────────────────────────────────────────────
+     What to draw *with*, above what colour to draw it in. Each is drawn as
+     the thing itself and named only for a screen reader: the child this is
+     built for cannot read "watercolour", but they have held one. */
+  const mediaRow = (
+    <div className="dw-media">
+      {/* the colour and the tool, read as one thing: "Ocean blue paint" */}
+      <p className="dw-current ink-hand" aria-hidden="true">
+        {erasing ? "Rubbing out" : `${current.name} ${kit.word}`}
+      </p>
+
+      <div className="dw-media-group" role="radiogroup" aria-label="Pick something to draw with">
+        {MEDIA.map((m) => {
+          const active = !erasing && medium === m.id;
+          return (
+            <InkButton
+              key={m.id}
+              role="radio"
+              aria-checked={active}
+              aria-label={m.label}
+              title={m.label}
+              onClick={() => pickMedium(m.id)}
+              seed={m.seed}
+              radius={13}
+              className={`dw-media-btn ${active ? "is-picked" : ""}`}
+              style={{ height: land ? Math.max(48, SLOT_H + 12) : SLOT_H + 14 }}
+            >
+              <span className="dw-media-slot" style={{ width: SLOT_W, height: SLOT_H }}>
+                <span
+                  className="dw-media-art"
+                  style={{ transform: land ? `rotate(90deg) scale(${MS})` : `scale(${MS})` }}
+                >
+                  {m.id === "crayon" ? (
+                    <CrayonArt
+                      color={erasing ? "#a99e93" : color}
+                      short={erasing ? "RUB" : current.short}
+                      seed={m.seed}
+                      lifted={active}
+                    />
+                  ) : (
+                    <BrushArt
+                      kind={m.id === "water" ? "water" : "paint"}
+                      color={erasing ? "#a99e93" : color}
+                      seed={m.seed}
+                      lifted={active}
+                    />
+                  )}
+                </span>
+                {active && (
+                  <PickRing w={SLOT_W + 18} h={SLOT_H + 14} color={color} seed={m.seed + 7} />
+                )}
+              </span>
+            </InkButton>
+          );
+        })}
+      </div>
+    </div>
+  );
 
   /* Thickness + eraser. In portrait they sit under the crayon box; on a
      landscape phone the box needs the whole rail, so they move up top. */
   const toolRow = (
     <>
-      <p className="dw-current ink-hand" aria-hidden="true">
-        {erasing ? "Rubbing out" : current.name}
-      </p>
-
       {/* thicknesses and the eraser travel together: when the row has to wrap
           it is the colour name that takes its own line, never one lone tool */}
       <div className="dw-toolgroup">
-        <div className="dw-sizes" role="radiogroup" aria-label="Crayon thickness">
+        <div className="dw-sizes" role="radiogroup" aria-label={`${kit.label} thickness`}>
           {SIZES.map((s, i) => {
             const active = size === s.px && !erasing;
             return (
@@ -643,7 +973,7 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
                 className="dw-size-btn"
                 style={{ width: MARK_W + 10, height: MARK_H + 20 }}
               >
-                <SizeMark px={s.px} color={erasing ? "#a99e93" : color} w={MARK_W} h={MARK_H} />
+                <SizeMark px={s.px} color={erasing ? "#a99e93" : color} w={MARK_W} h={MARK_H} medium={medium} />
                 {active && <PickRing w={MARK_W + 14} h={MARK_H + 22} color={color} seed={200 + i * 9} />}
               </InkButton>
             );
@@ -877,8 +1207,10 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
           </div>
         </div>
 
-        {/* ── the crayon box ──────────────────────────────────────────── */}
+        {/* ── the tool tray, then the crayon box ──────────────────────── */}
         <div className="dw-tools">
+          {mediaRow}
+
           <div className="dw-rail">
             <div
               className="dw-rail-scroll no-scrollbar"
@@ -929,7 +1261,7 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
           {!land && <div className="dw-toolrow">{toolRow}</div>}
 
           <p aria-live="polite" className="visually-hidden">
-            {erasing ? "Eraser on" : `${current.name} crayon`}
+            {erasing ? "Eraser on" : `${current.name} ${kit.word}`}
           </p>
         </div>
 
@@ -1153,12 +1485,40 @@ const DW_CSS = `
 }
 .dw-crayon:active { transition-duration: var(--dur-1); }
 
-/* Wraps rather than truncates: the size buttons and eraser are fixed 48px
-   targets, so on a 320px screen there is no room left for the colour name on
-   the same line — it takes its own line instead of collapsing to "O..". The
-   tools are one flex item (.dw-toolgroup) so the break can only ever fall
-   between the name and the tools, never mid-tray. */
-.dw-toolrow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+/* ── the tool tray ──
+   What to draw *with*, on the line above what colour to draw it in. Three
+   equal shares of the row, none of which may fall below --tap, and the
+   colour-and-tool name beside them.
+
+   The name is what gives ground when the room runs out: at 320px the three
+   tools claim 3 x 48px and the name keeps a 4.6rem column, which is why the
+   name moved up here out of the thickness row — that row now holds only its
+   own tools and no longer has to wrap onto a second line, so the tray costs
+   the page about forty pixels rather than a whole extra row. */
+.dw-media { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dw-media-group { display: flex; align-items: center; gap: 6px; flex: 1 1 auto; min-width: 0; }
+.dw-media-btn {
+  flex: 1 1 0; min-width: var(--tap); padding: 0 !important;
+  transition: transform var(--dur-2) var(--ease-spring);
+}
+/* the picked tool is out of the tray and in the child's hand — the same lift
+   the picked crayon gets out of the box, plus the circled-it-with-a-crayon
+   ring the thickness picks use */
+.dw-media-btn.is-picked { transform: translateY(-3px); }
+.dw-media-btn:active { transition-duration: var(--dur-1); }
+.dw-media-slot { position: relative; display: block; flex: none; }
+.dw-media-art { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+@media (hover: hover) {
+  .dw-media-btn:hover { filter: brightness(1.03); }
+}
+/* the tray owns the name now, so it may shrink here rather than reserving a
+   line of its own */
+.dw-media .dw-current { flex: 0 1 auto; max-width: 7.5rem; }
+
+/* Wraps rather than truncates. The size buttons and eraser are fixed 48px
+   targets; they are one flex item (.dw-toolgroup) so a break can never fall
+   mid-tray. */
+.dw-toolrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; min-width: 0; }
 .dw-current {
   flex: 1 1 4.6rem; min-width: 4.6rem;
   font-size: var(--fs-2xs); line-height: 1.12;
@@ -1282,9 +1642,25 @@ const DW_CSS = `
   transform: rotate(90deg) scale(var(--cs)); transform-origin: 50% 50%;
 }
 .dw-land .dw-toolrow-top { flex: 1 1 auto; min-width: 0; justify-content: flex-start; }
-/* the base rule reserves room for the name to wrap onto a line of its own on a
-   320px phone; there is no second line up here, so let it shrink instead */
-.dw-land .dw-current { flex: 0 1 auto; min-width: 0; max-width: 96px; padding: 0 2px; }
+/* the tray becomes the head of the column: three tools lying down the side of
+   the page, exactly as the crayons below them lie down. The crayon box keeps
+   the rest of the column and goes on scrolling, which it already did — there
+   were never ten crayons' worth of room down the side of a landscape phone. */
+.dw-land .dw-media {
+  flex-direction: column; align-items: stretch; flex: none;
+  gap: 4px; margin-bottom: 6px;
+}
+.dw-land .dw-media-group { flex-direction: column; align-items: stretch; gap: 4px; flex: none; }
+.dw-land .dw-media-btn { flex: none; width: 100%; }
+.dw-land .dw-media-btn.is-picked { transform: translateX(3px); }
+.dw-land .dw-media .dw-current {
+  flex: none; min-width: 0; max-width: none; text-align: center; padding: 0 2px;
+}
+.dw-land .dw-media-art {
+  left: 50%; top: 50%;
+  margin-left: ${-TW / 2}px; margin-top: ${-TH / 2}px;
+  transform-origin: 50% 50%;
+}
 .dw-land .dw-canvasarea { padding-top: 10px; }
 .dw-land .dw-prompt { top: 22px; left: 16px; right: 16px; }
 .dw-land .dw-prompt-text { font-size: var(--fs-lg); }
@@ -1305,10 +1681,22 @@ const DW_CSS = `
   }
   .dw-sizes { gap: 8px; }
   .dw-toolgroup { gap: 12px; }
+  .dw-media { justify-content: center; gap: var(--sp-3); }
+  .dw-media-group { flex: 0 1 auto; gap: 10px; }
+  .dw-media-btn { flex: 0 0 auto; min-width: var(--tap-hero); }
+  .dw-media .dw-current { max-width: 12rem; }
   .dw-canvasarea { padding-top: 14px; }
   .dw-icon-btn { width: 56px !important; height: 56px !important; }
   .dw-top { gap: 10px; }
 }
+/* A short phone. The paper is the point, so the crayon box gives up a little
+   height rather than the sheet — the tool tray above it is new, and it should
+   not be the drawing that pays for it. Every crayon stays a 48px target:
+   .dw-crayon's minimums are fixed pixels and do not scale with --cs. */
+@media (orientation: portrait) and (max-height: 600px) {
+  .dw-grid { --cs: 0.82; }
+}
+
 @media (min-width: 820px) and (min-height: 620px) {
   /* only once every crayon is certain to fit: centring a scroller that
      overflows would put its first crayon out of reach */
@@ -1316,7 +1704,7 @@ const DW_CSS = `
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dw-crayon, .dw-prompt, .dw-prompt-in { transition: none; animation: none; }
+  .dw-crayon, .dw-media-btn, .dw-prompt, .dw-prompt-in { transition: none; animation: none; }
   .dw-breathe, .dw-twinkle { animation: none; }
   .dw-stamp-scrim-in, .dw-stamp-card-in, .dw-stamp-tile-in { animation: none; }
 }

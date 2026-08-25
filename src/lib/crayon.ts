@@ -3,6 +3,13 @@
 // so drawings feel hand-made and alive.
 
 import type { Pt, Stroke } from "./types";
+/* The wet materials live in `brushes.ts`, which is built on this file — so the
+   two import each other. That is safe and deliberate: both sides only ever call
+   the other's *functions*, at draw time, and function declarations are hoisted,
+   so neither module needs the other to have finished loading. It keeps the
+   crayon where it belongs (here, as one material among three) instead of
+   dragging watercolour and paint into it. */
+import { drawPaintStroke, drawWaterStroke } from "./brushes";
 
 /** Deterministic pseudo-random from a seed (stable speckle per stroke). */
 export function mulberry(seed: number) {
@@ -213,6 +220,20 @@ export function drawCrayonStroke(
   ctx.globalAlpha = 1;
 }
 
+/**
+ * Draw a whole stroke, resampled and optionally wiggled, in the material it
+ * was made with.
+ *
+ * This is `drawStroke`'s sibling for everything that has to *move* a drawing:
+ * the world's baked sprite frames, the reveal, a drawn treat. The deformation
+ * is the same whatever the mark is made of — a watercolour fish wiggles like a
+ * wax one — so the points are bent first and only then handed to the material.
+ *
+ * The dispatch is spelled out here rather than delegating to `drawStroke`
+ * because that takes a `Stroke`, and the bent points are not the stroke's own:
+ * building one would allocate a copy per stroke per frame on the reveal's
+ * animation loop. The three arms are the same three, in the same order.
+ */
 export function drawStrokeFull(
   ctx: CanvasRenderingContext2D,
   stroke: Stroke,
@@ -222,7 +243,9 @@ export function drawStrokeFull(
 ) {
   const base = resample(stroke.pts, 3.5);
   const pts = wiggle ? wigglePoints(base, { ...wiggle, seed: (wiggle.seed ?? 0) + seed }) : base;
-  drawCrayonStroke(ctx, pts, stroke.color, stroke.size, seed, progress);
+  if (stroke.medium === "water") drawWaterStroke(ctx, pts, stroke.color, stroke.size, seed, progress);
+  else if (stroke.medium === "paint") drawPaintStroke(ctx, pts, stroke.color, stroke.size, seed, progress);
+  else drawCrayonStroke(ctx, pts, stroke.color, stroke.size, seed, progress);
 }
 
 export function strokesBounds(strokes: Stroke[]): { x: number; y: number; w: number; h: number } {

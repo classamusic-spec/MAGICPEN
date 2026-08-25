@@ -14,7 +14,8 @@
 
 import { useEffect, useRef } from "react";
 import type { Stroke } from "@/lib/types";
-import { drawCrayonStroke, normalizeStrokes } from "@/lib/crayon";
+import { normalizeStrokes } from "@/lib/crayon";
+import { drawStroke } from "@/lib/brushes";
 import { paperTile } from "@/lib/ink";
 
 /** Print at a size that stays crisp on paper rather than on a screen. */
@@ -59,7 +60,7 @@ export default function PrintSheet({
       ctx.save();
       // `normalizeStrokes` centres on the origin, so this lands it mid-page
       ctx.translate(PX / 2, PX / 2);
-      norm.strokes.forEach((s, i) => drawCrayonStroke(ctx, s.pts, s.color, s.size, i + 1, 1));
+      norm.strokes.forEach((s, i) => drawStroke(ctx, s, i + 1, 1));
       ctx.restore();
     }
   }, [strokes]);

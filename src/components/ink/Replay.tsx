@@ -14,7 +14,8 @@
 
 import { useEffect, useRef } from "react";
 import type { Stroke } from "@/lib/types";
-import { drawCrayonStroke, normalizeStrokes, strokeLength } from "@/lib/crayon";
+import { normalizeStrokes, strokeLength } from "@/lib/crayon";
+import { drawStroke } from "@/lib/brushes";
 import { usePrefersReducedMotion } from "@/components/ink/motion";
 
 /** Crayon travel, in normalised units a second. Tuned by eye: fast enough that
@@ -80,9 +81,10 @@ export default function Replay({
         if (left <= 0) break;
         const s = norm.strokes[i];
         const p = Math.min(1, left / lens[i]);
-        // `drawCrayonStroke`'s own `progress` argument does the draw-on — the
-        // partial stroke is drawn by the crayon, not clipped after the fact
-        drawCrayonStroke(ctx, s.pts, s.color, s.size, i + 1, p);
+        // `drawStroke`'s own `progress` argument does the draw-on — the
+        // partial stroke is drawn by the material it was made with, not clipped
+        // after the fact
+        drawStroke(ctx, s, i + 1, p);
         left -= lens[i];
       }
       ctx.restore();

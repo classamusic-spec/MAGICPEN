@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DreamWorld, Pt, RegionKind, Stroke } from "@/lib/types";
-import { drawCrayonStroke } from "@/lib/crayon";
+import { drawStroke } from "@/lib/brushes";
 import {
   REGION_H, REGION_KINDS, REGION_STYLE, REGION_W,
   decodeMask, encodeMask, hasRegion, newMask, paintMask, regionAt,
@@ -143,8 +143,8 @@ export default function PaintWorld({
     const dpr = window.devicePixelRatio || 1;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cv.width, cv.height);
-    strokesRef.current.forEach((s, i) => drawCrayonStroke(ctx, s.pts, s.color, s.size, i + 1));
-    if (liveRef.current) drawCrayonStroke(ctx, liveRef.current.pts, liveRef.current.color, liveRef.current.size, 999);
+    strokesRef.current.forEach((s, i) => drawStroke(ctx, s, i + 1));
+    if (liveRef.current) drawStroke(ctx, liveRef.current, 999);
   }, []);
 
   /* ── the region wash: coarse grid → soft translucent colour over the art ──

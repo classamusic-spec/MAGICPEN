@@ -109,13 +109,29 @@ export function drawWaterStroke(
   tracePath(ctx, sub);
   ctx.stroke();
 
-  // …then the body inside it, which leaves the darker rim showing at the edges
-  // rather than painting a separate outline around the stroke.
+  /* …then the body inside it, which leaves the darker rim showing at the edges
+     rather than painting a separate outline around the stroke.
+
+     Laid in overlapping runs rather than as one path, and that is the whole
+     point rather than an implementation detail. Canvas composites a path *once*
+     at `globalAlpha`, so a single `stroke()` cannot darken where it crosses
+     itself — a child drawing a figure-of-eight in one motion would get no
+     pooling at the crossing, which is the first thing anyone tries with a wet
+     brush. Separate runs do compound, so the loop of an eight goes darker where
+     it passes over its own tail.
+
+     The runs are long and share one point, so the seams between them fall far
+     apart and read as the ordinary unevenness of a wet edge. */
   ctx.strokeStyle = color;
   ctx.globalAlpha = 0.4;
   ctx.lineWidth = size * 0.72;
-  tracePath(ctx, sub);
-  ctx.stroke();
+  const RUN = 18;
+  for (let i = 0; i < sub.length - 1; i += RUN) {
+    const run = sub.slice(i, Math.min(sub.length, i + RUN + 1));
+    if (run.length < 2) break;
+    tracePath(ctx, run);
+    ctx.stroke();
+  }
 
   // ── pooling ──
   // Where the brush slowed or turned, water gathers and dries into a bloom.

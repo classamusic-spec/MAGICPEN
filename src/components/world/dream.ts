@@ -17,7 +17,7 @@
 // caustics are masked per frame, and only inside the water's bounding box.
 
 import type { DreamWorld, RegionKind } from "@/lib/types";
-import { drawCrayonStroke } from "@/lib/crayon";
+import { drawStroke } from "@/lib/brushes";
 import { REGION_H, REGION_W, maskOf, regionAt, regionBand, type RegionMask } from "@/lib/regions";
 import { applySeasonWash, clamp01, detail, quality, slot, vignette, type FxState, type ThemeFrame } from "./shared";
 
@@ -147,7 +147,9 @@ function bake(dream: DreamWorld): Baked {
   cv.height = Math.max(1, Math.round(dream.dh * ss));
   const ctx = cv.getContext("2d")!;
   ctx.scale(ss, ss);
-  dream.strokes.forEach((s, i) => drawCrayonStroke(ctx, s.pts, s.color, s.size, i + 1));
+  /* These are the child's own strokes, not scenery, so they come back in
+     whatever they were painted with. */
+  dream.strokes.forEach((s, i) => drawStroke(ctx, s, i + 1));
 
   const mask = maskOf(dream);
   let overlay: HTMLCanvasElement | null = null;
