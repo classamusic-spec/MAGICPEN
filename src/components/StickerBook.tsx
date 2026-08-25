@@ -15,6 +15,8 @@ import { Icon } from "@/components/ink/Icons";
 import { Doodle } from "@/components/ink/Doodles";
 import Replay from "@/components/ink/Replay";
 import ReleaseConfirm from "@/components/ink/ReleaseConfirm";
+import PrintSheet from "@/components/ink/PrintSheet";
+import ParentGate from "@/components/ParentGate";
 import { usePrefersReducedMotion } from "@/components/ink/motion";
 import { hand } from "@/lib/ink";
 
@@ -79,6 +81,10 @@ export default function StickerBook({
   const [openId, setOpenId] = useState<string | null>(null);
   const [saying, setSaying] = useState(false);
   const [play, setPlay] = useState(0);
+  /* Printing puts a drawing on paper, which is a door out of the device — so
+     it asks the same grown-up question the camera and the share sheet ask. */
+  const [printGate, setPrintGate] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   // newest first: the drawing they just made is the one they want to see
   const shown = useMemo(() => [...album].reverse(), [album]);
@@ -186,6 +192,18 @@ export default function StickerBook({
                     <span className="ink-on-wax ink-title text-fs-md">Watch it again</span>
                   </InkButton>
                 )}
+                {canReplay(open) && (
+                  <InkButton
+                    seed={39}
+                    radius={16}
+                    onClick={() => { sfxTap(); setPrintGate(true); }}
+                    aria-label={`Print ${open.name} for the fridge`}
+                    style={{ minHeight: "var(--tap)" }}
+                  >
+                    <Icon name="camera" size={19} />
+                    <span className="ink-title text-fs-md">Print it</span>
+                  </InkButton>
+                )}
                 <InkButton
                   seed={23}
                   radius={16}
@@ -216,6 +234,22 @@ export default function StickerBook({
             )}
           </InkCard>
         </div>
+      )}
+
+      {printGate && open && (
+        <ParentGate
+          title={`Print ${open.name}?`}
+          onPass={() => { setPrintGate(false); setPrinting(true); }}
+          onCancel={() => setPrintGate(false)}
+        />
+      )}
+      {printing && open && (
+        <PrintSheet
+          name={open.name}
+          subtitle={`your ${kindById(open.kindId).label} · ${whenMade(open.createdAt)}`}
+          strokes={open.strokes}
+          onClose={() => setPrinting(false)}
+        />
       )}
     </div>
   );
