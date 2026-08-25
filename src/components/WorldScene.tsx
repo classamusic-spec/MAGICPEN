@@ -29,7 +29,7 @@ import ParentGate from "@/components/ParentGate";
 import { hand, paperTile, roughRect, seedOf, tornEdge } from "@/lib/ink";
 import { newLag, lagWeight, updateLag, applyLag, type Lag } from "@/lib/secondary";
 import { factFor } from "@/lib/facts";
-import { sayLine, hush, canSpeak } from "@/lib/speech";
+import { sayLine, hush, canNarrate } from "@/lib/speech";
 import {
   BIG, SOCIAL, SCHOOL, SCHOOL2, SCARE2, drawnWidth, sepFor,
   W_SEP, W_COH, W_ALIGN, W_FLEE, W_PAL, STEER_CAP, FLEE_DECAY,
@@ -3428,7 +3428,7 @@ export default function WorldScene({
                         <div className="flex items-center justify-center gap-1.5">
                           <Icon name="sparkle" size={15} color="#2d2926" fill="#ffc72c" weight={2} />
                           <span className="ink-title" style={{ fontSize: "var(--fs-xs)" }}>Did you know?</span>
-                          {canSpeak() && (
+                          {canNarrate() && (
                             <button
                               onClick={() => { sfxTap(); const f = factFor(detail.kindId); if (f) sayLine(f); }}
                               aria-label="Hear the fact again"

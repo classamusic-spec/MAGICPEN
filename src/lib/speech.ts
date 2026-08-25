@@ -5,24 +5,39 @@
 // child is about to trace, counts the number, blends the word, and reads the
 // drawing hint aloud.
 //
-// It uses the browser's own speech synthesizer — no audio files to ship, no
-// network, works offline, and reads in whatever accent the device is set to.
-// That last point matters: a child in Lagos and a child in Leeds each hear a
-// voice that sounds like home, for free.
+// The app speaks in two voices, and prefers the first:
 //
-// Two rules:
+//   1. A warm, pre-recorded voice, one clip per line, shipped with the app and
+//      the same on every device (see lib/voice and public/voice). This is what
+//      a child normally hears.
+//   2. The browser's own speech synthesizer — the fallback for anything not
+//      pre-recorded (a name a child typed), for the moments before the clip
+//      manifest has loaded, and for old or locked-down browsers. It ships
+//      nothing and reads in whatever voice the device has.
+//
+// Callers never choose between them: they call `sayLetter`, `sayLine` and the
+// rest, and this module plays the clip if there is one and speaks it otherwise.
+//
+// Two rules hold whichever voice speaks:
 //   It follows the same mute switch as every other sound (see lib/audio). A
 //   grown-up who silences the app silences all of it, on a bus or at bedtime.
 //
 //   It never queues. A child tapping ahead should hear the thing in front of
 //   them now, not a backlog of everything they tapped past — so each new
-//   utterance cancels the last.
+//   utterance cancels the last, in both voices at once.
 
 import { isMuted } from "./audio";
+import { hasClip, playClip, supersedeVoice, stopVoice, loadVoiceManifest, voiceReady } from "./voice";
 
 /** Whether this browser can speak at all. Old and locked-down ones cannot. */
 export const canSpeak = (): boolean =>
   typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+
+/** Whether the app can make *any* sound for a spoken line — a recorded clip or
+ *  the browser's own voice. Screens gate their "say it again" controls on this
+ *  rather than on `canSpeak` alone, so the recorded voice still surfaces on a
+ *  browser that has no synthesizer of its own. */
+export const canNarrate = (): boolean => voiceReady() || canSpeak();
 
 /* ── choosing a voice ────────────────────────────────────────────────────────
    Voices load asynchronously on most browsers — `getVoices()` is empty on the
@@ -64,8 +79,11 @@ function pickVoice(): SpeechSynthesisVoice | null {
   return best;
 }
 
-/** Load voices now and keep watching for better ones. Cheap and idempotent. */
+/** Load voices now and keep watching for better ones. Cheap and idempotent.
+ *  Also kicks off loading the recorded-clip manifest, so the very first spoken
+ *  line already has the warm voice rather than the browser one. */
 export function primeVoices(): void {
+  void loadVoiceManifest();
   if (!canSpeak() || wired) return;
   wired = true;
   chosen = pickVoice();
@@ -81,12 +99,9 @@ export interface SpeakOpts {
   pitch?: number;
 }
 
-/**
- * Say something out loud, cancelling whatever was being said. Silent when the
- * app is muted or the browser cannot speak — callers never have to check.
- */
-export function speak(text: string, opts: SpeakOpts = {}): void {
-  if (!text || isMuted() || !canSpeak()) return;
+/** Speak with the browser's own synthesizer. The fallback path. */
+function browserSpeak(text: string, opts: SpeakOpts): void {
+  if (!canSpeak()) return;
   if (!wired) primeVoices();
   const synth = window.speechSynthesis;
   try {
@@ -103,8 +118,33 @@ export function speak(text: string, opts: SpeakOpts = {}): void {
   }
 }
 
-/** Stop talking now — e.g. when leaving a screen. */
+/**
+ * Say something out loud, cancelling whatever was being said. Silent when the
+ * app is muted — callers never have to check.
+ *
+ * Prefers the recorded clip and falls back to the browser voice: for a line
+ * with a clip, the clip plays (and if it cannot be fetched — offline, first
+ * time — the browser voice speaks it instead); for a line with no clip, the
+ * browser voice speaks it directly.
+ */
+export function speak(text: string, opts: SpeakOpts = {}): void {
+  if (!text || isMuted()) return;
+  // newest wins across BOTH voices: stop any clip and cancel any utterance
+  // before starting the next, whichever engine each is on.
+  stopVoice();
+  if (canSpeak()) { try { window.speechSynthesis.cancel(); } catch { /* noop */ } }
+
+  if (hasClip(text)) {
+    // the clip supersedes the browser voice; on a fetch miss it hands back
+    playClip(text, () => browserSpeak(text, opts));
+    return;
+  }
+  browserSpeak(text, opts);
+}
+
+/** Stop talking now — e.g. when leaving a screen. Silences both voices. */
 export function hush(): void {
+  supersedeVoice();
   if (canSpeak()) { try { window.speechSynthesis.cancel(); } catch { /* noop */ } }
 }
 

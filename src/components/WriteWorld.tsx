@@ -21,7 +21,7 @@ import { SHAPE_GLYPHS, SHAPE_BOX } from "@/lib/glyphs";
 import { SHAPE_GROUPS, bareName } from "@/lib/shapes";
 import { loadWriting, saveWriting, nextLessonKey, type WritingProgress } from "@/lib/storage";
 import { sfxTap, sfxHappy } from "@/lib/audio";
-import { sayLine, sayLetter, sayWord, hush, canSpeak } from "@/lib/speech";
+import { sayLine, sayLetter, sayWord, hush, canNarrate } from "@/lib/speech";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
 import { GlyphMark } from "@/components/ink/GlyphMark";
@@ -530,7 +530,7 @@ function Reward({ world, lesson, stars, hasNext, onNext, onPicker, onBorn }: {
                   );
                 })}
               </div>
-              {canSpeak() && (
+              {canNarrate() && (
                 <button
                   onClick={() => { sfxTap(); soundOut(); }}
                   className="ink-title text-fs-xs px-3 py-1.5 rounded-full inline-flex items-center gap-1.5"

@@ -20,7 +20,7 @@ import { ALL_GLYPHS, DIGIT_GLYPHS, GLYPH_BOX, LOWER_GLYPHS, LOWER_BOX, LOWER_RUL
 import { scoreTrace, toGlyphSpace, tracePraise, type TraceScore } from "@/lib/tracing";
 import { paperTile, roughEllipse, roughRect, shade, waxTile } from "@/lib/ink";
 import { sfxHappy, sfxMagic, sfxPop, sfxTap } from "@/lib/audio";
-import { primeVoices, hush, sayLetter, sayNumber, sayLine, canSpeak } from "@/lib/speech";
+import { primeVoices, hush, sayLetter, sayNumber, sayLine, canNarrate } from "@/lib/speech";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
 import { usePrefersReducedMotion } from "@/components/ink/motion";
@@ -1147,7 +1147,7 @@ export default function TraceScreen({
      word ("three", never "3"), and an unruled target is a drawing, named as a
      phrase. */
   const sayTarget = useCallback((t: Item | undefined) => {
-    if (!t || !canSpeak()) return;
+    if (!t || !canNarrate()) return;
     if (!t.ruled) sayLine(t.say);
     else if (t.say.trim().length <= 1) sayLetter(t.say);
     else sayNumber(t.say);
@@ -1865,7 +1865,7 @@ export default function TraceScreen({
             <Icon name="back" size={22} />
           </InkButton>
 
-          {canSpeak() && (
+          {canNarrate() && (
             <InkButton
               onClick={() => { sfxTap(); sayTarget(current); }}
               shape="ellipse"

@@ -2,7 +2,15 @@
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
-let muted = false;
+
+/* Mute is remembered across launches. A grown-up who silences the app on the
+   bus should find it still silent tomorrow — not have every letter start
+   talking again the next morning. Especially now the app has a full recorded
+   voice: the thing being silenced is speech, not just chimes. */
+const MUTE_KEY = "magicpen.muted.v1";
+let muted = ((): boolean => {
+  try { return localStorage.getItem(MUTE_KEY) === "1"; } catch { return false; }
+})();
 
 function ac(): AudioContext {
   if (!ctx) {
@@ -18,8 +26,29 @@ function ac(): AudioContext {
 export function setMuted(m: boolean) {
   muted = m;
   if (master) master.gain.value = m ? 0 : 0.5;
+  try { localStorage.setItem(MUTE_KEY, m ? "1" : "0"); } catch { /* private mode */ }
 }
 export function isMuted() { return muted; }
+
+/**
+ * The shared output the recorded voice plays through.
+ *
+ * Routing the voice clips through this same context and master gain — rather
+ * than a bare `<audio>` element — means they obey the one mute switch for free,
+ * resume on the same first tap the sound effects do, and mix at the same level.
+ * Returns null where WebAudio is unavailable; the voice then falls back to the
+ * browser's own speech, which needs no context. Never creates the context while
+ * muted, because callers gate on `isMuted()` first.
+ */
+export function audioBus(): { ctx: AudioContext; out: GainNode } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const c = ac();
+    return master ? { ctx: c, out: master } : null;
+  } catch {
+    return null;
+  }
+}
 
 function env(g: GainNode, t0: number, a: number, peak: number, d: number) {
   g.gain.setValueAtTime(0.0001, t0);
