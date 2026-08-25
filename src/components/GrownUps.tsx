@@ -225,6 +225,19 @@ export default function GrownUps({ creatures, onBack }: {
               : "switched off right now, so nothing at all leaves this device."}
           </p>
         </InkCard>
+
+        {/* the full policy, one tap away, for a parent who wants the long version */}
+        <div className="mt-5 mb-1 text-center">
+          <a
+            href="/privacy.html"
+            target="_blank"
+            rel="noreferrer"
+            className="ink-hand text-fs-sm underline decoration-2 underline-offset-2"
+            style={{ color: "var(--ink-soft)" }}
+          >
+            Read the full privacy policy
+          </a>
+        </div>
       </div>
 
       {gateOpen && (

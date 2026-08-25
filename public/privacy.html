@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Magic Pen — Privacy</title>
+    <meta name="robots" content="index, follow" />
+    <meta
+      name="description"
+      content="Magic Pen collects nothing about your child. Everything is stored on your device. This page explains, plainly, exactly how it works."
+    />
+    <!-- Self-hosted type — the page phones no third party, matching the app itself. -->
+    <style>
+      @font-face {
+        font-family: "Baloo 2";
+        src: url("/fonts/baloo2-latin-var.woff2") format("woff2-variations");
+        font-weight: 400 800;
+        font-display: swap;
+      }
+      @font-face {
+        font-family: "Nunito";
+        src: url("/fonts/nunito-latin-var.woff2") format("woff2-variations");
+        font-weight: 400 800;
+        font-display: swap;
+      }
+
+      :root {
+        --paper: #fdf6e8;
+        --card: #fffdf7;
+        --ink: #2d2926;
+        --ink-soft: #6b6560;
+        --line: rgba(45, 41, 38, 0.14);
+        --teal: #0e8a86;
+        --orange: #e0791f;
+        --tape: rgba(240, 214, 150, 0.66);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        background: var(--paper);
+        /* the same paper tooth the app uses */
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+        color: var(--ink);
+        font-family: "Nunito", ui-rounded, "Segoe UI", system-ui, sans-serif;
+        font-size: 17px;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+        padding: 0 20px calc(64px + env(safe-area-inset-bottom));
+      }
+
+      .wrap {
+        max-width: 640px;
+        margin: 0 auto;
+      }
+
+      /* the metal coil at the top of the page, drawn in CSS */
+      .coil {
+        height: 34px;
+        margin: 0 -4px 4px;
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 8px;
+        overflow: hidden;
+      }
+      .coil i {
+        display: block;
+        width: 15px;
+        height: 22px;
+        border: 3.5px solid #b7b0a6;
+        border-top-color: #d8d2c8;
+        border-bottom-color: #8f887e;
+        border-radius: 50%;
+        transform: rotate(-8deg);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.6), rgba(0, 0, 0, 0.08));
+      }
+
+      header.mast {
+        text-align: center;
+        padding: 6px 0 8px;
+      }
+      .wand {
+        font-size: 40px;
+        line-height: 1;
+      }
+      h1 {
+        font-family: "Baloo 2", "Nunito", sans-serif;
+        font-weight: 800;
+        font-size: 34px;
+        letter-spacing: -0.01em;
+        margin: 6px 0 2px;
+        color: var(--ink);
+      }
+      .sub {
+        color: var(--ink-soft);
+        font-size: 15px;
+        margin: 0;
+      }
+
+      section.card {
+        background: var(--card);
+        border: 2.5px solid var(--ink);
+        border-radius: 20px;
+        padding: 20px 22px;
+        margin: 18px 0;
+        box-shadow: 3px 4px 0 rgba(45, 41, 38, 0.14);
+        position: relative;
+      }
+      /* a scrap of tape on the headline card */
+      section.card.taped::before {
+        content: "";
+        position: absolute;
+        top: -12px;
+        left: 50%;
+        width: 84px;
+        height: 24px;
+        transform: translateX(-50%) rotate(-2.5deg);
+        background: var(--tape);
+        border: 1px solid rgba(180, 150, 70, 0.4);
+        border-radius: 2px;
+      }
+
+      h2 {
+        font-family: "Baloo 2", "Nunito", sans-serif;
+        font-weight: 700;
+        font-size: 21px;
+        margin: 0 0 6px;
+        color: var(--teal);
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+      }
+      h2 .n {
+        font-size: 14px;
+        color: var(--orange);
+        font-weight: 800;
+      }
+      p {
+        margin: 0 0 12px;
+      }
+      p:last-child {
+        margin-bottom: 0;
+      }
+      strong {
+        font-weight: 800;
+      }
+      ul {
+        margin: 0 0 12px;
+        padding-left: 22px;
+      }
+      li {
+        margin: 4px 0;
+      }
+      a {
+        color: var(--teal);
+        text-decoration-thickness: 2px;
+        text-underline-offset: 2px;
+      }
+
+      .big {
+        font-family: "Baloo 2", "Nunito", sans-serif;
+        font-weight: 800;
+        font-size: 22px;
+        color: var(--ink);
+        line-height: 1.4;
+      }
+      .lede {
+        font-size: 18px;
+      }
+
+      .rule {
+        height: 3px;
+        border: none;
+        margin: 18px 0;
+        background: repeating-linear-gradient(
+          90deg,
+          var(--line) 0 10px,
+          transparent 10px 18px
+        );
+      }
+
+      footer {
+        text-align: center;
+        color: var(--ink-soft);
+        font-size: 14px;
+        margin-top: 26px;
+      }
+      footer a {
+        white-space: nowrap;
+      }
+      .back {
+        display: inline-block;
+        margin: 8px 0 0;
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="coil" aria-hidden="true">
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
+
+      <header class="mast">
+        <div class="wand" aria-hidden="true">🪄</div>
+        <h1>Privacy</h1>
+        <p class="sub">Magic Pen · last updated 25 August 2026</p>
+      </header>
+
+      <section class="card taped">
+        <p class="big">
+          Magic Pen collects nothing about your child. There is no account, no
+          sign-up, no advertising, and no analytics. Everything a child draws or
+          practises is kept on your own device.
+        </p>
+        <p class="lede">
+          Magic Pen is made for young children, so this page is written to be read
+          in a minute and to say exactly what happens — no legal fog.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2><span class="n">1</span> What stays on the device</h2>
+        <p>
+          When a child draws a creature, traces a letter, or earns a star, that is
+          saved in your browser's own storage on this device. It never leaves it.
+          That includes:
+        </p>
+        <ul>
+          <li>the crayon drawings and the creatures made from them,</li>
+          <li>which letters, numbers, words and shapes have been traced,</li>
+          <li>the stars earned and the "days drawing" count,</li>
+          <li>a few settings, such as whether sound is on.</li>
+        </ul>
+        <p>
+          None of this is sent to us or to anyone else. Clearing your browser's
+          data, or removing the app, erases all of it. There is no copy anywhere
+          for us to hold, because we never received one.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2><span class="n">2</span> What we never collect</h2>
+        <p>We do not ask for, collect, or store any of the following:</p>
+        <ul>
+          <li>names, email addresses, or phone numbers of a child;</li>
+          <li>birthdays, ages, photos of a face, or a voice recording;</li>
+          <li>location, contacts, or device identifiers used for tracking;</li>
+          <li>any account or login of any kind.</li>
+        </ul>
+        <p>
+          There are <strong>no third-party trackers, no advertising networks, and
+          no social-media buttons</strong> in Magic Pen. The fonts and every
+          picture are packaged inside the app, so simply opening it makes no
+          request to any outside company.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2><span class="n">3</span> The one thing that can leave the device</h2>
+        <p>
+          Magic Pen has one optional feature called <strong>“magic dust.”</strong>
+          It turns a child's crayon drawing into a more polished picture. To do
+          that, <strong>that one drawing</strong> is sent over the internet to an
+          art service, which sends a picture back.
+        </p>
+        <p>This is the only thing in Magic Pen that ever leaves the device, and:</p>
+        <ul>
+          <li>
+            it is <strong>switched off</strong> until a grown-up turns it on;
+          </li>
+          <li>
+            turning it on requires answering a simple grown-up question first, so
+            small hands can't switch it on by themselves;
+          </li>
+          <li>
+            only the drawing is sent — <strong>no name, no account, nothing
+            else</strong> — and the art service is asked not to keep it;
+          </li>
+          <li>the child's original crayon drawing is always kept, exactly as drawn;</li>
+          <li>
+            it can be switched off again at any time under
+            <em>For grown-ups → Magic dust</em>, and from then on nothing is sent.
+          </li>
+        </ul>
+        <p>
+          If you never turn magic dust on, Magic Pen makes no internet requests at
+          all while your child uses it.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2><span class="n">4</span> Made for children (COPPA)</h2>
+        <p>
+          Magic Pen is designed for children under 13 and is built to comply with
+          the U.S. Children's Online Privacy Protection Act (COPPA) and similar
+          rules elsewhere. Because we collect no personal information from anyone,
+          there is nothing to sell, share, or hand to a data broker — and there
+          never will be.
+        </p>
+        <p>
+          The one online feature, magic dust, is placed behind a parental step by
+          design, so a child cannot send anything off the device without a
+          grown-up.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2><span class="n">5</span> Your controls</h2>
+        <ul>
+          <li>
+            <strong>See what's been practised:</strong> the
+            <em>For grown-ups</em> screen shows progress, read from this device.
+          </li>
+          <li>
+            <strong>Turn magic dust on or off:</strong> also under
+            <em>For grown-ups</em>, behind the grown-up question.
+          </li>
+          <li>
+            <strong>Erase everything:</strong> clear this app's data in your
+            browser or device settings, or remove the app. That deletes all
+            drawings and progress permanently.
+          </li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2><span class="n">6</span> Changes &amp; contact</h2>
+        <p>
+          If this policy ever changes in a meaningful way, we'll update the date at
+          the top and the notice inside the app. We won't quietly start collecting
+          things this page says we don't.
+        </p>
+        <p>
+          Questions from a parent or guardian are welcome at
+          <a href="mailto:classamusic@gmail.com">classamusic@gmail.com</a>.
+        </p>
+      </section>
+
+      <hr class="rule" />
+
+      <footer>
+        <p>Magic Pen is a drawing toy for young children. No ads. No accounts. No data collected.</p>
+        <a class="back" href="/">← Back to Magic Pen</a>
+      </footer>
+    </div>
+  </body>
+</html>
