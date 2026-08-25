@@ -6,7 +6,7 @@
 // hand-inked edge, so the interface belongs to the same sketchbook as the
 // artwork underneath it.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Creature, DreamWorld, RegionKind } from "@/lib/types";
 import { kindById, BEHAVIOR_COPY, WORLD_PACKS } from "@/lib/creatures";
 import {
@@ -18,9 +18,12 @@ import { sfxBubble, sfxPop, sfxSplash, sfxTap, setMuted, isMuted, sfxHappy, sfxM
 import { drawOcean, drawSpace, drawFarm, drawDino, drawDream, newFxState, floorRatio } from "./world/themes";
 import { sampleFrame, clearLayers } from "./world/shared";
 import { artSprite, onArtLoaded, stickerizeImage } from "@/lib/polish";
-import { bakeCrayonSprite, type Sprite } from "@/lib/sprites";
-import { saveCreatures } from "@/lib/storage";
+import { bakeCrayonSprite, silhouette, stampRing, type Sprite } from "@/lib/sprites";
+import { saveCreatures, loadFoods } from "@/lib/storage";
 import { InkButton, InkCard, InkShape, Scribble, Tape } from "@/components/ink/Ink";
+import PickTray, { type PickTile } from "@/components/ink/PickTray";
+import { Doodle } from "@/components/ink/Doodles";
+import { FOODS, foodById } from "@/lib/foods";
 import { Icon, type IconName } from "@/components/ink/Icons";
 import ParentGate from "@/components/ParentGate";
 import { hand, paperTile, roughRect, seedOf, tornEdge } from "@/lib/ink";
@@ -36,7 +39,7 @@ import {
   TRICK_DUR, TRICK_COOLDOWN, TRICK_TWIRL, trickPose, type TrickPose,
 } from "@/lib/social";
 import { welcomeBack, type Visit } from "@/lib/daily";
-import { drawCrayonStroke } from "@/lib/crayon";
+import { drawCrayonStroke, drawStrokeFull, normalizeStrokes } from "@/lib/crayon";
 import { paintDoodle } from "@/lib/doodleArt";
 
 /* per-world wrapper colors + empty-state copy */
@@ -406,15 +409,72 @@ function drawSpark(ctx: CanvasRenderingContext2D, x: number, y: number, r: numbe
    and a name with no doodle behind it is remembered as a miss so it is never
    tried twice. Keyed by name, and there are only ever a handful. */
 const FOOD_ART_PX = 128;
+/** What a hand-drawn treat's name looks like: the prefix, then the id the
+ *  recipe was saved under. Everything else is a doodle name. */
+const DRAWN_PREFIX = "drawn:";
+/** The tray tile that means "nothing in particular" — the plain crumb again.
+ *  Not a treat id: it is the absence of one. */
+const CRUMB_TILE = "__crumb";
 const foodArtCache = new Map<string, HTMLCanvasElement | null>();
-function foodArt(name: string): HTMLCanvasElement | null {
-  const hit = foodArtCache.get(name);
-  if (hit !== undefined) return hit;
+
+/**
+ * A treat the child drew themselves, baked the same way and onto the same
+ * little canvas as the doodles are. The strokes are the recipe — the crumb is
+ * never saved, only this — so they are re-baked from `loadFoods` rather than
+ * from a stored picture, and the normalise-then-draw is exactly the pass
+ * `bakeCrayonSprite` makes for a creature.
+ *
+ * Wax lines get thicker on the way down: this canvas is stamped at roughly
+ * a third of its size, and a one-pixel line at that scale is not a treat, it
+ * is a smudge. The floor is about the width `paintDoodle` gives the built-in
+ * treats at this size, so a drawn treat sits beside an apple rather than
+ * behind it; the ceiling is the other half of the same thought — a drawing
+ * that is a single dot normalises to a stroke as wide as the whole tile.
+ */
+function bakeDrawnFood(id: string): HTMLCanvasElement | null {
+  const drawn = loadFoods().find((f) => f.id === id);
+  if (!drawn || drawn.strokes.length === 0) return null;
+  const raw = document.createElement("canvas");
+  raw.width = FOOD_ART_PX;
+  raw.height = FOOD_ART_PX;
+  const rctx = raw.getContext("2d");
+  if (!rctx) return null;
+  const norm = normalizeStrokes(drawn.strokes, FOOD_ART_PX * 0.74);
+  rctx.translate(FOOD_ART_PX / 2, FOOD_ART_PX / 2);
+  norm.strokes.forEach((st, i) =>
+    drawStrokeFull(rctx, { ...st, size: Math.max(9, Math.min(FOOD_ART_PX * 0.2, st.size * 1.5)) }, i + 1),
+  );
+
+  /* …and then the sticker outline the creatures wear, for the same reason they
+     wear it: a crayon line laid straight onto deep water goes to mud. Ink ring
+     behind white ring behind the wax, exactly `bakeCrayonSprite`'s recipe, at
+     this canvas's scale. Baked into the same one canvas, so the frame path is
+     still one `drawImage`. */
   const cv = document.createElement("canvas");
   cv.width = FOOD_ART_PX;
   cv.height = FOOD_ART_PX;
-  const c2 = cv.getContext("2d");
-  const baked = !!c2 && paintDoodle(c2, name, FOOD_ART_PX) ? cv : null;
+  const ctx = cv.getContext("2d");
+  if (!ctx) return raw;
+  ctx.translate(FOOD_ART_PX / 2, FOOD_ART_PX / 2);
+  stampRing(ctx, silhouette(raw, "#2d2926"), 5);
+  stampRing(ctx, silhouette(raw, "#ffffff"), 3);
+  ctx.drawImage(raw, -FOOD_ART_PX / 2, -FOOD_ART_PX / 2);
+  return cv;
+}
+
+function foodArt(name: string): HTMLCanvasElement | null {
+  const hit = foodArtCache.get(name);
+  if (hit !== undefined) return hit;
+  let baked: HTMLCanvasElement | null = null;
+  if (name.startsWith(DRAWN_PREFIX)) {
+    baked = bakeDrawnFood(name.slice(DRAWN_PREFIX.length));
+  } else {
+    const cv = document.createElement("canvas");
+    cv.width = FOOD_ART_PX;
+    cv.height = FOOD_ART_PX;
+    const c2 = cv.getContext("2d");
+    baked = !!c2 && paintDoodle(c2, name, FOOD_ART_PX) ? cv : null;
+  }
   foodArtCache.set(name, baked);
   return baked;
 }
@@ -491,6 +551,35 @@ function drawCrumb(
 }
 
 /**
+ * A treat at tile size, drawn by the world's own hands so the thing on the
+ * tray and the thing in the water are the same picture. A hand-drawn treat
+ * comes out of `foodArt`'s cache — the tray is where a child's drawing is
+ * usually baked for the first time, and the world then stamps that very
+ * canvas — and the empty name is the plain morsel, drawn by `drawCrumb`
+ * itself rather than by a second copy of it that could drift.
+ */
+function TreatThumb({ name, size = 44 }: { name: string; size?: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv) return;
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(size * dpr);
+    cv.height = Math.round(size * dpr);
+    cv.style.width = `${size}px`;
+    cv.style.height = `${size}px`;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, size, size);
+    const src = name ? foodArt(name) : null;
+    if (src) ctx.drawImage(src, 0, 0, size, size);
+    else drawCrumb(ctx, size / 2, size * 0.54, size * 0.26, 1.7, 1, "");
+  }, [name, size]);
+  return <canvas ref={ref} aria-hidden="true" className="pointer-events-none" />;
+}
+
+/**
  * A small drawn heart, for the one creature the child has made their pet. Two
  * lobes and a point, inked like everything else — it rides inside the name tag
  * rather than floating over the world, so nothing new is drawn every frame and
@@ -539,7 +628,13 @@ function useBox<T extends HTMLElement>() {
 /* ── HUD control: a drawn object sitting in the world, not OS chrome ─────── */
 
 interface HudBtnProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  icon: IconName;
+  /** The drawn glyph. Every control has one except the treat button, which
+   *  wears `art` instead — there is no icon for "an apple". */
+  icon?: IconName;
+  /** Art worn in the icon's place: the treat button shows whatever is armed,
+   *  so a child can see what the next tap on the water will put down without
+   *  opening anything. */
+  art?: ReactNode;
   /** The control's label. Omit for an icon-only 48×48 control. */
   label?: string;
   /** Tail of the label that only appears once the row has room for it. */
@@ -553,11 +648,11 @@ interface HudBtnProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 function HudBtn({
-  icon, label, labelWide, labelOnlyWide, tone = TONE.manila, iconFill,
+  icon, art, label, labelWide, labelOnlyWide, tone = TONE.manila, iconFill,
   seed, round = false, className = "", style, ...rest
 }: HudBtnProps) {
   const [ref, box] = useBox<HTMLButtonElement>();
-  const s = seed ?? seedOf(icon + (label ?? ""));
+  const s = seed ?? seedOf((icon ?? "") + (label ?? ""));
   const onWax = tone.on !== "#2d2926";
   // a label that comes and goes has to take its padding with it, so that case
   // is driven by a class instead of an inline style
@@ -586,7 +681,7 @@ function HudBtn({
         fill={{ kind: "wax", color: tone.wax }}
       />
       <span className="relative z-10 flex items-center justify-center gap-1.5">
-        <Icon name={icon} size={round ? 25 : 22} color={tone.on} fill={iconFill} weight={2.3} />
+        {art ?? (icon && <Icon name={icon} size={round ? 25 : 22} color={tone.on} fill={iconFill} weight={2.3} />)}
         {label && (
           <span
             className={`font-display font-extrabold whitespace-nowrap ${labelOnlyWide ? "hidden sm:inline" : ""} ${onWax ? "ink-on-wax" : ""}`}
@@ -668,6 +763,8 @@ export default function WorldScene({
   onMakePet,
   onReleasePet,
   foodKind,
+  onArmTreat,
+  onDrawTreat,
 }: {
   creatures: Creature[];
   newId: string | null;
@@ -703,6 +800,13 @@ export default function WorldScene({
    *  doodle name — "apple", "cake", something the child drew). Null or empty
    *  and a tap drops the generic crumb, exactly as it always did. */
   foodKind?: string | null;
+  /** Tell the app which treat is armed, so a treat drawn on another screen can
+   *  come back armed through `foodKind`. Optional: without it the choice still
+   *  works, it simply lives and dies with this screen. */
+  onArmTreat?: (id: string | null) => void;
+  /** Leave the world to draw a treat. Optional — the tile is only offered when
+   *  somebody upstream knows how to get there. */
+  onDrawTreat?: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -725,8 +829,24 @@ export default function WorldScene({
      line, so the two can never drift apart. "" is the generic crumb. */
   const foodDoodleRef = useRef<string[]>(new Array<string>(FOOD_MAX).fill(""));
   const foodAt = useRef(0);                                // the write cursor
-  const foodKindRef = useRef(foodKind);
-  foodKindRef.current = foodKind;
+  /* ── what the next tap puts down ──────────────────────────────────────────
+     Picking a treat *arms* it; it does not drop one. The chosen thing stays
+     chosen and every tap after that is another one of it, because tapping
+     again and again is how a small child plays — and because a treat is a
+     present, there is nothing to use up and nothing to refill.
+
+     The app owns the choice too (`foodKind`), so a treat drawn on the draw
+     screen comes back armed. That makes the prop the outside source of truth:
+     whenever it *changes* it wins, and in between the tray writes here. Sunk
+     into a ref for the loop, which must not do a lookup to draw a crumb. */
+  const [armed, setArmed] = useState<string | null>(foodKind ?? null);
+  const lastKind = useRef(foodKind);
+  if (foodKind !== lastKind.current) {
+    lastKind.current = foodKind;
+    setArmed(foodKind ?? null);
+  }
+  const foodKindRef = useRef(armed);
+  foodKindRef.current = armed;
   /** Who is the pet, for the render loop: one string compare per name tag, no
    *  lookup and nothing new per frame. */
   const petRef = useRef(petId ?? null);
@@ -739,6 +859,7 @@ export default function WorldScene({
   const [muted, setM] = useState(isMuted());
   const [artTick, forceTick] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [trayOpen, setTrayOpen] = useState(false);
   const [sheet, setSheet] = useState<{ mode: "roster" } | { mode: "detail"; id: string } | null>(null);
   const [nameDraft, setNameDraft] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
@@ -2729,6 +2850,72 @@ export default function WorldScene({
     setSheet({ mode: "detail", id: c.id });
   };
   const toggleSound = () => { const m = !muted; setM(m); setMuted(m); sfxTap(); };
+
+  /* ── the treat tray ───────────────────────────────────────────────────────
+     Opened from its own button in the HUD, never from the overflow menu: a
+     three-year-old will not go looking, so a thing they cannot see is a thing
+     that does not exist. What is in it is read when it opens rather than kept
+     in state — the child may have drawn a new treat since the last time. */
+  const drawnTreats = useMemo(
+    // newest first: the one they just drew is the one they want
+    () => (trayOpen ? loadFoods().slice().reverse() : []),
+    [trayOpen],
+  );
+  const treatTiles: PickTile[] = useMemo(() => {
+    const tiles: PickTile[] = FOODS.map((f) => ({
+      id: f.id,
+      label: f.label,
+      name: f.name,
+      art: <Doodle name={f.doodleId} size={44} />,
+    }));
+    drawnTreats.forEach((f, i) => {
+      const id = `${DRAWN_PREFIX}${f.id}`;
+      tiles.push({
+        id,
+        label: `Give them the treat you drew${drawnTreats.length > 1 ? ` (${i + 1})` : ""}`,
+        name: "Mine!",
+        art: <TreatThumb name={id} />,
+      });
+    });
+    tiles.push({
+      id: CRUMB_TILE,
+      label: "Just give them a crumb",
+      name: "A crumb",
+      art: <TreatThumb name="" />,
+    });
+    return tiles;
+  }, [drawnTreats]);
+
+  /** Arm a treat — or nothing, which is the plain crumb again. */
+  const armTreat = useCallback((id: string | null) => {
+    setArmed(id);
+    onArmTreat?.(id);
+  }, [onArmTreat]);
+
+  const pickTreat = (tileId: string) => {
+    const id = tileId === CRUMB_TILE ? null : (foodById(tileId)?.doodleId ?? tileId);
+    armTreat(id);
+    setTrayOpen(false);
+    sfxHappy();
+    pushBanner(
+      id ? "Yum! Tap the water to put it down." : "Crumbs it is — tap the water.",
+      "heart",
+    );
+  };
+
+  /* What the treat button is wearing: the armed treat itself, so the choice is
+     visible without opening anything. With nothing armed it wears the gift
+     doodle — there is no icon in `Icons` for "an apple", and a present is the
+     honest shape for a thing that is given and never owed. */
+  const armedFood = armed ? foodById(armed) : null;
+  const treatFace = !armed
+    ? undefined
+    : armedFood
+      ? <Doodle name={armedFood.doodleId} size={26} />
+      : <TreatThumb name={armed} size={26} />;
+  const treatLabel = !armed
+    ? "Pick a treat to give"
+    : `Treat ready: ${armedFood ? armedFood.name : "the one you drew"} — pick another`;
   const emptyLine = WORLD_EMPTY[worldId] ?? WORLD_EMPTY.ocean;
   const prompts = (WORLD_PACKS.find((p) => p.id === worldId) ?? WORLD_PACKS[0]).prompts;
   const padX = { paddingLeft: "max(12px, env(safe-area-inset-left))", paddingRight: "max(12px, env(safe-area-inset-right))" };
@@ -2798,16 +2985,51 @@ export default function WorldScene({
             aria-label="Draw another creature"
             onClick={() => { sfxHappy(); onDrawMore(); }}
           />
+          {/* Feeding used to be a secret: a tap on empty water dropped an
+              anonymous crumb, and nothing anywhere said so. Now it has a button
+              of its own beside Draw — never in the overflow menu, where a
+              three-year-old would never go looking — wearing whatever is
+              armed, so the choice is visible without opening anything.
+
+              It stands where `more` used to: at 320px the row was already
+              within 14px of its own padding, and a sixth control tipped it
+              over. Nothing shrank to make room — those targets are sized for
+              small hands. `more` moved instead, down to the far corner, with
+              every one of its items intact. */}
           <HudBtn
             round
-            icon="more"
-            seed={509}
-            aria-label="More world options"
-            aria-expanded={menuOpen}
-            aria-haspopup="menu"
-            onClick={() => { sfxTap(); setMenuOpen((o) => !o); }}
+            art={treatFace ?? <Doodle name="gift" size={27} />}
+            tone={TONE.sun}
+            seed={613}
+            aria-label={treatLabel}
+            aria-haspopup="dialog"
+            onClick={() => { sfxTap(); setTrayOpen(true); }}
           />
         </div>
+      </div>
+
+      {/* ── world options: the grown-up corner ─────────────────────────────
+          Sound, sharing, the friends list, repainting a dream world. It sat in
+          the top row until feeding needed that slot; here it keeps its own
+          menu — which is the only way to reach the sound and share controls on
+          a narrow phone, where both stand down — and simply opens upwards. */}
+      <div
+        className="absolute z-20 pointer-events-none"
+        style={{
+          right: "max(12px, env(safe-area-inset-right))",
+          bottom: "max(12px, env(safe-area-inset-bottom))",
+        }}
+      >
+        <HudBtn
+          round
+          icon="more"
+          seed={509}
+          className="relative z-20"
+          aria-label="More world options"
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          onClick={() => { sfxTap(); setMenuOpen((o) => !o); }}
+        />
 
         {menuOpen && (
           <>
@@ -2816,9 +3038,9 @@ export default function WorldScene({
               aria-label="Close menu"
               onClick={() => setMenuOpen(false)}
             />
-            <div className="relative z-20 mt-2 flex justify-end pointer-events-auto">
+            <div className="absolute bottom-full right-0 z-20 mb-2 pointer-events-auto">
               <InkCard
-                className="hud-sheet hud-drop p-2 w-60 max-w-full grid gap-1"
+                className="hud-sheet hud-drop p-2 w-60 max-w-[86vw] grid gap-1"
                 seed={63}
                 weight={3.2}
                 role="menu"
@@ -3328,8 +3550,35 @@ export default function WorldScene({
         >
           {/* a paper slip: the worlds behind this are busy, and the reef bed in
               particular swallowed the bare text entirely */}
-          <span className="hud-slip hud-slip-note">tap a friend to say hi · hold to open its card</span>
+          <span className="hud-slip hud-slip-note">tap a friend to say hi · hold for its card · tap the water to give a treat</span>
         </div>
+      )}
+
+      {trayOpen && (
+        <PickTray
+          title="Pick a treat!"
+          tiles={treatTiles}
+          onPick={pickTreat}
+          onClose={() => { sfxTap(); setTrayOpen(false); }}
+          closeLabel="Close treats"
+          footer={
+            onDrawTreat ? (
+              <InkButton
+                onClick={() => { sfxHappy(); setTrayOpen(false); onDrawTreat(); }}
+                aria-label="Draw a treat of your own"
+                seed={seedOf("draw-a-treat")}
+                radius={14}
+                tone={TONE.draw.wax}
+                className="pick-tile"
+              >
+                <span className="pick-tileinner">
+                  <span className="pick-thumb"><Icon name="pencil" size={26} color="#fff6e6" weight={2.4} /></span>
+                  <span className="pick-name ink-hand ink-on-wax" style={{ color: "#fff6e6" }} aria-hidden="true">Draw one</span>
+                </span>
+              </InkButton>
+            ) : undefined
+          }
+        />
       )}
     </div>
   );
