@@ -37,8 +37,9 @@ import {
   FOOD2, FOOD_EAT, FOOD_LIFE, FOOD_MAX,
   CARE_PER_FOOD, CARE_PER_HI, CARE_HI_CAP, CARE_PER_TRICK,
   TRICK_DUR, TRICK_COOLDOWN, TRICK_TWIRL, trickPose, type TrickPose,
+  NIBBLE_DUR, nibblePose, CELEBRATE_DUR, celebratePose, sleepPose,
 } from "@/lib/social";
-import { welcomeBack, type Visit } from "@/lib/daily";
+import { welcomeBack, daylight, type Visit } from "@/lib/daily";
 import { drawCrayonStroke, drawStrokeFull, normalizeStrokes } from "@/lib/crayon";
 import { paintDoodle } from "@/lib/doodleArt";
 import ReleaseConfirm from "@/components/ink/ReleaseConfirm";
@@ -242,6 +243,9 @@ interface RT {
      `trK` is which of the four it does, chosen once from its own seed so it is
      always *its* trick. `trT` is when the current one started, or long ago. */
   trT: number; trK: number;
+  /** When it last took a bite, and when it last had something to celebrate.
+   *  Both are moments laid over whatever it was already doing, like a trick. */
+  nbT: number; celT: number;
   /** Care earned this session and not yet written down. See `commitCare`. */
   care: number;
   /** Hellos counted towards care this session, so a drum solo is still one hi. */
@@ -1129,6 +1133,7 @@ export default function WorldScene({
         near: "", nearT: 0, pal: "",
         held: 0, hx: 0, hy: 0, dropT: -1e9,
         trT: -1e9, trK: (rnd() * 4) | 0,
+        nbT: -1e9, celT: -1e9,
         care: 0, hiN: 0, onFood: 0,
       };
       rt.next = rt.t;
@@ -1379,6 +1384,9 @@ export default function WorldScene({
       const pen = maskRef.current;          // the painted regions, when there are any
       const calm = calmRef.current;         // < 1 when the viewer asked for less motion
       const food = foodRef.current;         // whatever crumbs are in the water
+      /* Dozing is decided once a frame, not once a creature: the sky is the
+         same for everybody, and `daylight` reads the clock. */
+      const night = daylight() < 0.12;
 
       /* ── whose turn it is to be a character ── */
       if (beatId !== null) {
@@ -1635,6 +1643,7 @@ export default function WorldScene({
               fx = 0; fy = 0; fd = FOOD2;
               r.excite = 1;
               r.care += CARE_PER_FOOD;
+              r.nbT = t;   // chew it, so the treat lands instead of vanishing
               for (let s = 0; s < 7; s++) {
                 sparkles.push({
                   x: r.x * W + (Math.random() - 0.5) * 26,
@@ -2165,6 +2174,30 @@ export default function WorldScene({
              `calm` is handed straight through, so a viewer who asked for less
              motion still gets the trick, the name tag and the sparkle without
              the sprite being thrown about. */
+          /* ── the quieter states ──
+             One at a time and in this order: a bite interrupts a celebration,
+             a celebration interrupts dozing, and the trick below outranks all
+             three. Every one of them is a whole-body transform, so a scribble
+             and a stamp wear them identically — which is the whole reason they
+             are shaped this way. */
+          const nu = (t - rt.nbT) / NIBBLE_DUR;
+          const cu = (t - rt.celT) / CELEBRATE_DUR;
+          let posed = false;
+          if (nu > 0 && nu < 1) { nibblePose(POSE, nu, calm); posed = true; }
+          else if (cu > 0 && cu < 1) { celebratePose(POSE, cu, calm); posed = true; }
+          else if (night && !rt.held && rt.excite < 0.2) {
+            /* Dozing, not switched off: it still drifts along its band, it just
+               breathes slowly while it does. Nothing here is sad, and nothing
+               is lost by being away — the world is simply darker. */
+            sleepPose(POSE, t + rt.seed, calm);
+            posed = true;
+          }
+          if (posed) {
+            if (POSE.dx !== 0 || POSE.dy !== 0) ctx.translate(POSE.dx * sizeF, POSE.dy * sizeF);
+            if (POSE.rot !== 0) ctx.rotate(POSE.rot);
+            if (POSE.sx !== 1 || POSE.sy !== 1) ctx.scale(POSE.sx, POSE.sy);
+          }
+
           const tu = (t - rt.trT) / TRICK_DUR[rt.trK];
           if (tu > 0 && tu < 1) {
             trickPose(POSE, rt.trK, tu, calm);

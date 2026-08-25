@@ -38,7 +38,7 @@
 // per-frame budget is a handful of blits, ~100 sprite stamps and ~12 paths.
 
 import {
-  applyNight, bloom, cachedLayer, cachedSprite, clamp, dayLight, dayWarmth,
+  applyNight, applySeasonWash, bloom, cachedLayer, cachedSprite, clamp, dayLight, dayWarmth,
   detail, easeOut, fbm1, glow, lerp, mulberry32, noise1, quality,
   richFx, slot, vGrad, vignette,
   type ThemeFrame, type FxState,
@@ -1559,6 +1559,8 @@ export function drawSpace({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
   // Everything above is matter and takes the night wash. Everything below is
   // light, and is drawn additively on top of it so the dark cannot put it out.
   applyNight(ctx, W, H);
+  // orbit has weather nowhere — the cast shifts, the sky does not snow
+  applySeasonWash(ctx, W, H);
 
   /* ══ LIGHT ════════════════════════════════════════════════════════════════ */
 

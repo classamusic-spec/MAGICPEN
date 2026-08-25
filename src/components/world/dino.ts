@@ -21,7 +21,7 @@
 import {
   cachedSprite, mulberry32, fbm1, noise1, detail, richFx,
   vGrad, vignette, slot, lerp, clamp, clamp01,
-  dayLight, dayWarmth, applyNight,
+  dayLight, dayWarmth, applyNight, applySeason,
   type ThemeFrame, type FxState,
 } from "./shared";
 
@@ -1604,6 +1604,8 @@ export function drawDino({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt: 
 
   /* ── the evening, laid over the finished scene ── */
   applyNight(ctx, W, H);
+  // the island is out of doors, so it gets the whole year
+  applySeason(ctx, W, H, dt);
 
   /* ── everything hot, drawn after the night so the fire survives it ── */
   const pulse = 0.70 + (Math.sin(t * (still ? 0.6 : 1.7)) * 0.13 + Math.sin(t * 0.61 + 1.2) * 0.06) * mo

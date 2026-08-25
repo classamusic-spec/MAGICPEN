@@ -24,7 +24,7 @@ import {
   cachedSprite, mulberry32, noise1, fbm1, detail, quality, richFx,
   bloom, vGrad, wavyBand, grade, vignette, slot,
   lerp, clamp, clamp01, easeOut, damp,
-  dayLight, dayWarmth, applyNight,
+  dayLight, dayWarmth, applyNight, applySeasonWash,
   type ThemeFrame, type FxState,
 } from "./shared";
 
@@ -1915,6 +1915,8 @@ export function drawOcean({ ctx, W, H, t: rt, floorY }: ThemeFrame, fx: FxState,
   }
 
   applyNight(ctx, W, H);
+  // the reef is under the sea — the light changes with the year, but nothing falls through water
+  applySeasonWash(ctx, W, H);
 
   if (night > 0.12) {
     const glowK = clamp01((night - 0.12) * 1.5);

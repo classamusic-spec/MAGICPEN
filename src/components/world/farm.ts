@@ -14,7 +14,7 @@
 import {
   cachedSprite, mulberry32, fbm1, noise1, detail, richFx, quality,
   bloom, vGrad, grade, vignette, slot, lerp, clamp, clamp01,
-  dayLight, dayWarmth, applyNight,
+  dayLight, dayWarmth, applyNight, applySeason,
   type ThemeFrame, type FxState,
 } from "./shared";
 
@@ -1806,6 +1806,8 @@ export function drawFarm({ ctx, W, H, t: rt, floorY }: ThemeFrame, fx: FxState, 
   }
 
   applyNight(ctx, W, H);
+  // the farm is out of doors, so it gets the whole year
+  applySeason(ctx, W, H, dt);
 
   if (night > 0.06) {
     ctx.save();

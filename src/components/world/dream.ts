@@ -19,7 +19,7 @@
 import type { DreamWorld, RegionKind } from "@/lib/types";
 import { drawCrayonStroke } from "@/lib/crayon";
 import { REGION_H, REGION_W, maskOf, regionAt, regionBand, type RegionMask } from "@/lib/regions";
-import { clamp01, detail, quality, slot, vignette, type FxState, type ThemeFrame } from "./shared";
+import { applySeasonWash, clamp01, detail, quality, slot, vignette, type FxState, type ThemeFrame } from "./shared";
 
 /* ── colour helpers ────────────────────────────────────────────────────────── */
 
@@ -602,4 +602,7 @@ export function drawDream({ ctx, W, H, t, floorY }: ThemeFrame, fx: FxState, dt:
   ctx.fillStyle = hi;
   ctx.fillRect(0, 0, W, H);
   vignette(ctx, W, H, 0.18);
+  /* The child painted this one, so the year only changes its light — nothing
+     falls across a picture somebody made on purpose. */
+  applySeasonWash(ctx, W, H);
 }
