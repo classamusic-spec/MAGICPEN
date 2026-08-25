@@ -616,10 +616,14 @@ function useBox<T extends HTMLElement>() {
     const el = ref.current;
     if (!el) return;
     const read = () => {
-      const r = el.getBoundingClientRect();
-      // round to 2px so a press micro-resize doesn't redraw the hand
-      const w = Math.round(r.width / 2) * 2;
-      const h = Math.round(r.height / 2) * 2;
+      // offsetWidth/Height, not getBoundingClientRect: the world flips in on a
+      // 3D `page-flip-in` (translateZ + rotateX under perspective), and a
+      // client rect returns the *projected* size — a squashed button. Worse, a
+      // transform does not change the layout box, so the ResizeObserver never
+      // fires when the flip lands, and the drawn background stays squashed for
+      // good. The offset box ignores the transform and reads the real size.
+      const w = Math.round(el.offsetWidth / 2) * 2;
+      const h = Math.round(el.offsetHeight / 2) * 2;
       setBox((p) => (p.w === w && p.h === h ? p : { w, h }));
     };
     read();
