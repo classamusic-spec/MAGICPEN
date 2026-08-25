@@ -1029,3 +1029,53 @@
   .ink-btn, .ink-pinned { transition: none; }
   .ink-btn:active:not(:disabled) { transform: none; }
 }
+
+/* ── PickTray: the "pick one of these" sheet ──────────────────────────────────
+   Lifted out of DrawScreen's private stylesheet so the stamp tray and the treat
+   tray are one behaviour rather than two copies. A sheet of paper laid over the
+   room: a scrim, a drawn card, and the choices inside. */
+.pick-scrim {
+  position: fixed; inset: 0; z-index: 60;
+  display: grid; place-items: center;
+  overflow-y: auto; padding: 16px;
+  background: rgba(45, 41, 38, 0.5);
+}
+.pick-scrim-in { animation: pick-fade var(--dur-2) var(--ease-out) both; }
+.pick-card { width: 100%; max-width: 380px; margin: auto; padding: 16px 16px 18px; }
+.pick-card-in { animation: pick-pop var(--dur-3) var(--ease-spring) both; }
+.pick-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 10px; margin-bottom: 8px;
+}
+.pick-heading { flex: 1 1 auto; min-width: 0; }
+.pick-title { font-size: var(--fs-lg); line-height: 1.08; }
+/* scrolls when the list is long; never spills sideways on a 320px phone */
+.pick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+  max-height: min(52vh, 380px);
+  overflow-y: auto; overflow-x: hidden;
+  padding: 4px 2px 6px;
+}
+.pick-tile { padding: 8px 4px 6px !important; min-height: 74px; }
+.pick-tile-in { animation: pick-tumble var(--dur-3) var(--ease-out) both; }
+.pick-tileinner {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%;
+}
+.pick-thumb { display: grid; place-items: center; width: 44px; height: 44px; }
+.pick-name {
+  font-size: var(--fs-2xs); line-height: 1.05; text-align: center;
+  overflow-wrap: anywhere; color: var(--ink);
+}
+@keyframes pick-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pick-pop {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes pick-tumble { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; } }
+/* the list is short enough to centre once the card is wide */
+@media (min-width: 420px) { .pick-grid { justify-content: center; } }
+@media (prefers-reduced-motion: reduce) {
+  .pick-scrim-in, .pick-card-in, .pick-tile-in { animation: none; }
+}
