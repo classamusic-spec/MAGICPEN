@@ -102,6 +102,21 @@ function tracePath(ctx: CanvasRenderingContext2D, pts: Pt[]) {
  * Draw one stroke with crayon texture: a solid core, jittered ghost passes,
  * and waxy speckles along the path.
  */
+/** A darker shade of a #rrggbb wax, for the grain that shows where a crayon
+ *  pressed harder. Left untouched if the colour isn't a plain hex — grain is a
+ *  nicety, never worth risking a wrong colour over. Drawn in normal
+ *  source-over (never `multiply`): sprites are baked on a transparent canvas,
+ *  where multiply would bleed black into the wax's edge. */
+function waxGrain(color: string, k = 0.72): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(color.trim());
+  if (!m) return color;
+  const n = parseInt(m[1], 16);
+  const r = Math.round(((n >> 16) & 255) * k);
+  const g = Math.round(((n >> 8) & 255) * k);
+  const b = Math.round((n & 255) * k);
+  return `rgb(${r},${g},${b})`;
+}
+
 export function drawCrayonStroke(
   ctx: CanvasRenderingContext2D,
   pts: Pt[],
@@ -125,36 +140,74 @@ export function drawCrayonStroke(
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  // ghost passes (wax grain)
+  // ── the body of the wax ────────────────────────────────────────────────
+  // Three soft passes, each nudged a little off true and a little different in
+  // width, so the edge is furry rather than printed — a crayon never lays down
+  // the same line twice.
   ctx.strokeStyle = color;
   for (let g = 0; g < 3; g++) {
-    const jx = (rand() - 0.5) * size * 0.55;
-    const jy = (rand() - 0.5) * size * 0.55;
+    const jx = (rand() - 0.5) * size * 0.5;
+    const jy = (rand() - 0.5) * size * 0.5;
     ctx.save();
     ctx.translate(jx, jy);
-    ctx.globalAlpha = 0.22;
-    ctx.lineWidth = size * (0.9 + rand() * 0.5);
+    ctx.globalAlpha = 0.2;
+    ctx.lineWidth = size * (0.86 + rand() * 0.5);
     tracePath(ctx, sub);
     ctx.stroke();
     ctx.restore();
   }
 
-  // core pass
+  // core pass — the darkest, most solid lay of wax
   ctx.globalAlpha = 0.92;
-  ctx.lineWidth = size * 0.72;
+  ctx.lineWidth = size * 0.7;
   tracePath(ctx, sub);
   ctx.stroke();
-  ctx.globalAlpha = 1;
 
-  // speckles (wax clumps)
-  const speckles = Math.floor(sub.length / 6);
-  ctx.fillStyle = color;
-  for (let s = 0; s < speckles; s++) {
+  // ── paper tooth ────────────────────────────────────────────────────────
+  // The one thing that says "crayon" more than any amount of colour: wax skips
+  // the low spots of the paper's grain, so real coverage is *broken*. Drawn as
+  // a dashed pass in the wax colour — the gaps are the tooth showing through —
+  // laid at a slight offset and a hair thinner than the core, so it grazes the
+  // surface the way a crayon dragged at an angle does. A crayon also presses
+  // unevenly, so the segments vary in how present they are.
+  const grain = waxGrain(color);
+  ctx.save();
+  ctx.strokeStyle = grain;
+  const dash = size * (0.5 + rand() * 0.4);
+  const gap = size * (0.34 + rand() * 0.45);
+  ctx.setLineDash([dash, gap]);
+  ctx.lineDashOffset = rand() * (dash + gap);
+  ctx.translate((rand() - 0.5) * size * 0.28, (rand() - 0.5) * size * 0.28);
+  ctx.globalAlpha = 0.28;
+  ctx.lineWidth = size * 0.46;
+  tracePath(ctx, sub);
+  ctx.stroke();
+  // a second, finer tooth crossing the first at a different phase, so the grain
+  // reads as a texture and not as a row of tidy dashes
+  ctx.setLineDash([size * 0.26, size * 0.55]);
+  ctx.lineDashOffset = rand() * size * 2;
+  ctx.globalAlpha = 0.22;
+  ctx.lineWidth = size * 0.3;
+  tracePath(ctx, sub);
+  ctx.stroke();
+  ctx.restore();
+  ctx.setLineDash([]);
+
+  // ── wax clumps ─────────────────────────────────────────────────────────
+  // Little heavier deposits that gather along the stroke — more of them than
+  // before and finer, hugging the line rather than scattered around it, the way
+  // wax actually piles where the crayon lifts and lands.
+  const clumps = Math.floor(sub.length / 3.2);
+  for (let s = 0; s < clumps; s++) {
     const p = sub[Math.floor(rand() * sub.length)];
-    const r = size * (0.12 + rand() * 0.22);
-    ctx.globalAlpha = 0.35 + rand() * 0.3;
+    const r = size * (0.07 + rand() * 0.15);
+    // most flecks are the wax's own grain (darker); a few are bright wax catching
+    // the light, so the surface glints instead of only darkening
+    const bright = rand() < 0.25;
+    ctx.fillStyle = bright ? "#fffaf0" : grain;
+    ctx.globalAlpha = bright ? 0.18 + rand() * 0.18 : 0.28 + rand() * 0.33;
     ctx.beginPath();
-    ctx.arc(p.x + (rand() - 0.5) * size, p.y + (rand() - 0.5) * size, r, 0, Math.PI * 2);
+    ctx.arc(p.x + (rand() - 0.5) * size * 0.55, p.y + (rand() - 0.5) * size * 0.55, r, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.globalAlpha = 1;

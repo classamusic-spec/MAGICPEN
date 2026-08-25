@@ -1213,7 +1213,7 @@ export default function TraceScreen({
     if (ruledRef.current) paintRules(ctx, b, cw, spaceRef.current.h, ruleRef.current);
 
     const paths = pathsRef.current;
-    const gw = Math.max(7, b.w * 0.115);
+    const gw = Math.max(6, b.w * 0.092);
     const d = demoRef.current;
 
     // The marks that are not the lesson. Thin and pencil-grey, so they read as
@@ -1482,7 +1482,7 @@ export default function TraceScreen({
     const octx = off.getContext("2d");
     if (octx) {
       octx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const gw = Math.max(7, b.w * 0.115);
+      const gw = Math.max(6, b.w * 0.092);
       const tone = shade(colorRef.current, 0.34);
       pathsRef.current.forEach((pts, i) => drawCrayonStroke(octx, pts, tone, gw, 31 + i * 7));
       ghostRef.current = off;
@@ -1771,7 +1771,7 @@ export default function TraceScreen({
     clearTimers();
     if (demoRef.current.active) stopDemo();
     const b = boxRef.current;
-    liveRef.current = { color, size: Math.max(6, b.w * 0.085), pts: [toLocal(e)] };
+    liveRef.current = { color, size: Math.max(5, b.w * 0.066), pts: [toLocal(e)] };
     setSay("");
     paintInk();
   };
