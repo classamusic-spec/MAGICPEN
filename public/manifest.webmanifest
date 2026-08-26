@@ -1,0 +1,21 @@
+{
+  "name": "Magic Pen — Draw It. It Lives.",
+  "short_name": "Magic Pen",
+  "description": "Draw anything and watch it come alive. Letters, numbers, words and shapes to trace, worlds to play in, and a sketchbook that never forgets.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#fdf3e3",
+  "background_color": "#fdf3e3",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["education", "kids", "entertainment"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
