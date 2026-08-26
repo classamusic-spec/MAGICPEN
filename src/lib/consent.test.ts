@@ -1,9 +1,10 @@
-// The consent model guards the only door out of the device, so its failure
-// modes matter more than its happy path. Every test here is a way it could
-// wrongly say "yes".
+// The parental gate stands in front of the doors that lead out of the app —
+// the camera, sharing, printing — so its failure modes matter more than its
+// happy path. Every test here is a way a young child could get through it, or a
+// way a grown-up's one pass could be forgotten.
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { loadConsent, saveConsent, mayUseAiArt, makeGateChallenge } from "./consent";
+import { loadConsent, saveConsent, makeGateChallenge } from "./consent";
 
 /** A tiny localStorage stand-in — the module must work in a plain node test. */
 function fakeStorage() {
@@ -22,21 +23,20 @@ beforeEach(() => {
   globalThis.localStorage = fakeStorage();
 });
 
-describe("consent defaults to no", () => {
-  it("says no before anyone has been asked", () => {
-    expect(mayUseAiArt()).toBe(false);
-    expect(loadConsent().aiArt).toBeNull();
+describe("the gate-passed flag defaults to no", () => {
+  it("says no before the gate has ever been passed", () => {
+    expect(loadConsent().gatePassed).toBe(false);
   });
 
   it("says no when storage holds nonsense", () => {
     localStorage.setItem("magicpen.consent.v1", "{{ not json");
-    expect(mayUseAiArt()).toBe(false);
+    expect(loadConsent().gatePassed).toBe(false);
   });
 
   it("says no for any value that is not exactly true", () => {
     for (const v of ['"yes"', "1", "null", '{"nested":true}']) {
-      localStorage.setItem("magicpen.consent.v1", `{"aiArt":${v}}`);
-      expect(mayUseAiArt()).toBe(false);
+      localStorage.setItem("magicpen.consent.v1", `{"gatePassed":${v}}`);
+      expect(loadConsent().gatePassed).toBe(false);
     }
   });
 
@@ -46,22 +46,19 @@ describe("consent defaults to no", () => {
       setItem() { throw new Error("private mode"); },
       removeItem() {}, clear() {}, key: () => null, length: 0,
     } as unknown as Storage;
-    expect(mayUseAiArt()).toBe(false);
+    expect(loadConsent().gatePassed).toBe(false);
   });
 });
 
-describe("a grown-up's decision sticks", () => {
-  it("turns on only when set explicitly, and can always be turned back off", () => {
-    saveConsent({ aiArt: true, gatePassed: true });
-    expect(mayUseAiArt()).toBe(true);
-    saveConsent({ aiArt: false });
-    expect(mayUseAiArt()).toBe(false);
-    // turning it off must not quietly discard that the gate was ever passed
+describe("passing the gate is remembered", () => {
+  it("turns on only when set explicitly", () => {
+    expect(loadConsent().gatePassed).toBe(false);
+    saveConsent({ gatePassed: true });
     expect(loadConsent().gatePassed).toBe(true);
   });
 
-  it("records when the decision was made", () => {
-    saveConsent({ aiArt: true });
+  it("records when the gate was passed", () => {
+    saveConsent({ gatePassed: true });
     expect(loadConsent().decidedAt).toBeGreaterThan(0);
   });
 });

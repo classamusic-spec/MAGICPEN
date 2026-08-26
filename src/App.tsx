@@ -6,11 +6,7 @@ import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid, loadDr
 import { resolvePet, makeRoom, petGreeting } from "@/lib/pet";
 import { remember as rememberInAlbum, forget as forgetFromAlbum } from "@/lib/album";
 import { markVisit, dailyIdea, welcomeBack, type Visit } from "@/lib/daily";
-import { mayUseAiArt } from "@/lib/consent";
 import { CARE_PER_DAY } from "@/lib/social";
-import { trpc } from "@/providers/trpc";
-import { bakeSketchPNG, proxyArtUrl } from "@/lib/polish";
-import { doodlePNG } from "@/lib/doodleArt";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import ScreenLoader from "@/components/ScreenLoader";
 
@@ -28,7 +24,7 @@ import ScreenLoader from "@/components/ScreenLoader";
    share, and the build bears it out — world/themes + world/shared come out as
    one chunk fetched by whichever of the world or the game is opened first, and
    lib/regions as another shared by the world and the world-painter. What is
-   left over (lib/sprites, lib/polish) is not shared *between* the async
+   left over (lib/sprites) is not shared *between* the async
    screens at all: eager Home needs both, so they belong in the entry chunk and
    are already paid for. Writing the split by hand could only make that worse. */
 import Splash from "@/components/Splash";
@@ -89,7 +85,6 @@ export default function App() {
   const [draft, setDraft] = useState<Stroke[]>([]);
   const [photoDraft, setPhotoDraft] = useState<string | null>(null);
   const [newId, setNewId] = useState<string | null>(null);
-  const [polishingIds, setPolishingIds] = useState<Set<string>>(new Set());
   /* Drawing a treat rather than a creature, and which treat the world has
      armed. A treat is a present, so nothing here counts anything down. */
   const [drawingTreat, setDrawingTreat] = useState(false);
@@ -151,7 +146,6 @@ export default function App() {
   useEffect(() => {
     if (petRef && !creatures.some((c) => c.id === petRef.id)) dropPet();
   }, [petRef, creatures, dropPet]);
-  const utils = trpc.useUtils();
   const worldIdRef = useRef(worldId);
   worldIdRef.current = worldId;
 
@@ -188,117 +182,6 @@ export default function App() {
     );
   };
 
-  /* ── AI polish: quietly upgrade a creature's crayon art in the background ──
-     `artTried` used to be written the moment a creature was picked, before the
-     request had even been sent, and it was then treated as final. That is
-     wrong twice over.
-
-     Wrong moment, first: the attempt fails routinely — the child is on a
-     train, the request never lands — and the creature was marked as tried
-     anyway, on a promise the app had not kept.
-
-     Wrong idea, second, and this is the one that actually bit. Look at what
-     the server can answer with (api/routers/polish.ts): `unavailable` means
-     nobody has configured an art key yet, and `failed` covers being rate
-     limited. Neither is a fact about the drawing — both are facts about a
-     Tuesday afternoon. A flag written on either of them, and persisted,
-     means that the day the key finally is configured, every creature drawn
-     before it stays in crayon forever.
-
-     So nothing writes it any more. A session ref stops the same creature
-     being asked about twice while its request is still in the air, and it is
-     deliberately not persisted, because a new session is exactly when a retry
-     should happen. The field is still read, and still honoured — as an
-     ordering hint, not a gate: creatures nobody has asked about go first. */
-  const askedRef = useRef<Set<string>>(new Set());
-
-  const startPolish = (creature: Creature) => {
-    /* ── the only door out of this device ─────────────────────────────────
-       Everything else Magic Pen does happens in this browser. This one
-       function sends a child's drawing — sometimes a *photograph* of their
-       paper drawing, which can contain the child — to an art service to be
-       re-rendered.
-
-       The check lives here, at the single chokepoint, and deliberately not at
-       the four call sites: a guard you have to remember to repeat is a guard
-       that eventually gets forgotten. Off unless a grown-up has explicitly
-       turned it on behind the parental gate (see lib/consent). */
-    if (!mayUseAiArt()) return;
-
-    let image: string | null;
-    try {
-      // A word creature has no strokes — its body is a doodle, so that is what
-      // the art model gets to redraw.
-      image = creature.doodleId
-        ? doodlePNG(creature.doodleId)
-        : creature.photoData ?? bakeSketchPNG(creature.strokes);
-    } catch { return; }
-    if (!image) return;
-    const jobId = creature.id;
-    const label = kindById(creature.kindId).label.toLowerCase();
-    const client = utils.client;
-    const done = () => setPolishingIds((prev) => { const n = new Set(prev); n.delete(jobId); return n; });
-    setPolishingIds((prev) => new Set(prev).add(jobId));
-    console.info("[polish] started for a", label);
-    /* One-shot first: it is the only path that survives a serverless host,
-       where the start/status job map does not outlive the request. If the
-       server is older (no `run`), fall back to fire-and-poll. */
-    client.polish.run
-      .mutate({ jobId, image, label, worldId: worldIdRef.current })
-      .then((res) => {
-        if (res.status === "ready" && res.url) {
-          const artUrl = proxyArtUrl(res.url);
-          console.info("[polish] ready for a", label);
-          setCreatures((prev) => prev.map((c) => (c.id === jobId ? { ...c, artUrl } : c)));
-          done();
-          return;
-        }
-        console.info("[polish]", res.status, "for a", label);
-        done();
-      })
-      .catch(() => pollingFallback());
-
-    const pollingFallback = () => client.polish.start
-      .mutate({ jobId, image, label, worldId: worldIdRef.current })
-      .then(() => {
-        const t0 = Date.now();
-        const iv = window.setInterval(() => {
-          if (Date.now() - t0 > 180_000) { window.clearInterval(iv); done(); return; }
-          client.polish.status
-            .query({ jobId })
-            .then((st) => {
-              if (st.status === "ready" && st.url) {
-                window.clearInterval(iv);
-                const artUrl = proxyArtUrl(st.url);
-                console.info("[polish] ready for a", label);
-                setCreatures((prev) => prev.map((c) => (c.id === jobId ? { ...c, artUrl } : c)));
-                done();
-              } else if (st.status === "failed" || st.status === "unavailable") {
-                window.clearInterval(iv);
-                console.info("[polish]", st.status, "for a", label);
-                done();
-              }
-            })
-            .catch(() => { /* keep polling */ });
-        }, 2500);
-      })
-      .catch(() => { done(); /* polish is optional — crayon stays */ });
-  };
-
-  // retro-polish up to 3 older crayon-only creatures when entering a world
-  useEffect(() => {
-    if (screen !== "world") return;
-    const waiting = creatures.filter(
-      (c) => !c.artUrl && !askedRef.current.has(c.id),
-    );
-    // never asked about first, then the ones an older build gave up on
-    const backlog = [...waiting.filter((c) => !c.artTried), ...waiting.filter((c) => c.artTried)]
-      .slice(0, 3);
-    if (!backlog.length) return;
-    for (const c of backlog) askedRef.current.add(c.id);
-    backlog.forEach((c, i) => window.setTimeout(() => startPolish(c), i * 4000));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen]);
 
   /* ── warm the game while the child is busy in a world ─────────────────────
      "Play a game" is one tap away from here, and the game is the heaviest
@@ -374,8 +257,6 @@ export default function App() {
     setNewId(creature.id);
     setPhotoDraft(null);
     go("world");
-    askedRef.current.add(creature.id);
-    startPolish(creature);
   };
 
   /* Drawing school's payoff, and the whole reason the guide is a ghost rather
@@ -407,8 +288,6 @@ export default function App() {
     setSchoolWorld(undefined);
     setWorldId(intoWorld);
     go("world");
-    askedRef.current.add(creature.id);
-    startPolish(creature);
   };
 
   /* Word World's payoff: the word the child wrote becomes a creature and walks
@@ -437,8 +316,6 @@ export default function App() {
     setCreatures((prev) => [...makeRoom(prev, MAX_CREATURES, petRef?.id ?? null), creature]);
     setNewId(creature.id);
     go("world");
-    askedRef.current.add(creature.id);
-    startPolish(creature);
   };
 
   /* The magic stamp: the youngest hands' way in. Tapping a stamp in the drawing
@@ -469,8 +346,6 @@ export default function App() {
     setNewId(creature.id);
     setWorldId(drawWorld);
     go("world");
-    askedRef.current.add(creature.id);
-    startPolish(creature);
   };
 
   /* A treat the child drew. It is never run through the recogniser and never
@@ -593,7 +468,6 @@ export default function App() {
                 newId={newId}
                 worldId={worldId}
                 dream={dream}
-                polishingIds={polishingIds}
                 onBack={() => { setNewId(null); go("home"); }}
                 onDrawMore={() => { setNewId(null); setIdeaPrompt(null); setDrawWorld(worldId); go("draw"); }}
                 onPlayGame={() => { setNewId(null); go("game"); }}

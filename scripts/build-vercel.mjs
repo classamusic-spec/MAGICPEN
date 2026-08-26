@@ -1,12 +1,14 @@
 // ─── Vercel Build Output API packager ───────────────────────────────────────
-// Builds the SPA and bundles the two serverless functions into
-// .vercel/output, so `vercel deploy --prebuilt` needs no remote install.
+// Builds the SPA into .vercel/output as a purely static site, so
+// `vercel deploy --prebuilt` needs no remote install and runs no server.
 //
-// Why prebuilt: package-lock.json pins a private npm mirror that is not always
-// reachable, so a remote `npm ci` on Vercel fails. Building here sidesteps it.
+// Magic Pen is client-only: nothing a child does leaves the device, so there
+// are no serverless functions to bundle — just the static shell and a SPA
+// catch-all. Building here also sidesteps a remote `npm ci`, which fails
+// because package-lock.json pins a private npm mirror that is not always
+// reachable.
 
 import { execSync } from "node:child_process";
-import { build } from "esbuild";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -18,47 +20,8 @@ fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(path.join(out, "static"), { recursive: true });
 
 console.log("→ building the SPA");
-execSync("npx vite build", { stdio: "inherit" });
+execSync("npm run build", { stdio: "inherit" });
 fs.cpSync(path.join(root, "dist", "public"), path.join(out, "static"), { recursive: true });
-
-/** Bundle one Node serverless function into the Build Output layout. */
-async function fn(name, entry, maxDuration = 60) {
-  const dir = path.join(out, "functions", "api", `${name}.func`);
-  fs.mkdirSync(dir, { recursive: true });
-  console.log(`→ bundling function api/${name}`);
-  await build({
-    entryPoints: [entry],
-    outfile: path.join(dir, "index.js"),
-    platform: "node",
-    target: "node20",
-    format: "cjs",
-    bundle: true,
-    minify: true,
-    sourcemap: false,
-    // Keep the bundle honest about what it needs at runtime.
-    external: [],
-    logLevel: "warning",
-  });
-  fs.writeFileSync(
-    path.join(dir, ".vc-config.json"),
-    JSON.stringify(
-      {
-        runtime: "nodejs20.x",
-        handler: "index.js",
-        launcherType: "Nodejs",
-        shouldAddHelpers: false,
-        // Image generation measured ~42s end to end, so the default 10s is far
-        // too short. 60s is the Hobby ceiling.
-        maxDuration,
-      },
-      null,
-      2,
-    ),
-  );
-}
-
-await fn("trpc", "api/vercel/trpc.ts");
-await fn("art-proxy", "api/vercel/art-proxy.ts");
 
 console.log("→ writing routing config");
 fs.writeFileSync(
@@ -67,9 +30,6 @@ fs.writeFileSync(
     {
       version: 3,
       routes: [
-        // API first, before the static filesystem and the SPA catch-all.
-        { src: "/api/trpc(?:/.*)?", dest: "/api/trpc" },
-        { src: "/api/art-proxy(?:\\?.*)?", dest: "/api/art-proxy" },
         { handle: "filesystem" },
         // Anything else is a client route: hand back the shell.
         { src: "/.*", dest: "/index.html" },

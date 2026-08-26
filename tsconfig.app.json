@@ -18,12 +18,6 @@
     "paths": {
       "@/*": [
         "./src/*"
-      ],
-      "@contracts/*": [
-        "./contracts/*"
-      ],
-      "@db/*": [
-        "./db/*"
       ]
     },
     "moduleResolution": "bundler",

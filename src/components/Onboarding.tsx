@@ -16,11 +16,12 @@
 //   no product words. A four-year-old is looking at the same page, so the art
 //   carries as much of the meaning as the text does.
 //
-//   **The grown-ups page tells the truth and stops.** It states what is and is
-//   not collected and names the one thing that happens online. It deliberately
-//   does *not* offer the magic-dust switch — that decision lives behind the
-//   parental gate in lib/consent, and offering it here would put a consent
-//   toggle in front of whoever happens to be holding the tablet.
+//   **The grown-ups page tells the truth and stops.** Nothing a child makes
+//   leaves the device, nothing is collected, and the whole app works with no
+//   internet at all — so the page says exactly that and offers no switch to
+//   flip. The one door out of the device that does exist — printing or
+//   sharing a drawing — lives behind the parental gate in lib/consent, not
+//   in front of whoever happens to be holding the tablet.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NotepadPage } from "@/components/ink/Notepad";
@@ -215,7 +216,7 @@ const PROMISES = [
   "No ads. Not one, ever.",
   "No accounts and no sign-in.",
   "Nothing about your child is collected.",
-  "Drawings are saved on this device.",
+  "Everything is saved on this device.",
 ];
 
 function GrownUpsPage() {
@@ -229,8 +230,8 @@ function GrownUpsPage() {
         <Scribble seed={5} height={9} />
       </span>
 
-      {/* stacked on a phone; the promises and the caveat sit side by side on a
-          short landscape screen, where height is the scarce thing */}
+      {/* stacked on a phone; the promises and the reassurance sit side by side
+          on a short landscape screen, where height is the scarce thing */}
       <div className="mt-3 landshort:mt-2 grid gap-2.5 landshort:grid-cols-2 landshort:items-start">
         <div className="grid gap-2">
           {PROMISES.map((p, i) => (
@@ -248,11 +249,11 @@ function GrownUpsPage() {
         </div>
 
         <InkCard seed={88} radius={18} className="p-3.5 landshort:p-3" contentClassName="grid gap-1.5">
-          <span className="ink-title text-fs-md landshort:text-fs-sm">One thing happens online</span>
+          <span className="ink-title text-fs-md landshort:text-fs-sm">Nothing leaves this device</span>
           <p className="ink-hand text-fs-sm landshort:text-fs-xs leading-relaxed">
-            “Magic dust” repaints a drawing as a painting — the one step made
-            online. It stays off until a grown-up turns it on, behind a question
-            a young child cannot answer.
+            Every letter traced and every creature made stays right here, on this
+            tablet. Magic Pen works with no internet at all — so there is nothing
+            to send, and nothing does.
           </p>
         </InkCard>
       </div>

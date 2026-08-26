@@ -24,7 +24,7 @@ import { Icon } from "@/components/ink/Icons";
 import { sfxTap } from "@/lib/audio";
 
 export default function ParentGate({ title, onPass, onCancel }: {
-  /** Why we're asking, e.g. "Turn on magic dust?" */
+  /** Why we're asking, e.g. "Print this drawing?" */
   title: string;
   onPass: () => void;
   onCancel: () => void;

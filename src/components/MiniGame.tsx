@@ -14,7 +14,7 @@ import { kindById, WORLD_PACKS } from "@/lib/creatures";
 import { drawOcean, drawSpace, drawFarm, drawDino, newFxState, floorRatio } from "./world/themes";
 import { sampleFrame, clearLayers } from "./world/shared";
 import { bakeCrayonSprite } from "@/lib/sprites";
-import { artSprite, onArtLoaded, stickerizeImage } from "@/lib/polish";
+import { stickerizeImage } from "@/lib/imaging";
 import { loadBest, saveBest } from "@/lib/storage";
 import { sfxPop, sfxSplash, sfxHappy, sfxMagic, sfxTap } from "@/lib/audio";
 import { WORLD_GAMES, createGame, type Frame, type GameAPI, type GameInstance, type Input } from "@/lib/games";
@@ -637,18 +637,12 @@ function BestMeter({ score, best }: { score: number; best: number }) {
 
 /* ── hero art ────────────────────────────────────────────────────────────── */
 
-/** Resolve the best available hero canvas: AI art → photo sticker → crayon. */
+/** Resolve the best available hero canvas: photo sticker → crayon. */
 function useHeroCanvas(c: Creature | null) {
   const [cv, setCv] = useState<HTMLCanvasElement | null>(null);
-  const [artTick, bumpArt] = useState(0);
-  useEffect(() => onArtLoaded(() => bumpArt((n) => n + 1)), []);
   useEffect(() => {
     let live = true;
     if (!c) { setCv(null); return; }
-    if (c.artUrl) {
-      const art = artSprite(c.artUrl);
-      if (art) { setCv(art); return; }
-    }
     if (c.photoData) {
       const im = new Image();
       im.onload = () => {
@@ -665,8 +659,7 @@ function useHeroCanvas(c: Creature | null) {
     }
     setCv(bakeCrayonSprite(c).frames[0]);
     return () => { live = false; };
-    // artTick re-runs this once the AI art finishes downloading
-  }, [c, artTick]);
+  }, [c]);
   return cv;
 }
 

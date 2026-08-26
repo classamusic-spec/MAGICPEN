@@ -10,7 +10,6 @@ import { SHAPE_LESSONS } from "@/lib/shapes";
 import { DRAW_LESSONS } from "@/lib/lessons";
 import { loadWriting } from "@/lib/storage";
 import { sfxTap, sfxHappy, sfxPop, sfxSplash } from "@/lib/audio";
-import { artSprite, onArtLoaded } from "@/lib/polish";
 import { bakeCrayonSprite } from "@/lib/sprites";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
@@ -32,24 +31,21 @@ import { hand } from "@/lib/ink";
  */
 export function Thumb({ c, size = 104 }: { c: Creature; size?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const [, tick] = useState(0);
-  useEffect(() => onArtLoaded(() => tick((n) => n + 1)), []);
-  const art = c.artUrl ? artSprite(c.artUrl) : null;
   const [photoImg, setPhotoImg] = useState<HTMLImageElement | null>(null);
 
   useEffect(() => {
-    if (!c.photoData || art) return;
+    if (!c.photoData) return;
     const im = new Image();
     im.onload = () => setPhotoImg(im);
     im.src = c.photoData;
-  }, [c.photoData, art]);
+  }, [c.photoData]);
 
   useEffect(() => {
     const cv = ref.current;
     if (!cv) return;
     const ctx = cv.getContext("2d");
     if (!ctx) return;
-    const src = art ?? photoImg ?? bakeCrayonSprite(c).frames[0];
+    const src = photoImg ?? bakeCrayonSprite(c).frames[0];
     const w = "width" in src ? src.width : 100;
     const h = "height" in src ? src.height : 100;
     if (!w || !h) return;
@@ -62,7 +58,7 @@ export function Thumb({ c, size = 104 }: { c: Creature; size?: number }) {
     cv.style.width = `${cw}px`;
     cv.style.height = `${ch}px`;
     ctx.drawImage(src, 0, 0, cv.width, cv.height);
-  }, [c, art, photoImg, size]);
+  }, [c, photoImg, size]);
 
   return (
     <canvas
@@ -1064,8 +1060,8 @@ export default function Home({
             </button>
           )}
           <p className="ink-hand text-fs-2xs text-center opacity-80">
-            No ads, no accounts. Drawings are saved on this device;
-            the magic-dust artwork is made online.
+            No ads, no accounts, no internet needed. Everything you make is
+            saved right here on this device.
           </p>
         </div>
       </div>

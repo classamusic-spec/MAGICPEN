@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import './index.css'
 import './hud.css'
-import { TRPCProvider } from "@/providers/trpc"
 import App from './App.tsx'
 import { installPaper } from '@/lib/ink'
 import { registerServiceWorker } from '@/lib/pwa'
@@ -15,9 +14,7 @@ registerServiceWorker()
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <TRPCProvider>
-        <App />
-      </TRPCProvider>
+      <App />
     </BrowserRouter>
   </StrictMode>,
 )

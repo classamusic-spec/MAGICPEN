@@ -14,10 +14,10 @@ import {
   REGION_W,
 } from "@/lib/regions";
 import { usePrefersReducedMotion } from "@/components/ink/motion";
-import { sfxBubble, sfxPop, sfxSplash, sfxTap, setMuted, isMuted, sfxHappy, sfxMagic } from "@/lib/audio";
+import { sfxBubble, sfxPop, sfxSplash, sfxTap, setMuted, isMuted, sfxHappy } from "@/lib/audio";
 import { drawOcean, drawSpace, drawFarm, drawDino, drawDream, newFxState, floorRatio } from "./world/themes";
 import { sampleFrame, clearLayers } from "./world/shared";
-import { artSprite, onArtLoaded, stickerizeImage } from "@/lib/polish";
+import { stickerizeImage } from "@/lib/imaging";
 import { bakeCrayonSprite, silhouette, stampRing, type Sprite } from "@/lib/sprites";
 import { loadFoods } from "@/lib/storage";
 import { InkButton, InkCard, InkShape, Scribble, Tape } from "@/components/ink/Ink";
@@ -724,7 +724,7 @@ function CreatureThumb({
   useEffect(() => {
     const cv = ref.current;
     if (!cv) return;
-    const src = (creature.artUrl ? artSprite(creature.artUrl) : null) ?? sprite;
+    const src = sprite;
     const dpr = window.devicePixelRatio || 1;
     cv.width = Math.round(size * dpr);
     cv.height = Math.round(size * dpr);
@@ -738,7 +738,7 @@ function CreatureThumb({
     const k = Math.min(size / src.width, size / src.height);
     const w = src.width * k, h = src.height * k;
     ctx.drawImage(src, (size - w) / 2, (size - h) / 2, w, h);
-  }, [creature.artUrl, creature.id, sprite, size, tick]);
+  }, [creature.id, sprite, size, tick]);
   return <canvas ref={ref} aria-hidden="true" className="pointer-events-none" />;
 }
 
@@ -758,7 +758,6 @@ export default function WorldScene({
   newId,
   worldId,
   dream,
-  polishingIds,
   onBack,
   onDrawMore,
   onLearnDraw,
@@ -780,7 +779,6 @@ export default function WorldScene({
   worldId: string;
   /** The child's painted world, when `worldId === "dream"`. */
   dream?: DreamWorld | null;
-  polishingIds?: Set<string>;
   onBack: () => void;
   onDrawMore: () => void;
   /** Open Drawing School focused on this world — the way in for a child who
@@ -863,7 +861,6 @@ export default function WorldScene({
   /** Somebody was just crowned, at these world coords — drained by the loop
    *  into a little burst of hearts, the way `popRef` is. */
   const petFxRef = useRef<{ x: number; y: number }[]>([]);
-  const seenArtRef = useRef<Set<string>>(new Set());
   const arrivalRef = useRef<string | null>(null);
   const [muted, setM] = useState(isMuted());
   const [artTick, forceTick] = useState(0);
@@ -893,8 +890,6 @@ export default function WorldScene({
 
   const creaturesRef = useRef(view);
   creaturesRef.current = view;
-  const polishRef = useRef<Set<string>>(polishingIds ?? new Set());
-  polishRef.current = polishingIds ?? new Set();
   const worldRef = useRef(worldId);
   worldRef.current = worldId;
   const dreamRef = useRef(dream);
@@ -995,7 +990,7 @@ export default function WorldScene({
   }, []);
   /* The render loop is mount-scoped and cannot reach a callback that a re-render
      might replace, so it announces friendships through this — the same way it
-     reaches the polish set and the burst queue. */
+     reaches the burst queue. */
   const bannerRef = useRef(pushBanner);
   bannerRef.current = pushBanner;
   useEffect(() => {
@@ -1014,26 +1009,6 @@ export default function WorldScene({
     const t = window.setTimeout(() => setTip(false), 6000);
     return () => window.clearTimeout(t);
   }, [tip]);
-
-  // re-render when AI art finishes downloading
-  useEffect(() => onArtLoaded(() => forceTick((n) => n + 1)), []);
-
-  // evolution moment: a creature's premium art just arrived
-  useEffect(() => {
-    for (const c of view) {
-      if (!c.artUrl || seenArtRef.current.has(c.id)) continue;
-      const rt = rtRef.current.get(c.id);
-      if (!rt) continue; // creature not staged yet; burst next visit instead
-      // only celebrate if the art image is actually ready to show
-      if (!artSprite(c.artUrl)) continue;
-      seenArtRef.current.add(c.id);
-      burstRef.current.push({ x: rt.x, y: rt.y });
-      rt.excite = 1;
-      rt.labelT = performance.now();
-      sfxMagic();
-      pushBanner(`The magic dust worked! ${c.name} transformed!`, "sparkle");
-    }
-  }, [view, artTick, pushBanner]);
 
   /* ── coming back ──────────────────────────────────────────────────────────
      A child who has been away overnight is met by name. Not a modal, not a
@@ -1223,7 +1198,7 @@ export default function WorldScene({
 
   /* ── main render loop ─────────────────────────────────────────────────── */
   // Intentionally mount-scoped: everything that changes over the scene's life
-  // (creature list, world id, floor ratio, polish set) is read through a ref,
+  // (creature list, world id, floor ratio) is read through a ref,
   // so the loop is never torn down and rebuilt mid-animation.
   useEffect(() => {
     const cv = canvasRef.current;
@@ -2257,20 +2232,10 @@ export default function WorldScene({
         const bph = (t + rt.seed) % rt.blinkP;
         const blink = entrance || bph > 0.12 ? 0 : Math.sin((bph / 0.12) * Math.PI) * calm;
 
-        // AI-polished art (breathing squash) or crayon wiggle frames
-        const art = c.artUrl ? artSprite(c.artUrl) : null;
-        if (art) {
-          const breathe = 1 + Math.sin(rt.t * 2.4 + rt.seed) * 0.045 + rt.excite * 0.1;
-          const ar = art.width / art.height;
-          const ah = sp.h * 1.15;
-          const aw = ah * ar;
-          ctx.scale(breathe, 1 / breathe);
-          drawBlink(ctx, art, -aw / 2, -ah / 2, aw, ah, blink);
-        } else {
-          const frameI = Math.floor(rt.t * (rt.excite > 0 ? 14 : 7)) % 4;
-          const img = sp.frames[frameI];
-          drawBlink(ctx, img, -sp.w / 2, -sp.h / 2, sp.w, sp.h, blink);
-        }
+        // crayon wiggle frames
+        const frameI = Math.floor(rt.t * (rt.excite > 0 ? 14 : 7)) % 4;
+        const img = sp.frames[frameI];
+        drawBlink(ctx, img, -sp.w / 2, -sp.h / 2, sp.w, sp.h, blink);
         ctx.restore();
 
         // golden halo during entrance
@@ -2315,44 +2280,6 @@ export default function WorldScene({
           ctx.restore();
         }
 
-        // magic-dust aura: AI polish in progress for this creature
-        if (polishRef.current.has(c.id) && !c.artUrl) {
-          const R = (Math.max(sp.w, sp.h) / 2) * scl + 14;
-          ctx.save();
-          ctx.translate(px, py);
-          for (let k = 0; k < 7; k++) {
-            const a = t * 1.6 + (k / 7) * Math.PI * 2 + rt.seed;
-            const rr = R * (1 + 0.12 * Math.sin(t * 3 + k * 1.7));
-            const sx = Math.cos(a) * rr;
-            const sy = Math.sin(a) * rr * 0.8;
-            const tw = 0.35 + 0.65 * Math.abs(Math.sin(t * 4.2 + k * 2.1));
-            ctx.globalAlpha = tw;
-            ctx.fillStyle = k % 3 === 0 ? "#fff3c4" : "#ffd65a";
-            drawSpark(ctx, sx, sy, 4.5 * sizeF + 2, t * 3 + k);
-          }
-          // a little drawn tag above the creature, with a drawn star on it
-          const hint = "magic dust…";
-          ctx.font = `800 ${Math.round(11 * sizeF) + 7}px 'Baloo 2', sans-serif`;
-          const hw = Math.round(ctx.measureText(hint).width + 46);
-          const hh = 30;
-          const hy = -R - 30 + Math.sin(t * 2.2) * 3;
-          const tag = tagPath(hw, hh, 613);
-          ctx.globalAlpha = 0.95;
-          ctx.save();
-          ctx.translate(-hw / 2, hy - hh / 2);
-          ctx.fillStyle = "#ffd65a";
-          ctx.fill(tag);
-          ctx.strokeStyle = "#2d2926";
-          ctx.lineWidth = 2.2;
-          ctx.lineJoin = "round";
-          ctx.stroke(tag);
-          ctx.fillStyle = "#2d2926";
-          drawSpark(ctx, 17, hh / 2, 3.6, t * 1.8);
-          ctx.textAlign = "center";
-          ctx.fillText(hint, hw / 2 + 10, hh * 0.68);
-          ctx.restore();
-          ctx.restore();
-        }
       }
 
       /* ── sparkles (incl. evolution bursts) ── */
@@ -3392,12 +3319,6 @@ export default function WorldScene({
                           <div className="ink-title truncate px-2 mt-0.5" style={{ fontSize: 11, color: "var(--ink)" }}>{c.name}</div>
                           <div className="ink-hand truncate px-2" style={{ fontSize: 10 }}>{k.label}</div>
                         </InkCard>
-                        {polishRef.current.has(c.id) && !c.artUrl && (
-                          <span className="absolute -top-1.5 -right-1 z-30">
-                            <Icon name="sparkle" size={20} color="#2d2926" fill="#ffc72c" weight={1.8} />
-                            <span className="visually-hidden">getting magic dust</span>
-                          </span>
-                        )}
                       </button>
                     );
                   })}

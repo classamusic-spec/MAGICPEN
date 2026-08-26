@@ -51,20 +51,3 @@ export function doodleCanvas(name: string, size = 256): HTMLCanvasElement | null
   if (!ctx || !paintDoodle(ctx, name, size)) return null;
   return cv;
 }
-
-/**
- * A doodle as a PNG data URL, for the art model to redraw. Drawn on white
- * rather than transparent: the polish pipeline flood-cuts a white background
- * back out, and a transparent PNG reaches the model as a black square.
- */
-export function doodlePNG(name: string, size = 448): string | null {
-  const cv = document.createElement("canvas");
-  cv.width = size;
-  cv.height = size;
-  const ctx = cv.getContext("2d");
-  if (!ctx) return null;
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, size, size);
-  if (!paintDoodle(ctx, name, size)) return null;
-  return cv.toDataURL("image/png");
-}

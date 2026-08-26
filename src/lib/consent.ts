@@ -12,10 +12,11 @@
 // to honour it is to never collect any. That is a product decision already made
 // and worth protecting — this module exists to guard the one exception.
 //
-// The exception is "magic dust": the optional step that sends a drawing to an
-// art model to be re-rendered. That is the only moment anything a child made
-// leaves the device. It is therefore **off until a grown-up turns it on**, and
-// the switch lives behind a parental gate.
+// So Magic Pen collects nothing and sends nothing — there is no exception left.
+// What remains is the parental gate itself, which still guards the doors that
+// lead *out* of the app: the camera, the share sheet, and printing. A young
+// child should not be able to open those alone, and both stores require a gate
+// in front of them, so the challenge below lives on.
 //
 // On the gate itself: an age question a child answers is not a gate — a
 // five-year-old will happily tap "yes, I am a grown-up", and both app stores
@@ -33,16 +34,11 @@ const KEY = "magicpen.consent.v1";
 export interface ConsentState {
   /** A grown-up has passed the parental gate at least once on this device. */
   gatePassed: boolean;
-  /**
-   * May a drawing be sent to the art service to be re-rendered?
-   * `null` means nobody has been asked yet — which is treated as "no".
-   */
-  aiArt: boolean | null;
-  /** When the grown-up last made a decision, for the record. */
+  /** When the grown-up last passed the gate, for the record. */
   decidedAt: number | null;
 }
 
-const EMPTY: ConsentState = { gatePassed: false, aiArt: null, decidedAt: null };
+const EMPTY: ConsentState = { gatePassed: false, decidedAt: null };
 
 export function loadConsent(): ConsentState {
   try {
@@ -51,7 +47,6 @@ export function loadConsent(): ConsentState {
     const v = JSON.parse(raw) as Partial<ConsentState>;
     return {
       gatePassed: v.gatePassed === true,
-      aiArt: v.aiArt === true ? true : v.aiArt === false ? false : null,
       decidedAt: typeof v.decidedAt === "number" ? v.decidedAt : null,
     };
   } catch {
@@ -64,13 +59,6 @@ export function saveConsent(next: Partial<ConsentState>): ConsentState {
   try { localStorage.setItem(KEY, JSON.stringify(merged)); } catch { /* private mode — session only */ }
   return merged;
 }
-
-/**
- * The one question the rest of the app should ask before anything a child made
- * leaves this device. Defaults to *no* in every uncertain case: never asked,
- * storage unreadable, malformed value.
- */
-export const mayUseAiArt = (): boolean => loadConsent().aiArt === true;
 
 /* ── the parental gate ───────────────────────────────────────────────────── */
 
