@@ -7,6 +7,7 @@ import { resolvePet, makeRoom, petGreeting } from "@/lib/pet";
 import { remember as rememberInAlbum, forget as forgetFromAlbum } from "@/lib/album";
 import { markVisit, dailyIdea, welcomeBack, type Visit } from "@/lib/daily";
 import { CARE_PER_DAY } from "@/lib/social";
+import { BACK_EVENT } from "@/lib/native";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import ScreenLoader from "@/components/ScreenLoader";
 
@@ -392,6 +393,49 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => () => { if (exitTimer.current) window.clearTimeout(exitTimer.current); }, []);
+
+  /* Android hardware back button. Screens navigate by state, not browser
+     history, so the OS back has to be routed by hand to the same place each
+     screen's own Back goes. Root screens (splash, onboarding, home) don't
+     consume it, so the native shell exits the app. No-op on the web. */
+  useEffect(() => {
+    const onBack = (e: Event) => {
+      switch (screen) {
+        case "draw":
+          e.preventDefault();
+          if (drawingTreat) { setDrawingTreat(false); go("world"); } else go("home");
+          break;
+        case "reveal":
+          e.preventDefault();
+          go("draw");
+          break;
+        case "world":
+          e.preventDefault();
+          setNewId(null); go("home");
+          break;
+        case "paintworld":
+          e.preventDefault();
+          go(dream ? "world" : "home");
+          break;
+        case "school": {
+          e.preventDefault();
+          const from = schoolWorld;
+          setSchoolWorld(undefined);
+          if (from) { setWorldId(from); go("world"); } else go("home");
+          break;
+        }
+        case "album":
+        case "grownups":
+        case "game":
+          e.preventDefault();
+          go(screen === "game" ? "world" : "home");
+          break;
+        // splash, onboarding, home: root — left unhandled so the shell exits
+      }
+    };
+    window.addEventListener(BACK_EVENT, onBack);
+    return () => window.removeEventListener(BACK_EVENT, onBack);
+  }, [screen, go, drawingTreat, dream, schoolWorld]);
 
   /* One screen's worth of JSX, as a function of *which* screen — so the page
      that is leaving can go on rendering itself for the length of its flip.
