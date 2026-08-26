@@ -1,7 +1,7 @@
 // ─── Painting a doodle onto a canvas ────────────────────────────────────────
 // The doodles are authored as SVG path data on a 24×24 grid because that is
 // how they are drawn on screen. A creature born in Word World needs the same
-// artwork as pixels — for its world sprite, and as a PNG for the AI to redraw.
+// artwork as pixels for its world sprite.
 //
 // Path2D takes SVG path data directly, so there is no serialise-to-blob dance:
 // the same `d` strings paint natively on a canvas.
