@@ -13,7 +13,7 @@
 // The corpus is derived from src/lib/voiceLines.ts. When the curriculum changes,
 // regenerate corpus.json first (see scripts/voice/README.md), then run this.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "fs";
 import { createHash } from "crypto";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -35,16 +35,27 @@ mkdirSync(CLIPS, { recursive: true });
 
 // MUST match clipKey() in src/lib/voice.ts
 const normalize = (s) => s.toLowerCase().replace(/\s+/g, " ").trim();
-const fileFor = (key) => createHash("sha1").update(key).digest("hex").slice(0, 20) + ".mp3";
+const keyHash = (key) => createHash("sha1").update(key).digest("hex").slice(0, 16);
+/* A clip is named <keyhash>-<audiohash>.mp3. The key half keeps a stable prefix
+   so a resume can tell a clip for this line already exists; the audio half
+   changes when the audio does, which is what lets a corrected clip bust the
+   year-long immutable cache it is served under. Predicting the audio hash is
+   impossible (the voice is not deterministic), so the resume test matches the
+   prefix, and a clip is only re-made when its file is deleted. */
+const fileFor = (key, buf) =>
+  `${keyHash(key)}-${createHash("sha1").update(buf).digest("hex").slice(0, 8)}.mp3`;
+/* Matches both the current `<keyhash>-<audiohash>.mp3` names and the earlier
+   `<keyhash…>.mp3` names, so a resume skips clips made under either scheme. */
+const existingClip = (key) => readdirSync(CLIPS).find((f) => f.startsWith(keyHash(key)));
 const speedFor = (l) => (l.text.length === 1 ? 0.85 : l.kind === "line" ? 1.0 : 0.9);
 
 async function gen(l, attempt = 1) {
   const key = normalize(l.text);
-  const file = fileFor(key);
-  const path = join(CLIPS, file);
-  if (existsSync(path)) return { key, file, skipped: true };
+  const have = existingClip(key);
+  if (have) return { key, file: have, skipped: true };
   const body = JSON.stringify({
-    text: l.text,
+    // a letter is synthesized from its name-spelling; everything else from itself
+    text: l.say ?? l.text,
     model_id: MODEL,
     voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0, use_speaker_boost: true, speed: speedFor(l) },
   });
@@ -67,7 +78,8 @@ async function gen(l, attempt = 1) {
     }
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length < 500) throw new Error(`tiny ${buf.length}b`);
-    writeFileSync(path, buf);
+    const file = fileFor(key, buf);
+    writeFileSync(join(CLIPS, file), buf);
     return { key, file, bytes: buf.length };
   } catch (e) {
     clearTimeout(to);

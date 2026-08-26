@@ -27,8 +27,43 @@ import { CREATURE_FACTS } from "./facts";
 export type SpokenKind = "letter" | "number" | "word" | "line";
 
 export interface SpokenLine {
+  /** What the app asks for, and the key the clip is stored under. For a letter
+   *  this is the letter itself — "A". */
   text: string;
   kind: SpokenKind;
+  /**
+   * What the generator actually synthesizes, when that must differ from `text`.
+   *
+   * A single letter is the reason this exists. Handed a lone "A", a text-to-
+   * speech engine is free to read either the letter's *name* ("ay") or its
+   * *sound* ("ah"), and it picks non-deterministically — several letters came
+   * back saying the sound, which is the wrong thing for a screen that is
+   * teaching letter names. So a letter is synthesized from an explicit spelling
+   * of its name ("Eigh", "You", "Double-you") while still being stored, and
+   * looked up, under the plain letter. Everything else leaves this unset and is
+   * synthesized from `text`.
+   */
+  say?: string;
+}
+
+/**
+ * How to make a text-to-speech engine say each letter's NAME rather than its
+ * sound. Chosen by generating each candidate and transcribing it back until the
+ * transcript was the letter again (see scripts/voice) — these are not guesses.
+ * The vowels and a handful of consonants are the ones that go wrong; the rest
+ * are spelled their ordinary way for consistency and to pin the reading.
+ */
+export const LETTER_NAME: Record<string, string> = {
+  a: "Eigh", b: "Bee", c: "See", d: "Dee", e: "Ee", f: "Eff", g: "Gee",
+  h: "Aitch", i: "Eye", j: "Jay", k: "Kay", l: "Ell", m: "Em", n: "En",
+  o: "Oh", p: "Pee", q: "Cue", r: "Ar", s: "Ess", t: "Tee", u: "You",
+  v: "Vee", w: "Double-you", x: "Ex", y: "Why", z: "Zee",
+};
+
+/** The name-spelling for a one-character letter line, or undefined for anything
+ *  else. A digit ("4") is left alone — it is spoken as a number elsewhere. */
+export function sayFor(text: string): string | undefined {
+  return /^[A-Za-z]$/.test(text) ? LETTER_NAME[text.toLowerCase()] : undefined;
 }
 
 /** The `forSpeech` cleanup from WriteWorld: math glyphs become words, and an
@@ -119,5 +154,8 @@ export function spokenCorpus(): SpokenLine[] {
   // creature facts, said in the world
   for (const f of Object.values(CREATURE_FACTS)) add(f, "line");
 
-  return order.map((text) => ({ text, kind: kinds.get(text)! }));
+  return order.map((text) => {
+    const say = sayFor(text);
+    return say ? { text, kind: kinds.get(text)!, say } : { text, kind: kinds.get(text)! };
+  });
 }

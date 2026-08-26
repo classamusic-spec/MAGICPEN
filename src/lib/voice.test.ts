@@ -11,7 +11,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
-import { spokenCorpus } from "./voiceLines";
+import { spokenCorpus, LETTER_NAME, sayFor } from "./voiceLines";
+import { LETTER_LESSONS } from "./writing";
 import { clipKey } from "./voice";
 
 const manifestPath = fileURLToPath(new URL("../../public/voice/manifest.json", import.meta.url));
@@ -36,6 +37,23 @@ describe("recorded voice", () => {
     }
     expect(missing, `no clip for: ${missing.slice(0, 8).join(" | ")}`).toEqual([]);
     expect(noFile, `manifest names a missing file: ${noFile.slice(0, 8).join(" | ")}`).toEqual([]);
+  });
+
+  it("gives every letter a name-spelling, so no letter is read as its sound", () => {
+    // a bare "A" is read by a TTS as either "ay" (the name) or "ah" (the sound),
+    // non-deterministically — several came back wrong. Every letter in the
+    // curriculum must therefore be synthesized from an explicit name-spelling.
+    for (const l of LETTER_LESSONS) {
+      const say = sayFor(l.char);
+      expect(say, `${l.char} has no name-spelling`).toBeTruthy();
+      // the spelling must not be the bare letter — that is the ambiguous input
+      expect(say!.toLowerCase(), l.char).not.toBe(l.char.toLowerCase());
+    }
+    // all 26, keyed a–z
+    expect(Object.keys(LETTER_NAME).sort().join("")).toBe("abcdefghijklmnopqrstuvwxyz");
+    // a digit is NOT given a letter-name spelling — it is spoken as a number
+    expect(sayFor("4")).toBeUndefined();
+    expect(sayFor("A")).toBe("Eigh");
   });
 
   it("names every clip key the way the app will look it up", () => {

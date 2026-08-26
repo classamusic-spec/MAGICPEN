@@ -24,6 +24,25 @@ Why pre-render instead of using the browser voice everywhere:
   lesson can't ship silent.
 - `scripts/voice/corpus.json` — the frozen corpus the generator renders.
 
+## Letters say their name, not their sound
+
+A text-to-speech engine handed a lone "A" reads it as either the letter's name
+("ay") or its sound ("ah"), non-deterministically — several letters shipped
+saying the sound, which is wrong for a screen teaching letter names. So each
+letter is synthesized from an explicit name-spelling (`LETTER_NAME` in
+`src/lib/voiceLines.ts` — "Eigh", "You", "Double-you", …) while still being
+stored and looked up under the plain letter. The spellings were chosen by
+generating each and transcribing it back until the transcript was the letter
+again; `voice.test.ts` asserts every letter has one.
+
+Clips are named `<key-hash>-<audio-hash>.mp3`. The audio half changes when the
+audio does, which is what lets a corrected clip bust the year-long immutable
+cache it is served under; the key half stays stable so a resume can tell a clip
+already exists. A voice that is not deterministic cannot be verified from a
+build machine with no ears — the committed generator ships the name-spellings
+and trusts them; the clips in the repo were additionally transcription-checked
+(see the audit under scratch tooling) before being committed.
+
 ## Regenerating
 
 The API key is **never** stored in the repo — pass it in the environment.
