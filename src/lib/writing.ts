@@ -349,6 +349,8 @@ export const WORD_GROUPS: WordGroup[] = [
       { word: "COMET", doodle: "comet", hint: "whooshes past with a sparkly tail" },
       { word: "ROCKET", doodle: "rocket", hint: "three, two, one, blast off" },
       { word: "PLANET", doodle: "planet", hint: "a big ball spinning in space" },
+      { word: "UFO", doodle: "ufo", hint: "a saucer zipping through space" },
+      { word: "VENUS", doodle: "venus", hint: "the bright evening one" },
     ],
   },
   {
