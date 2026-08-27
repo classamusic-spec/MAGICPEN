@@ -2454,6 +2454,8 @@ export default function WorldScene({
     if (!hit) { dropCrumb(nx, ny); return; }
     const rt = rtRef.current.get(hit.id);
     if (rt) {
+      // roused from a night-time doze? stretch awake before saying hello
+      if (daylight() < 0.12 && rt.excite < 0.2) rt.celT = performance.now() / 1000;
       // hello, straight away — this much happens whatever the finger does next
       rt.excite = 1;
       rt.labelT = performance.now();
@@ -2606,6 +2608,8 @@ export default function WorldScene({
     const rt = rtRef.current.get(c.id);
     if (rt) {
       rt.excite = 1;
+      // a little hop of delight — the same celebrate a creature does on waking
+      rt.celT = performance.now() / 1000;
       // late enough that the tag is still popping when the card is put down
       rt.labelT = performance.now() + 900;
       petFxRef.current.push({ x: rt.x, y: rt.y });
