@@ -19,6 +19,7 @@ import { drawOcean, drawSpace, drawFarm, drawDino, drawDream, newFxState, floorR
 import { sampleFrame, clearLayers } from "./world/shared";
 import { stickerizeImage } from "@/lib/imaging";
 import { useBackClose } from "@/lib/native";
+import { playCreatureVoice } from "@/lib/creatureVoice";
 import { bakeCrayonSprite, silhouette, stampRing, type Sprite } from "@/lib/sprites";
 import { loadFoods } from "@/lib/storage";
 import { InkButton, InkCard, InkShape, Scribble, Tape } from "@/components/ink/Ink";
@@ -2461,6 +2462,8 @@ export default function WorldScene({
         rt.hiN++;
         rt.care += CARE_PER_HI;
       }
+      // the creature says hello in its own little voice
+      playCreatureVoice(hit.kindId);
     }
     sfxPop();
     cancelPress();
