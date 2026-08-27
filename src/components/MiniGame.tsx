@@ -654,6 +654,9 @@ function useHeroCanvas(c: Creature | null) {
         tmp.getContext("2d")!.drawImage(im, 0, 0, tmp.width, tmp.height);
         setCv(stickerizeImage(tmp));
       };
+      /* a photo that fails to decode must not leave the Go button dead
+         forever — the creature still has a crayon body to fall back to */
+      im.onerror = () => { if (live) setCv(bakeCrayonSprite(c).frames[0]); };
       im.src = c.photoData;
       return () => { live = false; };
     }

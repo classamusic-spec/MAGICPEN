@@ -500,8 +500,15 @@ export default function MagicReveal({
       im.src = photo;
     }
     const fitAndLoop = () => {
+      /* One loop at a time: this is called again on every resize (and the
+         observer's guaranteed first delivery), and each call starts a fresh
+         rAF chain — without this cancel the chains pile up and fight. */
+      cancelAnimationFrame(raf);
       const dpr = window.devicePixelRatio || 1;
-      const r = wrap.getBoundingClientRect();
+      /* clientWidth, not getBoundingClientRect: this screen mounts under the
+         page-flip 3D transform, and the projected rect is ~2.5% small — the
+         transform never changes the layout box, so the shrunken size sticks. */
+      const r = { width: wrap.clientWidth, height: wrap.clientHeight };
       if (r.width < 2 || r.height < 2) return;
       cv.width = Math.round(r.width * dpr);
       cv.height = Math.round(r.height * dpr);
@@ -556,7 +563,8 @@ export default function MagicReveal({
       };
       raf = requestAnimationFrame(loop);
     };
-    fitAndLoop();
+    /* No manual first call: observing always delivers an initial callback,
+       and calling it here as well started a second, orphaned loop. */
     const ro = new ResizeObserver(fitAndLoop);
     ro.observe(wrap);
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };

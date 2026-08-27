@@ -8,7 +8,7 @@ export type IconName =
   | "soundOn" | "soundOff" | "play" | "pause" | "close" | "check"
   | "pencil" | "sparkle" | "globe" | "gamepad" | "share" | "plus"
   | "heart" | "heartEmpty" | "star" | "starEmpty" | "trophy" | "lock"
-  | "dice" | "clock" | "more" | "trash";
+  | "dice" | "clock" | "more" | "trash" | "print";
 
 /* Paths are authored slightly off-true on purpose: a perfectly symmetrical
    icon next to a wobbling button reads as a foreign object. */
@@ -41,6 +41,7 @@ const PATHS: Record<IconName, string> = {
   clock: "M12 3.4a8.6 8.6 0 1 0 .2 17.2A8.6 8.6 0 0 0 12 3.4zM12 7.2v5.1l3.4 2.1",
   more: "M6.2 12.1h.1M12 12.1h.1M17.8 12.1h.1",
   trash: "M4.8 6.9h14.5M9.6 6.8V4.6h4.9v2.2M6.7 6.9l.9 12.9h8.9l.9-12.9M10.2 10.3v6.1M13.9 10.4v6",
+  print: "M6.6 9.2V4.8h10.9v4.4M4.6 9.3h14.9v7.1h-3M7.5 16.4h-3V9.4M7.6 13.9h8.9v6H7.5zM9.9 16.6h4.3M17 11.6h.1",
 };
 
 /** Icons whose path should be filled as well as stroked. */

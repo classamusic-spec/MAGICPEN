@@ -107,8 +107,9 @@ export function Wordmark({ width = 280, drawIn = 0, className = "" }: WordmarkPr
     const h = (width * LOGO_H) / LOGO_W;
     cv.width = Math.round(width * dpr);
     cv.height = Math.round(h * dpr);
+    /* width only — height comes from the aspect-ratio below, so when a narrow
+       screen clamps the width the mark scales instead of squashing */
     cv.style.width = `${width}px`;
-    cv.style.height = `${h}px`;
     const k = width / LOGO_W;
 
     /** Paint the word with each letter revealed to `progress` (0..1 overall). */
@@ -162,7 +163,7 @@ export function Wordmark({ width = 280, drawIn = 0, className = "" }: WordmarkPr
       role="img"
       aria-label="Magic Pen"
       className={className}
-      style={{ display: "block", maxWidth: "100%" }}
+      style={{ display: "block", maxWidth: "100%", height: "auto", aspectRatio: `${LOGO_W} / ${LOGO_H}` }}
     />
   );
 }

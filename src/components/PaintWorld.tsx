@@ -329,6 +329,12 @@ export default function PaintWorld({
     else redraw();
   };
 
+  /* What "clear the whole page" wiped, so undo can bring it back. One tap on a
+     button that sits right next to the eraser must never cost a child their
+     whole painting for good — region mode already snapshots; this is the
+     stroke-mode equivalent. */
+  const clearedRef = useRef<typeof strokes | null>(null);
+
   const undo = () => {
     if (mode === "regions") {
       const h = histRef.current;
@@ -339,7 +345,11 @@ export default function PaintWorld({
       return;
     }
     setStrokes((prev) => {
-      if (!prev.length) return prev;
+      if (!prev.length) {
+        const wiped = clearedRef.current;
+        if (wiped?.length) { clearedRef.current = null; sfxTap(); return wiped; }
+        return prev;
+      }
       sfxTap();
       return prev.slice(0, -1);
     });
@@ -354,7 +364,7 @@ export default function PaintWorld({
       syncRegions();
       return;
     }
-    if (strokes.length) { sfxTap(); setStrokes([]); }
+    if (strokes.length) { sfxTap(); clearedRef.current = strokes; setStrokes([]); }
   };
 
   /* ── the ground line, dragged with the grip ── */
@@ -628,14 +638,22 @@ export default function PaintWorld({
                       onClick={() => { sfxTap(); setErasing(false); setColor(cr.c); }}
                       aria-label={cr.name}
                       aria-pressed={on}
-                      className="rounded-full transition-transform"
-                      style={{
-                        width: 30, height: 30, background: cr.c,
-                        border: "3px solid var(--ink)",
-                        transform: on ? "scale(1.22)" : "scale(1)",
-                        boxShadow: on ? "0 0 0 3px var(--sun)" : "none",
-                      }}
-                    />
+                      className="grid place-items-center"
+                      /* the disc stays 30px; the button around it is a full
+                         44px target — ten 30px circles in a row was a mis-tap
+                         field for small fingers */
+                      style={{ width: 44, height: 44 }}
+                    >
+                      <span
+                        className="block rounded-full transition-transform"
+                        style={{
+                          width: 30, height: 30, background: cr.c,
+                          border: "3px solid var(--ink)",
+                          transform: on ? "scale(1.22)" : "scale(1)",
+                          boxShadow: on ? "0 0 0 3px var(--sun)" : "none",
+                        }}
+                      />
+                    </button>
                   );
                 })}
               </div>

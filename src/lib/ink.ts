@@ -171,11 +171,16 @@ export function waxTile(color: string, size = 96): string {
   const key = `${color}@${size}`;
   const hit = waxCache.get(key);
   if (hit) return hit;
+  /* Baked at twice the display size: the tile is resampled when the browser
+     tiles it (device pixel ratios, SVG patterns), and an upscaled edge texel
+     clamps into a visible seam column once per repeat. Downscaling hides it. */
+  const RES = 2;
   const cv = document.createElement("canvas");
-  cv.width = size;
-  cv.height = size;
+  cv.width = size * RES;
+  cv.height = size * RES;
   const ctx = cv.getContext("2d");
   if (!ctx) return "";
+  ctx.scale(RES, RES);
 
   // ground: a shade darker than the nominal colour, so the wax laid on top
   // reads as raised pigment rather than a flat swatch
@@ -185,32 +190,58 @@ export function waxTile(color: string, size = 96): string {
   const r = hand(seedOf(color));
   const light = shade(color, 0.24);
 
-  // diagonal wax passes, wrapped so the tile repeats seamlessly
+  /* The strokes are laid out as *data* first, then stamped at all nine wrapped
+     offsets (±size in x and y). A stroke that runs off the right edge is drawn
+     again entering from the left, so the tile is genuinely toroidal — without
+     this, every 128px of a wide waxed button showed a faint vertical seam. */
+  interface WaxStroke { pts: Pt[]; tone: string; width: number; seed: number; alpha: number }
+  const strokes: WaxStroke[] = [];
   for (let pass = 0; pass < 2; pass++) {
     const tone = pass === 0 ? color : light;
     for (let i = -3; i < 9; i++) {
       const off = (i / 6) * size * 1.5 - size * 0.35 + pass * 9;
+      /* every stroke gets its own vertical shift: with a shared span, all the
+         rounded stroke ends land on one line and read as a scalloped band.
+         Capped at 0.8×size so the farthest point stays within one wrap of the
+         tile — the ±size stamping below then covers every sliver. */
+      const yShift = r() * size * 0.8;
       const pts: Pt[] = [];
       for (let sIdx = 0; sIdx <= 5; sIdx++) {
         const t = sIdx / 5;
         pts.push({
           x: off + t * size * 1.35 + (r() - 0.5) * 13,
-          y: t * size * 1.4 - size * 0.2 + (r() - 0.5) * 13,
+          y: yShift + t * size * 1.4 - size * 0.2 + (r() - 0.5) * 13,
         });
       }
-      ctx.globalAlpha = pass === 0 ? 0.95 : 0.55;
-      drawCrayonStroke(ctx, pts, tone, 13 + r() * 9, i * 23 + pass * 131 + 5);
+      strokes.push({
+        pts, tone,
+        width: 13 + r() * 9,
+        seed: i * 23 + pass * 131 + 5,
+        alpha: pass === 0 ? 0.95 : 0.55,
+      });
+    }
+  }
+  const WRAP = [-size, 0, size];
+  for (const dy of WRAP) for (const dx of WRAP) {
+    for (const s of strokes) {
+      ctx.globalAlpha = s.alpha;
+      drawCrayonStroke(ctx, s.pts.map((p) => ({ x: p.x + dx, y: p.y + dy })), s.tone, s.width, s.seed);
     }
   }
 
-  // tooth: tiny gaps where the paper shows through the wax
+  // tooth: tiny gaps where the paper shows through the wax — wrapped the same
+  // way, so the speckle field carries across the tile edge too
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = "destination-out";
   for (let i = 0; i < 130; i++) {
-    ctx.globalAlpha = 0.05 + r() * 0.13;
-    ctx.beginPath();
-    ctx.arc(r() * size, r() * size, 0.5 + r() * 1.7, 0, Math.PI * 2);
-    ctx.fill();
+    const a = 0.05 + r() * 0.13;
+    const x = r() * size, y = r() * size, rad = 0.5 + r() * 1.7;
+    for (const dy of WRAP) for (const dx of WRAP) {
+      ctx.globalAlpha = a;
+      ctx.beginPath();
+      ctx.arc(x + dx, y + dy, rad, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   ctx.globalCompositeOperation = "source-over";
   ctx.globalAlpha = 1;

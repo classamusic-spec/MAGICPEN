@@ -4,7 +4,7 @@ import { recognize } from "@/lib/recognizer";
 import { kindById, rosterFor, WORLD_PACKS } from "@/lib/creatures";
 import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid, loadDream, saveDream, loadPet, savePet, clearPet, saveFood, type PetRef } from "@/lib/storage";
 import { resolvePet, makeRoom, petGreeting } from "@/lib/pet";
-import { remember as rememberInAlbum, forget as forgetFromAlbum } from "@/lib/album";
+import { remember as rememberInAlbum, forget as forgetFromAlbum, backfill as backfillAlbum } from "@/lib/album";
 import { markVisit, dailyIdea, welcomeBack, type Visit } from "@/lib/daily";
 import { CARE_PER_DAY } from "@/lib/social";
 import { BACK_EVENT } from "@/lib/native";
@@ -83,6 +83,9 @@ export default function App() {
      instead of a random suggestion. Cleared when they leave the draw screen. */
   const [ideaPrompt, setIdeaPrompt] = useState<string | null>(null);
   const [creatures, setCreatures] = useState<Creature[]>(() => loadCreatures());
+  /* Creatures made before the sticker book existed were never recorded in it —
+     put them in once, so the book really does hold every drawing. */
+  useEffect(() => { backfillAlbum(creatures); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
   const [draft, setDraft] = useState<Stroke[]>([]);
   const [photoDraft, setPhotoDraft] = useState<string | null>(null);
   const [newId, setNewId] = useState<string | null>(null);

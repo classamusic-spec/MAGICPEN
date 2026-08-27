@@ -533,8 +533,8 @@ function Reward({ world, lesson, stars, hasNext, onNext, onPicker, onBorn }: {
               {canNarrate() && (
                 <button
                   onClick={() => { sfxTap(); soundOut(); }}
-                  className="ink-title text-fs-xs px-3 py-1.5 rounded-full inline-flex items-center gap-1.5"
-                  style={{ background: "#fffaf0", border: "2.5px solid var(--ink)" }}
+                  className="ink-title text-fs-xs px-4 rounded-full inline-flex items-center gap-1.5"
+                  style={{ background: "#fffaf0", border: "2.5px solid var(--ink)", minHeight: "var(--tap)" }}
                 >
                   <Icon name="soundOn" size={16} />
                   Sound it out
@@ -707,10 +707,11 @@ export default function WriteWorld({ world, onBack, onBorn }: {
               role="tab"
               aria-selected={on}
               onClick={() => { if (!on) { sfxTap(); setLowercase(lc); } }}
-              className="ink-title text-fs-sm px-4 py-1.5 rounded-full transition-colors"
+              className="ink-title text-fs-sm px-4 rounded-full transition-colors"
               style={{
                 background: on ? w.tone : "transparent",
                 color: on ? "#fffaf0" : "var(--ink)",
+                minHeight: 44,
               }}
             >
               {label}

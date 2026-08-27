@@ -18,6 +18,7 @@ import { sfxBubble, sfxPop, sfxSplash, sfxTap, setMuted, isMuted, sfxHappy } fro
 import { drawOcean, drawSpace, drawFarm, drawDino, drawDream, newFxState, floorRatio } from "./world/themes";
 import { sampleFrame, clearLayers } from "./world/shared";
 import { stickerizeImage } from "@/lib/imaging";
+import { useBackClose } from "@/lib/native";
 import { bakeCrayonSprite, silhouette, stampRing, type Sprite } from "@/lib/sprites";
 import { loadFoods } from "@/lib/storage";
 import { InkButton, InkCard, InkShape, Scribble, Tape } from "@/components/ink/Ink";
@@ -877,6 +878,13 @@ export default function WorldScene({
   const [shareGate, setShareGate] = useState(false);
   const [tip, setTip] = useState(true);
 
+  /* Android hardware back closes whatever is open — the gate, then the sheet,
+     the tray, or the menu — before it is allowed to leave the world. */
+  useBackClose(shareGate, () => setShareGate(false));
+  useBackClose(!!sheet, () => setSheet(null));
+  useBackClose(trayOpen, () => setTrayOpen(false));
+  useBackClose(menuOpen, () => setMenuOpen(false));
+
   /* local creature edits — used when the app doesn't hand us callbacks */
   const [renames, setRenames] = useState<Record<string, string>>({});
   const [released, setReleased] = useState<Set<string>>(() => new Set());
@@ -1039,7 +1047,9 @@ export default function WorldScene({
       rt.excite = 1;
       rt.labelT = now + 900 + i * 600;
     });
-  }, [view, visit, pushBanner]);
+    /* artTick re-runs this once staging (below) has actually populated the
+       stage — the greeting used to race it and silently never fire */
+  }, [view, visit, pushBanner, artTick]);
 
   // bake sprites for any new creatures (photo creatures bake async)
   useEffect(() => {
@@ -1146,6 +1156,10 @@ export default function WorldScene({
     const alive = new Set(view.map((c) => c.id));
     for (const id of [...rtRef.current.keys()]) if (!alive.has(id)) rtRef.current.delete(id);
     for (const id of [...spritesRef.current.keys()]) if (!alive.has(id)) spritesRef.current.delete(id);
+    /* Announce that staging happened: the runtimes live in refs, which no
+       effect can observe — without this tick the welcome-back greeting below
+       finds an empty stage on mount and then never gets another turn. */
+    forceTick((n) => n + 1);
   }, [view, newId, floorR]);
 
   // Repainting the world moves the water and the hills. Anyone left standing in
@@ -3051,10 +3065,12 @@ export default function WorldScene({
         )}
       </div>
 
-      {/* ── banner queue: a note taped into the book ── */}
+      {/* ── banner queue: a note taped into the book ──
+          Above the sheet scrim (z-30): confirmations fired from inside the
+          sheet — a rename, a new pet — must not play out invisibly behind it. */}
       {banner && (
         <div
-          className="absolute inset-x-0 z-10 flex justify-center pointer-events-none"
+          className="absolute inset-x-0 z-40 flex justify-center pointer-events-none"
           style={{ ...padX, top: "calc(max(10px, env(safe-area-inset-top)) + 62px)" }}
         >
           <div key={banner.id} className="anim-spring-pop max-w-[94%]">
@@ -3204,8 +3220,8 @@ export default function WorldScene({
                 {onLearnDraw && (
                   <button
                     onClick={() => { sfxTap(); onLearnDraw(); }}
-                    className="ink-hand mt-3 underline decoration-2 underline-offset-4"
-                    style={{ fontSize: "var(--fs-sm)", color: "var(--plum)" }}
+                    className="ink-hand mt-1 px-4 underline decoration-2 underline-offset-4"
+                    style={{ fontSize: "var(--fs-sm)", color: "var(--plum)", minHeight: "var(--tap)" }}
                   >
                     …or show me how to draw one
                   </button>
@@ -3268,6 +3284,7 @@ export default function WorldScene({
                 <InkButton
                   shape="ellipse"
                   seed={140}
+                  autoFocus
                   className="hud-focus shrink-0"
                   style={{ width: 48, height: 48, padding: 0 }}
                   onClick={() => { sfxTap(); setSheet(null); }}
@@ -3358,9 +3375,9 @@ export default function WorldScene({
                               onClick={() => { sfxTap(); const f = factFor(detail.kindId); if (f) sayLine(f); }}
                               aria-label="Hear the fact again"
                               className="hud-focus ml-1 grid place-items-center rounded-full"
-                              style={{ width: 26, height: 26, border: "2px solid var(--ink)", background: "#fff" }}
+                              style={{ width: 44, height: 44, margin: -7, border: "2px solid var(--ink)", background: "#fff" }}
                             >
-                              <Icon name="soundOn" size={14} />
+                              <Icon name="soundOn" size={18} />
                             </button>
                           )}
                         </div>

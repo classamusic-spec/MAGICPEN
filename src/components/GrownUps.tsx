@@ -15,6 +15,7 @@
 import { useMemo } from "react";
 import type { Creature } from "@/lib/types";
 import { loadWriting } from "@/lib/storage";
+import { loadAlbum } from "@/lib/album";
 import { peekVisit } from "@/lib/daily";
 import { LETTER_LESSONS, NUMBER_CATEGORIES, SUM_LESSONS, WORD_LESSONS } from "@/lib/writing";
 import { DRAW_LESSONS } from "@/lib/lessons";
@@ -89,7 +90,10 @@ export default function GrownUps({ creatures, onBack, saveTrouble = null }: {
   ];
 
   const anyLearning = rows.some((r) => r.done > 0);
-  const made = creatures.length;
+  /* The sticker book is the real record of what was made — the live world is
+     capped at 30 and evicts, so its length stops counting exactly when a
+     prolific child would be proudest of the number. */
+  const made = Math.max(creatures.length, loadAlbum().length);
 
   return (
     <div className="screen ink-paper overflow-y-auto no-scrollbar">
@@ -146,6 +150,7 @@ export default function GrownUps({ creatures, onBack, saveTrouble = null }: {
                   className="mt-2 h-2.5 rounded-full overflow-hidden"
                   style={{ background: "rgba(45,41,38,0.10)", border: "1.5px solid rgba(45,41,38,0.18)" }}
                   role="progressbar"
+                  aria-label={`${r.label}: ${r.done} of ${r.total} ${r.unit} tried`}
                   aria-valuenow={pct}
                   aria-valuemin={0}
                   aria-valuemax={100}

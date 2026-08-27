@@ -17,6 +17,7 @@ import type { Stroke } from "@/lib/types";
 import { normalizeStrokes } from "@/lib/crayon";
 import { drawStroke } from "@/lib/brushes";
 import { paperTile } from "@/lib/ink";
+import { paintDoodle } from "@/lib/doodleArt";
 
 /** Print at a size that stays crisp on paper rather than on a screen. */
 const PX = 1000;
@@ -25,11 +26,14 @@ export default function PrintSheet({
   name,
   subtitle,
   strokes,
+  doodleId,
   onClose,
 }: {
   name: string;
   subtitle: string;
   strokes: Stroke[];
+  /** Word-born and stamped creatures: the body is this doodle, not strokes. */
+  doodleId?: string;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -55,15 +59,25 @@ export default function PrintSheet({
     fibre.src = paperTile();
 
     function paint() {
-      if (!ctx || !strokes.length) return;
-      const norm = normalizeStrokes(strokes, PX * 0.78);
-      ctx.save();
-      // `normalizeStrokes` centres on the origin, so this lands it mid-page
-      ctx.translate(PX / 2, PX / 2);
-      norm.strokes.forEach((s, i) => drawStroke(ctx, s, i + 1, 1));
-      ctx.restore();
+      if (!ctx) return;
+      if (strokes.length) {
+        const norm = normalizeStrokes(strokes, PX * 0.78);
+        ctx.save();
+        // `normalizeStrokes` centres on the origin, so this lands it mid-page
+        ctx.translate(PX / 2, PX / 2);
+        norm.strokes.forEach((s, i) => drawStroke(ctx, s, i + 1, 1));
+        ctx.restore();
+      } else if (doodleId) {
+        // a doodle-bodied creature prints its doodle, as the header promises
+        const box = PX * 0.7;
+        ctx.save();
+        ctx.translate((PX - box) / 2, (PX - box) / 2);
+        paintDoodle(ctx, doodleId, box);
+        ctx.restore();
+      }
+      // neither: the page keeps the name, which is still worth keeping
     }
-  }, [strokes]);
+  }, [strokes, doodleId]);
 
   /* Print once the sheet is on screen, and close when the dialog goes away —
      `afterprint` fires whether the grown-up printed or cancelled, so there is
@@ -99,11 +113,15 @@ export default function PrintSheet({
         .print-name { font-family: "Baloo 2", sans-serif; font-weight: 800; font-size: 30px; margin: 10px 0 2px; color: #2d2926; }
         .print-sub  { font-family: "Nunito", sans-serif; font-size: 15px; color: #6b6560; margin: 0 0 4px; }
         @media print {
-          /* the app disappears; the drawing is the page */
-          body > *:not(.print-sheet-host) { display: none !important; }
-          .print-sheet { position: static; background: none; padding: 0; display: block; }
+          /* The app disappears; the drawing is the page. Visibility, not
+             display: the sheet lives *inside* the app's root, so hiding
+             whole subtrees would take the sheet down with them — which is
+             exactly how this once printed a blank page. */
+          body * { visibility: hidden !important; }
+          .print-sheet, .print-sheet * { visibility: visible !important; }
+          .print-sheet { position: absolute; left: 0; top: 0; width: 100%; background: none; padding: 0; display: block; }
           .print-paper { box-shadow: none; max-width: none; border-radius: 0; padding: 0; }
-          .print-hide { display: none !important; }
+          .print-hide { display: none !important; visibility: hidden !important; }
           @page { margin: 12mm; }
         }
       `}</style>

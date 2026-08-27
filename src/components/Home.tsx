@@ -2,14 +2,16 @@
 // The child's own drawings are the point of this product, so they are the
 // hero of this screen — mounted into the book with tape, not listed in boxes.
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Creature, WorldPack, WritingWorld, WritingWorldId } from "@/lib/types";
 import { WORLD_PACKS, WRITING_WORLDS, kindById } from "@/lib/creatures";
 import { LETTER_LESSONS, ALL_NUMBER_LESSONS, SUM_LESSONS, WORD_LESSONS } from "@/lib/writing";
 import { SHAPE_LESSONS } from "@/lib/shapes";
 import { DRAW_LESSONS } from "@/lib/lessons";
 import { loadWriting } from "@/lib/storage";
+import { loadAlbum } from "@/lib/album";
 import { sfxTap, sfxHappy, sfxPop, sfxSplash } from "@/lib/audio";
+import { useBackClose } from "@/lib/native";
 import { bakeCrayonSprite } from "@/lib/sprites";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
@@ -281,7 +283,9 @@ function PinnedDrawing({
         />
         <InkCard seed={index * 17 + 40} className="p-3 pt-4 text-center" radius={14}>
           <span className="h-24 grid place-items-center">
-            <Thumb c={c} />
+            {/* sized to the 96px box it sits in — the 104px default was
+                clamped by max-h and rendered every square drawing squashed */}
+            <Thumb c={c} size={88} />
           </span>
           <span className="ink-title block text-fs-md truncate mt-1">{c.name}</span>
           <span className="ink-hand block text-fs-2xs truncate">{kind.label}</span>
@@ -555,7 +559,8 @@ function PackCard({
 /** How many lessons each writing world holds, so a card can show progress. */
 const WRITING_TOTAL: Record<WritingWorldId, number> = {
   shapes: SHAPE_LESSONS.length,
-  letters: LETTER_LESSONS.length,
+  // capitals and lowercase are separate sheets, counted separately below
+  letters: LETTER_LESSONS.length * 2,
   numbers: ALL_NUMBER_LESSONS.length + SUM_LESSONS.length,
   words: WORD_LESSONS.length,
 };
@@ -565,7 +570,9 @@ const WRITING_PREFIX: Record<WritingWorldId, string[]> = {
   /* `shape:` moved worlds, not keys — every star a child earned tracing a
      circle in Math World is still theirs, and now counts here. */
   shapes: ["shape:"],
-  letters: ["letter:"],
+  /* lowercase letters record under `lower:` — a child who traces only small
+     letters must still see their stars counted on this card */
+  letters: ["letter:", "lower:"],
   numbers: ["digit:", "teen:", "tens:", "big:", "sum:"],
   words: ["word:"],
 };
@@ -730,12 +737,18 @@ export default function Home({
   onForget?: (id: string) => void;
 }) {
   const [grownUps, setGrownUps] = useState<WorldPack | null>(null);
+  /* Android hardware back closes an open dialog before it can leave the app */
+  useBackClose(!!grownUps, () => setGrownUps(null));
   const closeRef = useRef<HTMLButtonElement>(null);
   const recent = creatures.slice(-8).reverse();
   // Read once per mount: the writing worlds write it, and coming back here
   // remounts this screen.
   const [writing] = useState(() => loadWriting());
   const isNew = creatures.length === 0;
+  /* The sticker book keeps drawings whose creatures have been released, so the
+     way in must not vanish with the last live creature — the book may be the
+     only place those drawings still exist. */
+  const bookHasDrawings = useMemo(() => loadAlbum().length > 0, [creatures.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const homeWorld = WORLD_PACKS[0].id;
   // No pet is the ordinary first-run state, and it must leave this page exactly
   // as it was: nothing rendered, no empty slot, and no shifted entrances. The
@@ -759,6 +772,7 @@ export default function Home({
      shows, word for word, so there is only ever one wording of the only
      irreversible thing in this app. */
   const [goodbye, setGoodbye] = useState<Creature | null>(null);
+  useBackClose(!!goodbye, () => setGoodbye(null));
   /** The farewell, in the world's own register: nobody is deleted here. */
   const [farewell, setFarewell] = useState<string | null>(null);
   const byeRef = useRef<HTMLDivElement>(null);
@@ -904,10 +918,12 @@ export default function Home({
               radius={20}
               onClick={() => { sfxHappy(); onPlayWorld(homeWorld); }}
               className="w-full mt-3 font-display font-extrabold text-fs-xl"
-              aria-label={`Visit my world — ${creatures.length} creature${creatures.length === 1 ? "" : "s"} living there`}
+              aria-label={`Visit my creatures — ${creatures.length} living in their world`}
             >
               <Icon name="globe" size={24} color="#fffaf0" weight={2.3} />
-              <span className="ink-on-wax">My world</span>
+              {/* "creatures", not "world": a pack below is literally named
+                  "My World", and two different doors must not share a name */}
+              <span className="ink-on-wax">Visit my creatures</span>
               <span
                 aria-hidden="true"
                 className="ink-title text-fs-sm px-2 rounded-full"
@@ -977,12 +993,12 @@ export default function Home({
         {/* Everything ever drawn, including what the world has since made room
             for. It sits under the shelf rather than in its header, because that
             is where a child looking for a drawing that is no longer here looks. */}
-        {!isNew && onStickerBook && (
+        {(!isNew || bookHasDrawings) && onStickerBook && (
           <button
             onClick={() => { sfxTap(); onStickerBook(); }}
             aria-label="Open the sticker book — every drawing you have made"
-            className="hud-focus mt-3 w-full flex items-center justify-center gap-2 py-2"
-            style={{ color: "var(--ink-soft)" }}
+            className="hud-focus mt-3 w-full flex items-center justify-center gap-2"
+            style={{ color: "var(--ink-soft)", minHeight: "var(--tap)" }}
           >
             <Icon name="star" size={16} color="var(--ink-soft)" weight={2.1} />
             <span className="ink-hand text-fs-xs underline decoration-2 underline-offset-2">
@@ -1053,8 +1069,8 @@ export default function Home({
           {onGrownUps && (
             <button
               onClick={() => { sfxTap(); onGrownUps(); }}
-              className="ink-title text-fs-xs px-4 py-2 rounded-full"
-              style={{ background: "#fffaf0", border: "2.5px solid var(--ink)" }}
+              className="ink-title text-fs-xs px-5 rounded-full"
+              style={{ background: "#fffaf0", border: "2.5px solid var(--ink)", minHeight: "var(--tap)" }}
             >
               For grown-ups: what they've learned
             </button>

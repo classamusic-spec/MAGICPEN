@@ -268,8 +268,10 @@ function LivingSea({ still, rush, onDrawn }: { still: boolean; rush: number; onD
   return (
     <canvas
       ref={ref}
-      role="img"
-      aria-label="A crayon sea drawing itself — waves, coral and fish — and coming alive"
+      /* decorative: it sits inside an aria-hidden button, so a label here
+         could never reach assistive tech anyway — the page's real state is
+         carried by the start button below */
+      aria-hidden="true"
       className="block w-full h-full"
     />
   );

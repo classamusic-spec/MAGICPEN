@@ -3,6 +3,7 @@ import type { Pt, Stroke } from "@/lib/types";
 import { drawStroke } from "@/lib/brushes";
 import type { Medium } from "@/lib/brushes";
 import { sfxTap, sfxPop, sfxMagic } from "@/lib/audio";
+import { useBackClose } from "@/lib/native";
 import { extractDrawingFromPhoto } from "@/lib/photo";
 import { hand, paperTile, roughEllipse, roughRect, seedOf, shade, waxTile } from "@/lib/ink";
 import { InkButton, InkCard, Scribble } from "@/components/ink/Ink";
@@ -638,6 +639,10 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
   /* Magic stamp: the rung below Drawing School. A child who can't draw yet taps
      the stamp, taps a creature, and it's already swimming in the world. */
   const [stampOpen, setStampOpen] = useState(false);
+
+  /* Android hardware back closes an open tray or gate before leaving the page */
+  useBackClose(camGate, () => setCamGate(false));
+  useBackClose(stampOpen, () => setStampOpen(false));
   const stampTitleId = useId();
   const stamps = useMemo(() => stampsFor(worldId), [worldId]);
 

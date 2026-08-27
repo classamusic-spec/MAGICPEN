@@ -30,12 +30,16 @@ export default function Replay({
   size = 220,
   /** Bump to play again — the same value never restarts a finished replay. */
   playKey = 0,
+  /** Just the finished picture, no performance — for a grid of thumbnails,
+   *  where a hundred simultaneous replays would flatten an old tablet. */
+  still = false,
   onDone,
   className,
 }: {
   strokes: Stroke[];
   size?: number;
   playKey?: number;
+  still?: boolean;
   onDone?: () => void;
   className?: string;
 }) {
@@ -90,6 +94,11 @@ export default function Replay({
       ctx.restore();
     };
 
+    if (still) {
+      // a thumbnail, not a performance — no rAF, no onDone
+      paint(1);
+      return;
+    }
     if (reduced || !strokes.length) {
       // no performance, just the finished picture
       paint(1);
@@ -108,7 +117,7 @@ export default function Replay({
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [strokes, size, playKey, reduced]);
+  }, [strokes, size, playKey, reduced, still]);
 
   return <canvas ref={ref} className={className} aria-hidden="true" style={{ display: "block" }} />;
 }

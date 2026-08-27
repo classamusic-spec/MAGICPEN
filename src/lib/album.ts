@@ -94,6 +94,30 @@ export function remember(c: Creature): AlbumEntry[] {
   return capped;
 }
 
+/**
+ * Put creatures that predate the album into the book.
+ *
+ * The album records a creature when it is *made* — but creatures made before
+ * the album existed (or restored from an old save) were never recorded, and a
+ * book whose subtitle promises "every drawing you make lands here" must not
+ * quietly omit the ones already swimming. Runs once per app start; a no-op
+ * when everything is already remembered.
+ */
+export function backfill(creatures: Creature[]): void {
+  const album = loadAlbum();
+  const known = new Set(album.map((e) => e.id));
+  const missing = creatures.filter((c) => !known.has(c.id));
+  if (missing.length === 0) return;
+  const merged = [...album, ...missing.map(entryOf)]
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .slice(-MAX_ALBUM);
+  try {
+    localStorage.setItem(KEY, JSON.stringify(merged));
+  } catch {
+    /* out of room — same stance as remember(): a sticker, never a drawing */
+  }
+}
+
 /** Forget one sticker, when a child says goodbye from inside the book. */
 export function forget(id: string): AlbumEntry[] {
   const next = loadAlbum().filter((e) => e.id !== id);

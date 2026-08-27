@@ -88,8 +88,12 @@ export function InkShape({
     >
       <defs>
         {fill.kind === "wax" && waxUrl && (
-          <pattern id={`wax-${uid}`} patternUnits="userSpaceOnUse" width="128" height="128">
-            <image href={waxUrl} width="128" height="128" />
+          /* 96px, the tile's own logical size (it is baked 2× and downsampled
+             — see waxTile). The slight rotation keeps the repeat from lining
+             up with the button's edges, so a wide button reads as one field
+             of wax instead of wallpaper. */
+          <pattern id={`wax-${uid}`} patternUnits="userSpaceOnUse" width="96" height="96" patternTransform="rotate(-4)">
+            <image href={waxUrl} width="96" height="96" />
           </pattern>
         )}
         {lifted && (
@@ -153,12 +157,14 @@ export function InkButton({
   const [measureRef, box] = useMeasure<HTMLButtonElement>();
   const label = typeof children === "string" ? children : "";
   const s = seed ?? (label ? seedOf(label) : 7);
-  // the shape needs the element to measure it; callers may want it too
-  const attach = (el: HTMLButtonElement | null) => {
+  // the shape needs the element to measure it; callers may want it too.
+  // Memoised: a fresh ref callback every render makes React detach and
+  // reattach it, tearing down the ResizeObserver on every parent re-render.
+  const attach = useCallback((el: HTMLButtonElement | null) => {
     measureRef(el);
     if (typeof forwarded === "function") forwarded(el);
     else if (forwarded) forwarded.current = el;
-  };
+  }, [measureRef, forwarded]);
   return (
     <button
       ref={attach}

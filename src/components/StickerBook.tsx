@@ -6,10 +6,11 @@
 // complete, or a gap to fill. It is the shoebox of drawings under the bed, and
 // the best thing in it is watching one being drawn again.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { loadAlbum, forget as forgetSticker, canReplay, hasArt, type AlbumEntry } from "@/lib/album";
 import { kindById } from "@/lib/creatures";
 import { sfxTap, sfxHappy, sfxSplash } from "@/lib/audio";
+import { useBackClose } from "@/lib/native";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
 import { Doodle } from "@/components/ink/Doodles";
@@ -56,7 +57,7 @@ function Sticker({ e, index, onOpen }: { e: AlbumEntry; index: number; onOpen: (
               <Doodle name={e.doodleId} size={54} />
             ) : canReplay(e) ? (
               // the drawing itself, sitting still until it is opened
-              <Replay strokes={e.strokes} size={58} playKey={-1} />
+              <Replay strokes={e.strokes} size={58} still />
             ) : (
               <Icon name="pencil" size={26} color="var(--ink-soft)" />
             )}
@@ -91,6 +92,20 @@ export default function StickerBook({
   const open = openId ? album.find((e) => e.id === openId) ?? null : null;
 
   const close = () => { setOpenId(null); setSaying(false); };
+
+  /* Android hardware back peels one layer at a time: gate → sheet → card */
+  useBackClose(printGate, () => setPrintGate(false));
+  useBackClose(printing, () => setPrinting(false));
+  useBackClose(!!openId, close);
+
+  /* Escape closes the card, matching the app's other dialogs — without it a
+     keyboard (or switch-access) user is stuck behind the scrim. */
+  useEffect(() => {
+    if (!openId) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openId]);
 
   const letGo = (e: AlbumEntry) => {
     sfxSplash();
@@ -192,7 +207,7 @@ export default function StickerBook({
                     <span className="ink-on-wax ink-title text-fs-md">Watch it again</span>
                   </InkButton>
                 )}
-                {canReplay(open) && (
+                {hasArt(open) && (
                   <InkButton
                     seed={39}
                     radius={16}
@@ -200,13 +215,14 @@ export default function StickerBook({
                     aria-label={`Print ${open.name} for the fridge`}
                     style={{ minHeight: "var(--tap)" }}
                   >
-                    <Icon name="camera" size={19} />
+                    <Icon name="print" size={19} />
                     <span className="ink-title text-fs-md">Print it</span>
                   </InkButton>
                 )}
                 <InkButton
                   seed={23}
                   radius={16}
+                  autoFocus
                   onClick={() => { sfxTap(); close(); }}
                   style={{ minHeight: "var(--tap)" }}
                 >
@@ -248,6 +264,7 @@ export default function StickerBook({
           name={open.name}
           subtitle={`your ${kindById(open.kindId).label} · ${whenMade(open.createdAt)}`}
           strokes={open.strokes}
+          doodleId={open.doodleId}
           onClose={() => setPrinting(false)}
         />
       )}
