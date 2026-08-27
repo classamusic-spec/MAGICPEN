@@ -53,7 +53,7 @@ export default function GrownUps({ creatures, onBack, saveTrouble = null }: {
    *  Deliberately surfaced here and nowhere else: a child can do nothing about
    *  it, and telling them their friends might not come back is a cruelty with
    *  no upside. A grown-up can actually act on it. */
-  saveTrouble?: null | "creatures" | "photos";
+  saveTrouble?: null | "creatures";
 }) {
   const progress = useMemo(() => loadWriting(), []);
   const visit = useMemo(() => peekVisit(), []);
@@ -185,9 +185,7 @@ export default function GrownUps({ creatures, onBack, saveTrouble = null }: {
             <span className="ink-title text-fs-md">Running out of room</span>
             <span className="block w-24"><Scribble seed={44} height={8} /></span>
             <p className="ink-hand text-fs-sm leading-relaxed">
-              {saveTrouble === "creatures"
-                ? "This device is out of storage, so the newest drawings could not be saved and may not be here tomorrow. Freeing up some space on the device will fix it."
-                : "This device is low on storage, so a photo of a paper drawing could not be saved. The creature is safe and will come back drawn in crayon."}
+              This device is out of storage, so the newest drawings could not be saved and may not be here tomorrow. Freeing up some space on the device will fix it.
             </p>
           </InkCard>
         )}

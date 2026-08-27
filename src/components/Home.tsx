@@ -33,23 +33,15 @@ import { hand } from "@/lib/ink";
  */
 export function Thumb({ c, size = 104 }: { c: Creature; size?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
-  const [photoImg, setPhotoImg] = useState<HTMLImageElement | null>(null);
-
-  useEffect(() => {
-    if (!c.photoData) return;
-    const im = new Image();
-    im.onload = () => setPhotoImg(im);
-    im.src = c.photoData;
-  }, [c.photoData]);
 
   useEffect(() => {
     const cv = ref.current;
     if (!cv) return;
     const ctx = cv.getContext("2d");
     if (!ctx) return;
-    const src = photoImg ?? bakeCrayonSprite(c).frames[0];
-    const w = "width" in src ? src.width : 100;
-    const h = "height" in src ? src.height : 100;
+    const src = bakeCrayonSprite(c).frames[0];
+    const w = src.width;
+    const h = src.height;
     if (!w || !h) return;
     const dpr = Math.min(3, window.devicePixelRatio || 1);
     const k = size / Math.max(w, h);
@@ -60,7 +52,7 @@ export function Thumb({ c, size = 104 }: { c: Creature; size?: number }) {
     cv.style.width = `${cw}px`;
     cv.style.height = `${ch}px`;
     ctx.drawImage(src, 0, 0, cv.width, cv.height);
-  }, [c, photoImg, size]);
+  }, [c, size]);
 
   return (
     <canvas

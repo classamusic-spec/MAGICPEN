@@ -14,7 +14,6 @@ import { kindById, WORLD_PACKS } from "@/lib/creatures";
 import { drawOcean, drawSpace, drawFarm, drawDino, newFxState, floorRatio } from "./world/themes";
 import { sampleFrame, clearLayers } from "./world/shared";
 import { bakeCrayonSprite } from "@/lib/sprites";
-import { stickerizeImage } from "@/lib/imaging";
 import { loadBest, saveBest } from "@/lib/storage";
 import { sfxPop, sfxSplash, sfxHappy, sfxMagic, sfxTap } from "@/lib/audio";
 import { WORLD_GAMES, createGame, type Frame, type GameAPI, type GameInstance, type Input } from "@/lib/games";
@@ -637,31 +636,11 @@ function BestMeter({ score, best }: { score: number; best: number }) {
 
 /* ── hero art ────────────────────────────────────────────────────────────── */
 
-/** Resolve the best available hero canvas: photo sticker → crayon. */
+/** Resolve the hero canvas: the creature's crayon body. */
 function useHeroCanvas(c: Creature | null) {
   const [cv, setCv] = useState<HTMLCanvasElement | null>(null);
   useEffect(() => {
-    let live = true;
-    if (!c) { setCv(null); return; }
-    if (c.photoData) {
-      const im = new Image();
-      im.onload = () => {
-        if (!live) return;
-        const S = Math.min(1, 160 / Math.max(im.width, im.height));
-        const tmp = document.createElement("canvas");
-        tmp.width = Math.max(1, Math.round(im.width * S));
-        tmp.height = Math.max(1, Math.round(im.height * S));
-        tmp.getContext("2d")!.drawImage(im, 0, 0, tmp.width, tmp.height);
-        setCv(stickerizeImage(tmp));
-      };
-      /* a photo that fails to decode must not leave the Go button dead
-         forever — the creature still has a crayon body to fall back to */
-      im.onerror = () => { if (live) setCv(bakeCrayonSprite(c).frames[0]); };
-      im.src = c.photoData;
-      return () => { live = false; };
-    }
-    setCv(bakeCrayonSprite(c).frames[0]);
-    return () => { live = false; };
+    setCv(c ? bakeCrayonSprite(c).frames[0] : null);
   }, [c]);
   return cv;
 }

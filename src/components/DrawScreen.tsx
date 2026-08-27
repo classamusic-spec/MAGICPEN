@@ -4,14 +4,12 @@ import { drawStroke } from "@/lib/brushes";
 import type { Medium } from "@/lib/brushes";
 import { sfxTap, sfxPop, sfxMagic } from "@/lib/audio";
 import { useBackClose } from "@/lib/native";
-import { extractDrawingFromPhoto } from "@/lib/photo";
 import { hand, paperTile, roughEllipse, roughRect, seedOf, shade, waxTile } from "@/lib/ink";
 import { InkButton, InkCard, Scribble } from "@/components/ink/Ink";
 import { usePrefersReducedMotion } from "@/components/ink/motion";
 import { Icon } from "@/components/ink/Icons";
 import { Doodle } from "@/components/ink/Doodles";
 import { stampsFor, type Stamp } from "@/lib/stamps";
-import ParentGate from "@/components/ParentGate";
 
 /* The crayon box. `short` is what's printed on the paper wrapper — kept to
    five or six letters so the whole word still reads once the crayon's blunt
@@ -599,7 +597,6 @@ interface Props {
   /** The world this drawing is bound for — picks the roster of magic stamps. */
   worldId: string;
   onDone: (strokes: Stroke[]) => void;
-  onPhoto: (photoData: string) => void;
   /** Tap-once creature: App bakes the doodle-bodied kind and flies to the world. */
   onStamp: (kindId: string, doodleId: string) => void;
   onBack: () => void;
@@ -613,12 +610,7 @@ interface Props {
   onTreat?: (strokes: Stroke[]) => void;
 }
 
-export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, onBack, treat = false, onTreat }: Props) {
-  /* The camera is the one control here a child must not reach alone. Its label
-     has always said "Grown-ups:", but a label is not a gate and the child this
-     is built for cannot read it — and a photograph of a paper drawing can
-     easily contain the child holding it. */
-  const [camGate, setCamGate] = useState(false);
+export default function DrawScreen({ prompt, worldId, onDone, onStamp, onBack, treat = false, onTreat }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
@@ -632,16 +624,13 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
   const [erasing, setErasing] = useState(false);
   const liveRef = useRef<Stroke | null>(null);
   const strokesRef = useRef<Stroke[]>([]);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [photoBusy, setPhotoBusy] = useState(false);
   const [sheet, setSheet] = useState({ w: 0, h: 0 });
 
   /* Magic stamp: the rung below Drawing School. A child who can't draw yet taps
      the stamp, taps a creature, and it's already swimming in the world. */
   const [stampOpen, setStampOpen] = useState(false);
 
-  /* Android hardware back closes an open tray or gate before leaving the page */
-  useBackClose(camGate, () => setCamGate(false));
+  /* Android hardware back closes an open tray before leaving the page */
   useBackClose(stampOpen, () => setStampOpen(false));
   const stampTitleId = useId();
   const stamps = useMemo(() => stampsFor(worldId), [worldId]);
@@ -651,22 +640,6 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
   const reduced = usePrefersReducedMotion();
   const [boxRef, boxBox] = useBox<HTMLDivElement>();
 
-  // parent snaps a paper drawing → lift it off the paper → magic reveal
-  const onPickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setPhotoBusy(true);
-    try {
-      const data = await extractDrawingFromPhoto(file);
-      sfxMagic();
-      onPhoto(data);
-    } catch {
-      // couldn't find a drawing — shake it off, stay on the draw screen
-      if ("vibrate" in navigator) navigator.vibrate([40, 60, 40]);
-      setPhotoBusy(false);
-    }
-  };
   strokesRef.current = strokes;
 
   const redraw = useCallback(() => {
@@ -954,7 +927,7 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
       <style>{DW_CSS}</style>
 
       <div className="dw-grid pad-x pad-t pad-b">
-        {/* ── top: leave · history · photograph ───────────────────────── */}
+        {/* ── top: leave · history · tools ─────────────────────────────── */}
         <div className="dw-top">
           <InkButton
             onClick={() => { sfxTap(); onBack(); }}
@@ -1017,38 +990,6 @@ export default function DrawScreen({ prompt, worldId, onDone, onPhoto, onStamp, 
           )}
 
           {land && <div className="dw-toolrow dw-toolrow-top">{toolRow}</div>}
-
-          <span className="dw-spacer" />
-
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={onPickPhoto}
-          />
-          <InkButton
-            onClick={() => { sfxTap(); setCamGate(true); }}
-            disabled={photoBusy}
-            aria-busy={photoBusy}
-            shape="ellipse"
-            seed={78}
-            aria-label="Grown-ups: photograph a drawing on paper"
-            title="Photograph a drawing on paper"
-            className="dw-icon-btn"
-            style={{ width: TOOL, height: TOOL }}
-          >
-            <Icon name={photoBusy ? "clock" : "camera"} size={22} />
-          </InkButton>
-
-          {camGate && (
-            <ParentGate
-              title="Open the camera?"
-              onPass={() => { setCamGate(false); fileRef.current?.click(); }}
-              onCancel={() => setCamGate(false)}
-            />
-          )}
         </div>
 
         {/* ── the sheet ───────────────────────────────────────────────── */}
@@ -1342,7 +1283,6 @@ const DW_CSS = `
   grid-template-columns: minmax(0, 1fr);
 }
 .dw-top { grid-area: top; display: flex; align-items: center; gap: 6px; min-width: 0; }
-.dw-spacer { flex: 1 1 auto; }
 .dw-sep { width: 2px; }
 .dw-icon-btn { padding: 0 !important; flex: none; }
 

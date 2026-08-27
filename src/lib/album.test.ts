@@ -73,25 +73,20 @@ describe("remembering", () => {
   });
 });
 
-/* The trap this file exists to avoid: a hot array carrying base64. It cost the
-   sketchbook its quota once already, via photos. */
+/* The trap this file exists to avoid: a hot array carrying base64, which would
+   crowd the quota and take the sketchbook down with it. The album keeps strokes
+   and ids only — never a baked image. */
 describe("never stores an image", () => {
-  it("keeps no photo data, only the fact that there was a photo", () => {
-    const big = "data:image/png;base64," + "A".repeat(5000);
-    const e = entryOf(creature("p", { photoData: big }));
-    expect(e.fromPhoto).toBe(true);
-    expect(JSON.stringify(e)).not.toContain("base64");
-  });
-
-  it("keeps no image anywhere in what is written to storage", () => {
-    remember(creature("p", { photoData: "data:image/png;base64,AAAA" }));
-    expect(localStorage.getItem("magicpen.album.v1")).not.toContain("base64");
-  });
-
-  it("remembers a doodle body by id", () => {
+  it("remembers a doodle body by id, not as a picture", () => {
     const e = entryOf(creature("d", { doodleId: "crab", strokes: [] }));
     expect(e.doodleId).toBe("crab");
     expect(e.strokes).toEqual([]);
+  });
+
+  it("keeps no base64 anywhere in what is written to storage", () => {
+    remember(creature("a"));
+    remember(creature("d", { doodleId: "crab", strokes: [] }));
+    expect(localStorage.getItem("magicpen.album.v1")).not.toContain("base64");
   });
 });
 
@@ -106,11 +101,11 @@ describe("what a sticker can do", () => {
     expect(canReplay(e)).toBe(false);
   });
 
-  it("a photo creature is remembered even though it can show nothing", () => {
-    const e = entryOf(creature("p", { photoData: "x", strokes: [] }));
+  it("an entry with neither strokes nor a doodle is still remembered by name", () => {
+    const e = entryOf(creature("bare", { strokes: [] }));
     expect(hasArt(e)).toBe(false);
     expect(canReplay(e)).toBe(false);
-    expect(e.name).toBe("p");
+    expect(e.name).toBe("bare");
   });
 });
 

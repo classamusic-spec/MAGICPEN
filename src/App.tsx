@@ -45,8 +45,8 @@ const StickerBook = lazy(() => import("@/components/StickerBook"));
 /**
  * How many creatures swim in a world at once.
  *
- * Not a storage limit (photos live in their own key; the rest is a few
- * kilobytes) and not really a framerate one either now — it is a *legibility*
+ * Not a storage limit (a creature is a few kilobytes of scalars and strokes)
+ * and not really a framerate one either now — it is a *legibility*
  * limit. Every creature is a full-size sprite that scales with the screen, so
  * a bigger tablet does not fit more; past the mid-teens the reef disappears
  * under a wall of stickers and a child can no longer pick out one friend to
@@ -89,7 +89,6 @@ export default function App() {
      put them in once, so the book really does hold every drawing. */
   useEffect(() => { backfillAlbum(creatures); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
   const [draft, setDraft] = useState<Stroke[]>([]);
-  const [photoDraft, setPhotoDraft] = useState<string | null>(null);
   const [newId, setNewId] = useState<string | null>(null);
   /* The name of a creature the world just made room for, so the world can
      wave it off by name rather than let it vanish. It is still in the sticker
@@ -182,10 +181,10 @@ export default function App() {
      the grown-ups screen can say so plainly. Nothing is shown to the child:
      a four-year-old can do nothing about a full disk, and telling them their
      friends might not come back is a cruelty with no upside. */
-  const [saveTrouble, setSaveTrouble] = useState<null | "creatures" | "photos">(null);
+  const [saveTrouble, setSaveTrouble] = useState<null | "creatures">(null);
   useEffect(() => {
     const r = saveCreatures(creatures);
-    setSaveTrouble(!r.creatures ? "creatures" : !r.photos ? "photos" : null);
+    setSaveTrouble(!r.creatures ? "creatures" : null);
   }, [creatures]);
 
   /* ── growing up ───────────────────────────────────────────────────────────
@@ -251,13 +250,6 @@ export default function App() {
 
   const handleDrawn = (strokes: Stroke[]) => {
     setDraft(strokes);
-    setPhotoDraft(null);
-    go("reveal");
-  };
-
-  const handlePhoto = (photoData: string) => {
-    setDraft([]);
-    setPhotoDraft(photoData);
     go("reveal");
   };
 
@@ -267,7 +259,6 @@ export default function App() {
       kindId,
       name,
       strokes: draft,
-      photoData: photoDraft ?? undefined,
       createdAt: Date.now(),
       wx: 0.5,
       wy: 0.5,
@@ -280,7 +271,6 @@ export default function App() {
        child let go of by hand is remembered too. The album records what they
        drew, not what happens to still be swimming. */
     addCreature(creature);
-    setPhotoDraft(null);
     go("world");
   };
 
@@ -506,7 +496,6 @@ export default function App() {
                 worldId={drawWorld}
                 onDone={handleDrawn}
                 onStamp={handleStamp}
-                onPhoto={handlePhoto}
                 treat={drawingTreat}
                 onTreat={handleTreatDrawn}
                 onBack={() => { if (drawingTreat) { setDrawingTreat(false); go("world"); } else go("home"); }}
@@ -516,7 +505,6 @@ export default function App() {
               <MagicReveal
                 strokes={draft}
                 result={result}
-                photo={photoDraft}
                 worldId={drawWorld}
                 name={pickName(result.kindId, takenNames)}
                 onShuffleName={(k) => pickName(k, takenNames)}

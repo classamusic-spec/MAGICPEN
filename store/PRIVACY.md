@@ -14,8 +14,7 @@ In App Store Connect → App Privacy, choose:
 
 That is the whole answer — it removes every follow-up question. It is accurate:
 the app has no server, no analytics SDK, no ad SDK, and no tracking, and makes
-no network requests. The camera (photograph-a-paper-drawing) writes only to
-on-device storage and is not collection.
+no network requests. Everything a child makes lives only in on-device storage.
 
 - **Export compliance:** `ITSAppUsesNonExemptEncryption = false` is already set
   in `Info.plist`, so the encryption question is answered automatically.
@@ -36,12 +35,10 @@ on-device storage and is not collection.
 
 ## Permissions declared
 
-| Permission | Platform | Why | User-facing string |
-|---|---|---|---|
-| Camera | iOS (`NSCameraUsageDescription`) | Optional: a grown-up photographs a paper drawing to bring it in | set in Info.plist |
-| Photo library | iOS (`NSPhotoLibraryUsageDescription`) | Optional: a grown-up picks a drawing from photos | set in Info.plist |
-| Camera | Android | The system camera intent handles the file-input capture — **no `CAMERA` permission is declared**, so none is requested | n/a |
+| Permission | Platform | Why |
+|---|---|---|
+| _None_ | iOS | The app declares no device permissions and can prompt for none. |
+| _None_ | Android | Only `INTERNET` is present (Capacitor default, unused); no runtime permission is requested. |
 
-The only permission the app can ever prompt for is the camera on iOS, and only
-when a grown-up chooses to photograph a paper drawing. Sharing and printing use
-the OS share sheet / print dialog and sit behind the in-app parental gate.
+The app never prompts for a device permission. Sharing and printing use the OS
+share sheet / print dialog and sit behind the in-app parental gate.

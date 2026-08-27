@@ -63,7 +63,6 @@ export interface Creature {
   speed: number;
   phase: number;              // animation phase offset
   scale: number;              // size relative to drawing
-  photoData?: string;         // paper-photo drawing (transparent PNG data URL)
   /** Born in Word World: its body is the doodle of this name, not `strokes`.
    *  Kept as an id rather than a baked PNG so it costs a few bytes of storage
    *  and stays sharp at any size. */

@@ -14,7 +14,6 @@ interface Props {
   strokes: Stroke[];
   result: RecognitionResult;
   name: string;
-  photo?: string | null;   // paper-photo drawing (data URL) — skips the guess
   worldId: string;         // the world being drawn for — it picks the choices
   onShuffleName: (kindId: string) => string;
   onConfirm: (kindId: string, name: string) => void;
@@ -425,9 +424,8 @@ function PaperMarks() {
 /* ════════════════════════════════════════════════════════════════════════ */
 
 export default function MagicReveal({
-  strokes, result, name, photo, worldId, onShuffleName, onConfirm, onRedraw,
+  strokes, result, name, worldId, onShuffleName, onConfirm, onRedraw,
 }: Props) {
-  const isPhoto = Boolean(photo);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [stageRef, stageBox] = useBox<HTMLDivElement>();
@@ -479,26 +477,19 @@ export default function MagicReveal({
       setScanX(Math.min(1, p));
       if (p < 1) raf = requestAnimationFrame(tick);
       else {
-        setPhase(isPhoto ? "pick" : "guess"); // photos skip straight to "what is it?"
+        setPhase("guess");
         sfxHappy();
       }
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // live wiggling drawing (strokes) or wobbling photo drawing
+  // live wiggling drawing (strokes)
   useEffect(() => {
     const cv = canvasRef.current!;
     const wrap = wrapRef.current!;
     let raf = 0;
-    let photoImg: HTMLImageElement | null = null;
-    if (photo) {
-      const im = new Image();
-      im.onload = () => { photoImg = im; };
-      im.src = photo;
-    }
     const fitAndLoop = () => {
       /* One loop at a time: this is called again on every resize (and the
          observer's guaranteed first delivery), and each call starts a fresh
@@ -528,23 +519,6 @@ export default function MagicReveal({
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, r.width, r.height);
         const excited = phase !== "scan";
-        if (photo) {
-          if (photoImg) {
-            const fit = Math.min((r.width - pad) / photoImg.width, (r.height - pad) / photoImg.height, 1.4);
-            const pw = photoImg.width * fit;
-            const ph = photoImg.height * fit;
-            const sq = reduced ? 1 : 1 + Math.sin(t / (excited ? 90 : 320)) * (excited ? 0.07 : 0.02);
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.rotate(reduced ? 0 : Math.sin(t / (excited ? 260 : 900)) * (excited ? 0.08 : 0.02));
-            ctx.scale(sq, 1 / sq);
-            ctx.drawImage(photoImg, -pw / 2, -ph / 2, pw, ph);
-            ctx.restore();
-          }
-          // a still page for anyone who asked for less motion
-          if (!reduced || !photoImg) raf = requestAnimationFrame(loop);
-          return;
-        }
         ctx.save();
         ctx.translate(cx, cy);
         ctx.scale(scale, scale);
@@ -568,7 +542,7 @@ export default function MagicReveal({
     const ro = new ResizeObserver(fitAndLoop);
     ro.observe(wrap);
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
-  }, [strokes, phase, photo, reduced]);
+  }, [strokes, phase, reduced]);
 
   /* whatever is already ticked should be in sight the moment the set opens */
   useEffect(() => {
@@ -880,20 +854,18 @@ export default function MagicReveal({
               style={{ maxHeight: short ? "100%" : "min(70dvh, 34rem)" }}
             >
               <div className="flex items-center gap-2 px-1 shrink-0">
-                {!isPhoto && (
-                  <InkButton
-                    shape="ellipse"
-                    seed={23}
-                    onClick={() => { sfxTap(); setPhase("guess"); }}
-                    aria-label="Back to the guess"
-                    className="shrink-0"
-                    style={{ width: 48, height: 48, padding: 0 }}
-                  >
-                    <Icon name="back" size={22} color={C.ink} />
-                  </InkButton>
-                )}
+                <InkButton
+                  shape="ellipse"
+                  seed={23}
+                  onClick={() => { sfxTap(); setPhase("guess"); }}
+                  aria-label="Back to the guess"
+                  className="shrink-0"
+                  style={{ width: 48, height: 48, padding: 0 }}
+                >
+                  <Icon name="back" size={22} color={C.ink} />
+                </InkButton>
                 <p className="type-label flex-1 text-center">Tap what it is</p>
-                {!isPhoto && <span className="shrink-0" style={{ width: 48 }} aria-hidden="true" />}
+                <span className="shrink-0" style={{ width: 48 }} aria-hidden="true" />
               </div>
 
               <div className="relative mt-1 min-h-0 flex">

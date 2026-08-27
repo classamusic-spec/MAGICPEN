@@ -4,29 +4,6 @@ import type { Creature, DreamWorld, Stroke } from "./types";
 
 const KEY = "magicpen.creatures.v1";
 const SEEN_KEY = "magicpen.seenIntro.v1";
-/* ── why photos live in their own key ─────────────────────────────────────────
-   A paper-photo creature carries `photoData`: a transparent PNG data URL, about
-   160 KB of base64. Thirty of those is roughly 4.7 MB, and a browser's whole
-   localStorage budget is about 5. So the array that gets rewritten on *every*
-   change — a rename, a released friend, a creature growing a little — was
-   carrying nearly the entire quota with it, and the write that finally failed
-   would have taken the whole sketchbook with it.
-
-   Splitting them out means the hot array is a few kilobytes of small scalars.
-   A photo that will not fit now loses that one photo; it can no longer lose the
-   child's creatures. */
-const PHOTO_KEY = "magicpen.photos.v1";
-
-type PhotoMap = Record<string, string>;
-
-function loadPhotos(): PhotoMap {
-  try {
-    const raw = JSON.parse(localStorage.getItem(PHOTO_KEY) ?? "{}") as unknown;
-    return raw && typeof raw === "object" ? (raw as PhotoMap) : {};
-  } catch {
-    return {};
-  }
-}
 
 export function loadCreatures(): Creature[] {
   try {
@@ -34,63 +11,33 @@ export function loadCreatures(): Creature[] {
     if (!raw) return [];
     const arr = JSON.parse(raw) as Creature[];
     if (!Array.isArray(arr)) return [];
-    /* Photos are put back on the way in, so nothing downstream of here has to
-       know they were ever stored apart. A sketchbook written before the split
-       still has them inline; that reads fine, and the next save moves them. */
-    const photos = loadPhotos();
-    return arr.map((c) => (c.photoData || !photos[c.id] ? c : { ...c, photoData: photos[c.id] }));
+    return arr;
   } catch {
     return [];
   }
 }
 
-/** What a save managed. Both true is the ordinary case. */
+/** What a save managed. True is the ordinary case. */
 export interface SaveResult {
-  /** The creatures themselves — names, positions, care. The important one. */
+  /** The creatures themselves — names, positions, care. */
   creatures: boolean;
-  /** Their paper photos. False means one or more photos did not fit; the
-   *  creatures are still saved and will come back drawn in crayon. */
-  photos: boolean;
 }
 
 /**
  * Write the sketchbook.
  *
- * Photos are peeled off into their own key and pruned to the creatures that
- * still exist — a released friend used to leave its 160 KB behind forever.
- *
- * The result is returned rather than swallowed. This used to fail silently,
- * which is the worst of both worlds: the child keeps playing, everything looks
- * saved, and it is gone tomorrow.
+ * A creature is a few small scalars plus its strokes, so the whole array stays
+ * well inside the storage budget. The result is returned rather than swallowed:
+ * a silent failure is the worst of both worlds — the child keeps playing,
+ * everything looks saved, and it is gone tomorrow.
  */
 export function saveCreatures(c: Creature[]): SaveResult {
-  const photos: PhotoMap = {};
-  let any = false;
-  const lean = c.map((x) => {
-    if (!x.photoData) return x;
-    photos[x.id] = x.photoData;
-    any = true;
-    const lean: Creature = { ...x };
-    delete lean.photoData;
-    return lean;
-  });
-
-  const out: SaveResult = { creatures: false, photos: true };
+  const out: SaveResult = { creatures: false };
   try {
-    localStorage.setItem(KEY, JSON.stringify(lean));
+    localStorage.setItem(KEY, JSON.stringify(c));
     out.creatures = true;
   } catch {
     /* storage full / private mode — play session continues in memory */
-  }
-
-  try {
-    if (any) localStorage.setItem(PHOTO_KEY, JSON.stringify(photos));
-    else localStorage.removeItem(PHOTO_KEY);
-  } catch {
-    out.photos = false;
-    /* One last try without the photos at all. A child would far rather their
-       creature came back in crayon than not come back. */
-    try { localStorage.removeItem(PHOTO_KEY); } catch { /* noop */ }
   }
   return out;
 }
@@ -148,8 +95,8 @@ export function clearPet(): void {
 /* ── food the child drew ──────────────────────────────────────────────────────
    Strokes, not baked images — the same reasoning that keeps `doodleId` an id
    rather than a PNG. A handful of strokes is a few hundred bytes and can be
-   re-baked at any size; a baked canvas would put us straight back into the
-   photo-quota trap this file exists to avoid.
+   re-baked at any size; a baked canvas would be a ~160 KB blob that could crowd
+   the ~5 MB browser budget and take the child's creatures down with it.
 
    Capped, oldest out. A crumb on the water is still never persisted — this is
    the *recipe*, not the crumb. */

@@ -83,7 +83,7 @@ export default function StickerBook({
   const [saying, setSaying] = useState(false);
   const [play, setPlay] = useState(0);
   /* Printing puts a drawing on paper, which is a door out of the device — so
-     it asks the same grown-up question the camera and the share sheet ask. */
+     it asks the same grown-up question the share sheet asks. */
   const [printGate, setPrintGate] = useState(false);
   const [printing, setPrinting] = useState(false);
 
@@ -182,7 +182,7 @@ export default function StickerBook({
               ) : hasArt(open) ? (
                 <Doodle name={open.doodleId!} size={150} />
               ) : (
-                <span className="ink-hand text-fs-sm">This one was a photograph.</span>
+                <span className="ink-hand text-fs-sm">This one is remembered by name.</span>
               )}
             </span>
 

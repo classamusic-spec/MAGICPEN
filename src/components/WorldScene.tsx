@@ -17,7 +17,6 @@ import { usePrefersReducedMotion } from "@/components/ink/motion";
 import { sfxBubble, sfxPop, sfxSplash, sfxTap, setMuted, isMuted, sfxHappy } from "@/lib/audio";
 import { drawOcean, drawSpace, drawFarm, drawDino, drawDream, newFxState, floorRatio } from "./world/themes";
 import { sampleFrame, clearLayers } from "./world/shared";
-import { stickerizeImage } from "@/lib/imaging";
 import { useBackClose } from "@/lib/native";
 import { playCreatureVoice } from "@/lib/creatureVoice";
 import { playCreatureSound, prefetchSounds } from "@/lib/creatureSounds";
@@ -164,8 +163,8 @@ const FOOD_SLOT = 4;
 const FOOD_ART = 5.6;
 
 /** How often care earned in the scene is swept into the creature list. Slow on
- *  purpose: a creature list can carry a photo per creature, so this is the one
- *  cadence that must never follow the frame. */
+ *  purpose: persisting the whole list is a localStorage write, so this is the
+ *  one cadence that must never follow the frame. */
 const CARE_COMMIT_MS = 60_000;
 
 /** One trick pose, borrowed by whichever creature is mid-trick this frame.
@@ -881,8 +880,7 @@ export default function WorldScene({
   const [sharing, setSharing] = useState(false);
   /* Sharing hands a picture to the OS share sheet — Messages, Mail, every
      social app on the device — and the card carries the name the child typed
-     and, for a photographed drawing, the photo itself. That is a door out of
-     the app, so a grown-up opens it. */
+     and their drawing. That is a door out of the app, so a grown-up opens it. */
   const [shareGate, setShareGate] = useState(false);
   const [tip, setTip] = useState(true);
 
@@ -938,10 +936,9 @@ export default function WorldScene({
   /* ── writing down what has been earned ────────────────────────────────────
      Care accrues in the runtime records, where a `+=` costs nothing, and only
      reaches the creature list on a slow cadence: once a minute, when the tab
-     goes away, and when the scene unmounts. Never per frame, and this is not a
-     micro-optimisation — a creature list can carry a 160 KB photo per creature,
-     so serialising it sixty times a second would cost more than every other
-     thing in this file put together. */
+     goes away, and when the scene unmounts. Never per frame — serialising the
+     whole list to localStorage sixty times a second would cost more than every
+     other thing in this file put together. */
   const onCareRef = useRef(onCare);
   onCareRef.current = onCare;
   const commitCare = useCallback(() => {
@@ -1032,7 +1029,7 @@ export default function WorldScene({
      they have spent the most time with turn round and say hello, a beat apart
      so it reads as three friends noticing rather than one animation firing.
 
-     Waits for the sprites, because photo creatures bake asynchronously and a
+     Waits for the sprites, which are staged in a separate effect below — a
      greeting from something that is not on screen yet is no greeting at all. */
   const greetedRef = useRef(false);
   useEffect(() => {
@@ -1059,7 +1056,7 @@ export default function WorldScene({
        stage — the greeting used to race it and silently never fire */
   }, [view, visit, pushBanner, artTick]);
 
-  // bake sprites for any new creatures (photo creatures bake async)
+  // bake sprites for any new creatures
   useEffect(() => {
     const ensureRT = (c: Creature) => {
       if (rtRef.current.has(c.id)) return;
@@ -1139,23 +1136,6 @@ export default function WorldScene({
     };
     for (const c of view) {
       if (!spritesRef.current.has(c.id)) {
-        if (c.photoData) {
-          // paper-photo creature: stickerize the lifted drawing
-          const im = new Image();
-          im.onload = () => {
-            const S = Math.min(1, 160 / Math.max(im.width, im.height));
-            const tmp = document.createElement("canvas");
-            tmp.width = Math.max(1, Math.round(im.width * S));
-            tmp.height = Math.max(1, Math.round(im.height * S));
-            tmp.getContext("2d")!.drawImage(im, 0, 0, tmp.width, tmp.height);
-            const sticker = stickerizeImage(tmp);
-            spritesRef.current.set(c.id, { frames: [sticker, sticker, sticker, sticker], w: sticker.width, h: sticker.height });
-            ensureRT(c);
-            forceTick((n) => n + 1); // roster thumbnails can paint now
-          };
-          im.src = c.photoData;
-          continue;
-        }
         spritesRef.current.set(c.id, bakeCrayonSprite(c));
       }
       ensureRT(c);

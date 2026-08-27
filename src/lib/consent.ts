@@ -14,9 +14,9 @@
 //
 // So Magic Pen collects nothing and sends nothing — there is no exception left.
 // What remains is the parental gate itself, which still guards the doors that
-// lead *out* of the app: the camera, the share sheet, and printing. A young
-// child should not be able to open those alone, and both stores require a gate
-// in front of them, so the challenge below lives on.
+// lead *out* of the app: the share sheet and printing. A young child should not
+// be able to open those alone, and both stores require a gate in front of them,
+// so the challenge below lives on.
 //
 // On the gate itself: an age question a child answers is not a gate — a
 // five-year-old will happily tap "yes, I am a grown-up", and both app stores

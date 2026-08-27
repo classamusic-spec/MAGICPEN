@@ -389,9 +389,8 @@ Built to comply with COPPA and the Play Families policy, and made for children f
       <table>
         <thead><tr><th>Permission</th><th>Platform</th><th>Why</th></tr></thead>
         <tbody>
-          <tr><td>Camera</td><td>iOS</td><td>Optional: a grown-up photographs a paper drawing. <code>NSCameraUsageDescription</code> set.</td></tr>
-          <tr><td>Photo library</td><td>iOS</td><td>Optional: a grown-up picks a drawing from photos. <code>NSPhotoLibraryUsageDescription</code> set.</td></tr>
-          <tr><td>Camera</td><td>Android</td><td>The system camera intent handles the file-input capture — <b>no CAMERA permission declared</b>.</td></tr>
+          <tr><td>None</td><td>iOS</td><td>No device permissions are declared, so the app can prompt for none.</td></tr>
+          <tr><td>None</td><td>Android</td><td>Only <code>INTERNET</code> is present (Capacitor default, unused); <b>no runtime permission is requested</b>.</td></tr>
         </tbody>
       </table>
       <p class="hint">The user-facing policy ships at <code>public/privacy.html</code> — host it and paste its URL into both consoles.</p>

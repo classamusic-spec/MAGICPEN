@@ -68,16 +68,16 @@ npx @capacitor/assets generate \
 
 ## Permissions
 
-The only device permission Magic Pen can ask for is the camera, and only when a
-grown-up chooses to photograph a paper drawing (a standard
-`<input type="file" accept="image/*" capture>`):
+Magic Pen declares no device permissions and can prompt for none.
 
-- **iOS:** `NSCameraUsageDescription` and `NSPhotoLibraryUsageDescription` are
-  set in `ios/App/App/Info.plist`.
-- **Android:** the file input dispatches the system camera via an intent, which
-  needs no app-held `CAMERA` permission — so none is declared (declaring it
-  without a runtime request would actually break the picker). The `FileProvider`
-  Capacitor generates handles the captured file.
+- **iOS:** `Info.plist` carries no usage-description keys, so the OS never shows
+  a permission dialog.
+- **Android:** only the `INTERNET` permission is present (the Capacitor default,
+  and unused — the app makes no network requests); nothing is requested at
+  runtime.
+
+Sharing and printing go through the OS share sheet / print dialog and sit behind
+the in-app parental gate — they are not device permissions.
 
 `ITSAppUsesNonExemptEncryption = false` is set so the App Store export-compliance
 question is answered automatically at upload.

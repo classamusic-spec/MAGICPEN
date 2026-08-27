@@ -10,7 +10,7 @@
 // worth keeping.
 //
 // Printing is a door out of the device, so the way in sits behind the same
-// grown-up question as the camera and the share sheet.
+// grown-up question as the share sheet.
 
 import { useEffect, useRef } from "react";
 import type { Stroke } from "@/lib/types";

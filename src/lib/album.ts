@@ -7,14 +7,12 @@
 // ── what is kept, and what is deliberately not ──
 // Strokes, not pictures. A drawing is a few hundred bytes of points that can be
 // re-baked at any size and replayed stroke by stroke; a baked PNG is 160KB and
-// can do neither. That is the same reasoning that keeps `doodleId` an id, and
-// the same trap — a hot array carrying base64 — that already had to be undone
-// once for photos (see the note above `PHOTO_KEY` in storage.ts).
+// can do neither. That is the same reasoning that keeps `doodleId` an id: a hot
+// array carrying base64 would crowd the storage budget and risk the whole book.
 //
-// A photo creature is therefore remembered by *reference*: its entry carries no
-// image at all, and the existing photo key stays its only home. An album entry
-// can always be drawn from `doodleId` or `strokes`; if it has neither, it is
-// remembered as a name and a date, which is still better than forgetting it.
+// An album entry can always be drawn from `doodleId` or `strokes`; if it has
+// neither it is remembered as a name and a date, which is still better than
+// forgetting it.
 
 import type { Creature, Stroke } from "./types";
 
@@ -23,7 +21,7 @@ import type { Creature, Stroke } from "./types";
  *
  * Sized against the storage budget rather than picked round: a drawing is
  * roughly 10-20KB of stroke points, so 150 sits near 2MB worst case — clear of
- * the ~5MB browser budget even alongside a full photo key.
+ * the ~5MB browser budget.
  */
 export const MAX_ALBUM = 150;
 
@@ -35,11 +33,8 @@ export interface AlbumEntry {
   kindId: string;
   /** Set for stamped and word-born creatures: the body is this doodle. */
   doodleId?: string;
-  /** The child's own strokes. Empty for a doodle-bodied or photo creature. */
+  /** The child's own strokes. Empty for a doodle-bodied creature. */
   strokes: Stroke[];
-  /** True when the original was a photograph of a paper drawing. No image is
-   *  stored here — this only explains why there is nothing to replay. */
-  fromPhoto?: boolean;
   createdAt: number;
 }
 
@@ -66,7 +61,6 @@ export function entryOf(c: Creature): AlbumEntry {
     createdAt: c.createdAt,
   };
   if (c.doodleId) e.doodleId = c.doodleId;
-  if (c.photoData) e.fromPhoto = true;
   return e;
 }
 

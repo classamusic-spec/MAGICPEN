@@ -1,7 +1,7 @@
 // The parental gate stands in front of the doors that lead out of the app —
-// the camera, sharing, printing — so its failure modes matter more than its
-// happy path. Every test here is a way a young child could get through it, or a
-// way a grown-up's one pass could be forgotten.
+// sharing and printing — so its failure modes matter more than its happy path.
+// Every test here is a way a young child could get through it, or a way a
+// grown-up's one pass could be forgotten.
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { loadConsent, saveConsent, makeGateChallenge } from "./consent";
