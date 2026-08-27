@@ -757,6 +757,8 @@ function loadImage(url: string): Promise<HTMLImageElement | null> {
 export default function WorldScene({
   creatures,
   newId,
+  departed,
+  onDepartedShown,
   worldId,
   dream,
   onBack,
@@ -777,6 +779,10 @@ export default function WorldScene({
 }: {
   creatures: Creature[];
   newId: string | null;
+  /** A creature the world just made room for, waved off by name once. */
+  departed?: string | null;
+  /** Called after the goodbye has been shown, so the app can clear it. */
+  onDepartedShown?: () => void;
   worldId: string;
   /** The child's painted world, when `worldId === "dream"`. */
   dream?: DreamWorld | null;
@@ -1196,6 +1202,24 @@ export default function WorldScene({
     sfxSplash();
     pushBanner(`${newCreature.name} the ${kind.label} ${arrivalLine(worldId, kind.behavior)}!`, "sparkle");
   }, [newCreature, worldId, pushBanner]);
+
+  /* Wave off the creature the world just made room for — by name, a beat
+     after the newcomer's arrival so the two banners do not collide. It is
+     safe in the sticker book; this is a goodbye, not a loss. */
+  const departedRef = useRef<string | null>(null);
+  const departedShownRef = useRef(onDepartedShown);
+  departedShownRef.current = onDepartedShown;
+  useEffect(() => {
+    if (!departed || departedRef.current === departed) return;
+    departedRef.current = departed;
+    const t = window.setTimeout(() => {
+      bannerRef.current(`${departed} swam off to explore. Bye-bye!`, "heart");
+      departedShownRef.current?.();
+    }, 1500);
+    return () => window.clearTimeout(t);
+    // onDepartedShown is read through a ref so a new inline callback each
+    // render does not cancel this pending goodbye — depend on the name only.
+  }, [departed]);
 
   // gentle ambient bubbles (ocean only)
   useEffect(() => {

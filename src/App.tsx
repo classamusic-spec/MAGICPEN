@@ -43,19 +43,21 @@ const DrawSchool = lazy(() => import("@/components/DrawSchool"));
 const StickerBook = lazy(() => import("@/components/StickerBook"));
 
 /**
- * How many creatures a world holds.
+ * How many creatures swim in a world at once.
  *
- * Not a storage limit — photos live in their own key now and the rest is a few
- * kilobytes. It is a rendering limit: every creature is a live sprite in one
- * canvas loop, and the thirty-first is where an old tablet starts to drop
- * frames. Past it, the oldest drawing makes way.
+ * Not a storage limit (photos live in their own key; the rest is a few
+ * kilobytes) and not really a framerate one either now — it is a *legibility*
+ * limit. Every creature is a full-size sprite that scales with the screen, so
+ * a bigger tablet does not fit more; past the mid-teens the reef disappears
+ * under a wall of stickers and a child can no longer pick out one friend to
+ * tap. Sixteen reads as "lots of friends" while still leaving water between
+ * them on the smallest phone.
  *
- * That is still the wrong shape for a child who has drawn thirty-one things,
- * and the right fix is to say goodbye out loud — by name, the way releasing a
- * creature already does — rather than to raise the number. Left as it is for
- * now because the banner that would carry it lives in the world scene.
+ * Nothing is lost when the count is reached: the oldest swimmer is waved off
+ * by name (see `departed`) and kept forever in the sticker book, which holds
+ * far more than any world shows.
  */
-const MAX_CREATURES = 30;
+const MAX_CREATURES = 16;
 
 function pickName(kindId: string, taken: Set<string>): string {
   const pool = kindById(kindId).names;
@@ -89,6 +91,11 @@ export default function App() {
   const [draft, setDraft] = useState<Stroke[]>([]);
   const [photoDraft, setPhotoDraft] = useState<string | null>(null);
   const [newId, setNewId] = useState<string | null>(null);
+  /* The name of a creature the world just made room for, so the world can
+     wave it off by name rather than let it vanish. It is still in the sticker
+     book — this is a goodbye, not a loss. */
+  const [departed, setDeparted] = useState<string | null>(null);
+
   /* Drawing a treat rather than a creature, and which treat the world has
      armed. A treat is a present, so nothing here counts anything down. */
   const [drawingTreat, setDrawingTreat] = useState(false);
@@ -105,6 +112,22 @@ export default function App() {
   const pet = useMemo(() => resolvePet(petRef, creatures), [petRef, creatures]);
   const makePet = useCallback((id: string) => setPetRef(savePet(id)), []);
   const dropPet = useCallback(() => { clearPet(); setPetRef(null); }, []);
+
+  /* Add a creature, making room within the on-screen cap. The four ways to
+     make one all funnel through here, so eviction is handled — and waved off
+     by name — in exactly one place. The evicted drawing stays in the sticker
+     book; this only decides who is *swimming*. */
+  const addCreature = useCallback((creature: Creature) => {
+    rememberInAlbum(creature);
+    setCreatures((prev) => {
+      const kept = makeRoom(prev, MAX_CREATURES, petRef?.id ?? null);
+      const keptIds = new Set(kept.map((c) => c.id));
+      const gone = prev.find((c) => !keptIds.has(c.id));
+      setDeparted(gone ? gone.name : null);
+      return [...kept, creature];
+    });
+    setNewId(creature.id);
+  }, [petRef?.id]);
 
   /* Saying goodbye to a drawing, from wherever it is said.
      
@@ -256,9 +279,7 @@ export default function App() {
     /* Into the book as it is *made*, not as it is evicted — so a drawing the
        child let go of by hand is remembered too. The album records what they
        drew, not what happens to still be swimming. */
-    rememberInAlbum(creature);
-    setCreatures((prev) => [...makeRoom(prev, MAX_CREATURES, petRef?.id ?? null), creature]);
-    setNewId(creature.id);
+    addCreature(creature);
     setPhotoDraft(null);
     go("world");
   };
@@ -286,9 +307,7 @@ export default function App() {
     /* Into the book as it is *made*, not as it is evicted — so a drawing the
        child let go of by hand is remembered too. The album records what they
        drew, not what happens to still be swimming. */
-    rememberInAlbum(creature);
-    setCreatures((prev) => [...makeRoom(prev, MAX_CREATURES, petRef?.id ?? null), creature]);
-    setNewId(creature.id);
+    addCreature(creature);
     setSchoolWorld(undefined);
     setWorldId(intoWorld);
     go("world");
@@ -316,9 +335,7 @@ export default function App() {
     /* Into the book as it is *made*, not as it is evicted — so a drawing the
        child let go of by hand is remembered too. The album records what they
        drew, not what happens to still be swimming. */
-    rememberInAlbum(creature);
-    setCreatures((prev) => [...makeRoom(prev, MAX_CREATURES, petRef?.id ?? null), creature]);
-    setNewId(creature.id);
+    addCreature(creature);
     go("world");
   };
 
@@ -345,9 +362,7 @@ export default function App() {
     /* Into the book as it is *made*, not as it is evicted — so a drawing the
        child let go of by hand is remembered too. The album records what they
        drew, not what happens to still be swimming. */
-    rememberInAlbum(creature);
-    setCreatures((prev) => [...makeRoom(prev, MAX_CREATURES, petRef?.id ?? null), creature]);
-    setNewId(creature.id);
+    addCreature(creature);
     setWorldId(drawWorld);
     go("world");
   };
@@ -513,9 +528,11 @@ export default function App() {
               <WorldScene
                 creatures={creatures}
                 newId={newId}
+                departed={departed}
+                onDepartedShown={() => setDeparted(null)}
                 worldId={worldId}
                 dream={dream}
-                onBack={() => { setNewId(null); go("home"); }}
+                onBack={() => { setNewId(null); setDeparted(null); go("home"); }}
                 onDrawMore={() => { setNewId(null); setIdeaPrompt(null); setDrawWorld(worldId); go("draw"); }}
                 onPlayGame={() => { setNewId(null); go("game"); }}
                 onLearnDraw={() => { setNewId(null); setSchoolWorld(worldId); go("school"); }}
