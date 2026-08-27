@@ -91,7 +91,8 @@ function isImmutable(url) {
     url.pathname.startsWith("/assets/") ||     // vite's hashed chunks
     url.pathname.startsWith("/fonts/") ||
     url.pathname.startsWith("/icons/") ||
-    url.pathname.startsWith("/voice/clips/")   // sha1-named clips
+    url.pathname.startsWith("/voice/clips/") ||   // sha1-named voice clips
+    url.pathname.startsWith("/sounds/clips/")    // hash-named creature sounds
   );
 }
 
@@ -141,7 +142,8 @@ self.addEventListener("fetch", (event) => {
 
   // a clip, a chunk, a font, an icon — named by its content, so keep it
   if (isImmutable(url)) {
-    const cacheName = url.pathname.startsWith("/voice/clips/") ? MEDIA_CACHE : SHELL_CACHE;
+    const media = url.pathname.startsWith("/voice/clips/") || url.pathname.startsWith("/sounds/clips/");
+    const cacheName = media ? MEDIA_CACHE : SHELL_CACHE;
     event.respondWith(cacheFirst(request, cacheName).catch(() => caches.match(request).then((r) => r || Response.error())));
     return;
   }

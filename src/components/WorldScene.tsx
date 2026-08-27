@@ -20,6 +20,7 @@ import { sampleFrame, clearLayers } from "./world/shared";
 import { stickerizeImage } from "@/lib/imaging";
 import { useBackClose } from "@/lib/native";
 import { playCreatureVoice } from "@/lib/creatureVoice";
+import { playCreatureSound, prefetchSounds } from "@/lib/creatureSounds";
 import { bakeCrayonSprite, silhouette, stampRing, type Sprite } from "@/lib/sprites";
 import { loadFoods } from "@/lib/storage";
 import { InkButton, InkCard, InkShape, Scribble, Tape } from "@/components/ink/Ink";
@@ -1221,6 +1222,12 @@ export default function WorldScene({
     // onDepartedShown is read through a ref so a new inline callback each
     // render does not cancel this pending goodbye — depend on the name only.
   }, [departed]);
+
+  // warm the recorded creature sounds for whoever is in this world, so the
+  // first tap plays the real clip rather than the synth fallback
+  useEffect(() => {
+    prefetchSounds(view.map((c) => c.kindId));
+  }, [view]);
 
   // gentle ambient bubbles (ocean only)
   useEffect(() => {
@@ -2464,8 +2471,9 @@ export default function WorldScene({
         rt.hiN++;
         rt.care += CARE_PER_HI;
       }
-      // the creature says hello in its own little voice
-      playCreatureVoice(hit.kindId);
+      // the creature says hello: its recorded sound if ready, else the
+      // always-instant synthesized voice (which also warms the clip for next time)
+      if (!playCreatureSound(hit.kindId)) playCreatureVoice(hit.kindId);
     }
     sfxPop();
     cancelPress();
