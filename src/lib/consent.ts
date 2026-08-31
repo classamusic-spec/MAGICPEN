@@ -1,18 +1,18 @@
 // ─── The grown-up's decisions ────────────────────────────────────────────────
-// Magic Pen is built for four- to seven-year-olds, which in the United States
+// Drawlings is built for four- to seven-year-olds, which in the United States
 // puts it squarely inside COPPA's definition of a child-directed service, and
 // inside the Kids categories of both app stores. This module holds the two
 // decisions that must belong to a grown-up rather than to the child, and the
 // gate that establishes a grown-up is the one making them.
 //
 // The design starts from the strongest possible position: **collect nothing.**
-// Magic Pen has no accounts, no ads, no analytics, no third-party SDKs, and
+// Drawlings has no accounts, no ads, no analytics, no third-party SDKs, and
 // every drawing lives in this browser's own storage. Most of COPPA's machinery
 // attaches to *collecting* personal information from a child; the cleanest way
 // to honour it is to never collect any. That is a product decision already made
 // and worth protecting — this module exists to guard the one exception.
 //
-// So Magic Pen collects nothing and sends nothing — there is no exception left.
+// So Drawlings collects nothing and sends nothing — there is no exception left.
 // What remains is the parental gate itself, which still guards the doors that
 // lead *out* of the app: the share sheet and printing. A young child should not
 // be able to open those alone, and both stores require a gate in front of them,

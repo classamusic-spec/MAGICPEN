@@ -349,7 +349,7 @@ const STEP_TONE = ["#fb66e5", "#ffc72c", "#00c2b9"];
 
 function HowItWorks() {
   return (
-    <ol className="grid grid-cols-3 gap-2 sm:gap-3" aria-label="How Magic Pen works">
+    <ol className="grid grid-cols-3 gap-2 sm:gap-3" aria-label="How Drawlings works">
       {STEPS.map((s, i) => (
         <li key={s.t} className="enter" style={{ "--i": i + 1 } as React.CSSProperties}>
           <InkCard seed={i * 29 + 12} className="px-2 py-3 text-center h-full" radius={13}>
@@ -894,7 +894,7 @@ export default function Home({
                   {isNew ? "Draw something!" : "Draw!"}
                 </span>
                 <span className="block ink-on-wax font-bold text-fs-sm mt-1 opacity-95">
-                  {isNew ? "Anything at all — the pen brings it to life" : "Make a brand-new creature"}
+                  {isNew ? "Anything at all — the crayon brings it to life" : "Make a brand-new creature"}
                 </span>
               </span>
             </span>

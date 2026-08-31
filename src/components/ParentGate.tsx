@@ -1,5 +1,5 @@
 // ─── The parental gate ───────────────────────────────────────────────────────
-// One question stands between a four-year-old and the only switch in Magic Pen
+// One question stands between a four-year-old and the only switch in Drawlings
 // that sends anything off this device. It is not a confirmation dialog and it
 // is not an age question — a child taps "yes, I'm a grown-up" without pausing,
 // and both app stores treat that as no gate at all.

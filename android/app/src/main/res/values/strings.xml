@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Magic Pen</string>
-    <string name="title_activity_main">Magic Pen</string>
+    <string name="app_name">Drawlings</string>
+    <string name="title_activity_main">Drawlings</string>
     <string name="package_name">com.classamusic.magicpen</string>
     <string name="custom_url_scheme">com.classamusic.magicpen</string>
 </resources>

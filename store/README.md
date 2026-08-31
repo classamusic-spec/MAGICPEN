@@ -1,6 +1,6 @@
 # Store submission kit
 
-Everything needed to list Magic Pen on the App Store and Google Play.
+Everything needed to list Drawlings on the App Store and Google Play.
 
 ## Contents
 

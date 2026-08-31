@@ -2854,7 +2854,7 @@ export default function WorldScene({
       drawCrayonStroke(ctx, upts, "#ffc72c", 13, 17);
 
       /* the wordmark, laid down letter by letter in wax colours */
-      const WORD = "MAGIC PEN";
+      const WORD = "DRAWLINGS";
       const HUES: (string | null)[] = ["#e63b2e", "#ff7a1a", "#ffc72c", "#3aae3a", "#2f6fe4", null, "#8b46c7", "#fb66e5", "#00c2b9"];
       ctx.font = "800 34px 'Baloo 2', Nunito, sans-serif";
       ctx.fillStyle = "#7a6a58";
@@ -2900,10 +2900,10 @@ export default function WorldScene({
 
       const blob = await new Promise<Blob | null>((res) => card.toBlob(res, "image/png"));
       if (!blob) { pushBanner("Hmm — the photo didn't come out. Try again!", "camera"); return; }
-      const file = new File([blob], "magic-pen.png", { type: "image/png" });
+      const file = new File([blob], "drawlings.png", { type: "image/png" });
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
         try {
-          await navigator.share({ files: [file], title: "MAGIC PEN", text: "My drawing came alive!" });
+          await navigator.share({ files: [file], title: "Drawlings", text: "My drawing came alive!" });
           return;
         } catch (err) {
           // kid cancelled → done; anything else (desktop, permissions) → download
@@ -2913,7 +2913,7 @@ export default function WorldScene({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "magic-pen.png";
+      a.download = "drawlings.png";
       a.rel = "noopener";
       document.body.appendChild(a);
       a.click();

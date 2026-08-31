@@ -57,8 +57,8 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     // Grown-ups get the detail; the child gets a drawing.
-    console.error("[magicpen] a screen crashed:", error);
-    if (info.componentStack) console.error("[magicpen] component stack:", info.componentStack);
+    console.error("[drawlings] a screen crashed:", error);
+    if (info.componentStack) console.error("[drawlings] component stack:", info.componentStack);
   }
 
   private handleRetry = () => {
@@ -97,7 +97,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
             </span>
 
             <h1 className="ink-title text-fs-2xl leading-tight mt-2">
-              Oops! The pen slipped.
+              Oops! The crayon slipped.
             </h1>
 
             <span className="block w-36 max-w-full"><Scribble seed={31} height={10} /></span>

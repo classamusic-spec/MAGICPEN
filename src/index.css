@@ -27,7 +27,7 @@
 @tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MAGIC PEN — design system
+   DRAWLINGS — design system
    ---------------------------------------------------------------------------
    Everything visual is a token first and a class second. Screens should reach
    for `.btn-*`, `.card-*`, `.type-*` and `.grad-*` rather than inventing new
@@ -670,7 +670,7 @@
 }
 
 /* ── the pad turns ──────────────────────────────────────────────────────────
-   Magic Pen is written on a spiral notepad whose coil runs across the TOP.
+   Drawlings is written on a spiral notepad whose coil runs across the TOP.
    That one fact decides all of the motion below: a top-bound sheet hinges on
    its top edge and swings up over the metal. It never slides sideways — that
    is a book, and this is a reporter's pad.

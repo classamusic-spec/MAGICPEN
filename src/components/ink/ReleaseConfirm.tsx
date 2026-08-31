@@ -1,5 +1,5 @@
 // ─── Letting a creature go: never silent, never one tap ─────────────────────
-// The only irreversible thing a child can do in Magic Pen. It lived inside the
+// The only irreversible thing a child can do in Drawlings. It lived inside the
 // world scene, which was fine while the world was the only place you could say
 // goodbye; the sketchbook shelf can now do it too, and two confirmations that
 // drift apart is exactly how one of them ends up missing a warning.

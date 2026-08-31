@@ -1,6 +1,6 @@
 // ─── For the fridge ─────────────────────────────────────────────────────────
 // The thing every parent actually wants out of a drawing app: the drawing, on
-// paper, at a size worth taping up. Everything else Magic Pen makes is a
+// paper, at a size worth taping up. Everything else Drawlings makes is a
 // picture on a screen that a grandparent never sees.
 //
 // This prints *the drawing*, not a screenshot — the strokes are re-drawn at
@@ -130,7 +130,7 @@ export default function PrintSheet({
         <canvas ref={ref} aria-hidden="true" />
         <p className="print-name">{name}</p>
         <p className="print-sub">{subtitle}</p>
-        <p className="print-sub">drawn with Magic Pen</p>
+        <p className="print-sub">drawn with Drawlings</p>
       </div>
 
       <button

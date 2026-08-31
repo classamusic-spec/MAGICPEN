@@ -1,5 +1,5 @@
 // ─── The notepad: the surface the whole app is written on ───────────────────
-// Magic Pen has always *said* it lives in a sketchbook, but only the tracing
+// Drawlings has always *said* it lives in a sketchbook, but only the tracing
 // screen ever looked like one — it had a real spiral binding at the top and a
 // torn deckle edge, built inline and reachable by nothing else. This promotes
 // that surface into the app's shared material, so every page a child turns is

@@ -1,5 +1,5 @@
 // ─── Ink: the hand-drawn material system ────────────────────────────────────
-// MAGIC PEN is a sketchbook where drawn things come alive, so the interface is
+// DRAWLINGS is a sketchbook where drawn things come alive, so the interface is
 // drawn too. Nothing here is a rounded rectangle with a uniform border: every
 // outline is a wobbled path with variable weight, every fill is real wax laid
 // down by the same crayon engine that renders the child's own drawings.

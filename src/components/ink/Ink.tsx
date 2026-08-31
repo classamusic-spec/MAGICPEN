@@ -1,5 +1,5 @@
 // ─── Ink kit: drawn surfaces, drawn controls ────────────────────────────────
-// Every surface in MAGIC PEN is a piece of paper with a hand-inked outline and
+// Every surface in DRAWLINGS is a piece of paper with a hand-inked outline and
 // a wax fill. These primitives replace the rounded-rect-with-a-3px-border that
 // every other kids' app ships.
 

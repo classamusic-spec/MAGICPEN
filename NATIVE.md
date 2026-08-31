@@ -1,11 +1,11 @@
-# Magic Pen as a native app (Capacitor)
+# Drawlings as a native app (Capacitor)
 
-Magic Pen is a self-contained web app. Capacitor packages the exact same
+Drawlings is a self-contained web app. Capacitor packages the exact same
 `dist/public` build into an iOS and an Android store binary — there is no
 server, no live reload, and no network calls, so the native app works fully
 offline, just like the web one.
 
-- **App name:** Magic Pen
+- **App name:** Drawlings
 - **Bundle id / applicationId:** `com.classamusic.magicpen`
   (set in `capacitor.config.ts`, `ios` project settings, and
   `android/app/build.gradle` — change all three together, and do it **before**
@@ -68,7 +68,7 @@ npx @capacitor/assets generate \
 
 ## Permissions
 
-Magic Pen declares no device permissions and can prompt for none.
+Drawlings declares no device permissions and can prompt for none.
 
 - **iOS:** `Info.plist` carries no usage-description keys, so the OS never shows
   a permission dialog.

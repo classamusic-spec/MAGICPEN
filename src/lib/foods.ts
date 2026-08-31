@@ -4,7 +4,7 @@
 // cake, or something they drew themselves.
 //
 // ── the rule ──
-// A treat is a present, never a requirement. Nothing in Magic Pen gets hungry,
+// A treat is a present, never a requirement. Nothing in Drawlings gets hungry,
 // and feeding is not a chore that resets a timer: it is one more way to say
 // hello. The world scene says the same thing in its own comment — *"food is a
 // treat, not a save file"* — and that is why a dropped treat is never persisted.

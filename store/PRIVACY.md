@@ -2,7 +2,7 @@
 
 The user-facing privacy policy is `public/privacy.html` (host it and link its
 URL in both consoles). This file gives the exact answers for the two consoles'
-privacy questionnaires. All of it follows from one fact: **Magic Pen collects
+privacy questionnaires. All of it follows from one fact: **Drawlings collects
 nothing and makes no network requests.** Everything a child makes is stored in
 the app's own on-device storage and never leaves the device.
 

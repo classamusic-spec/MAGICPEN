@@ -1,5 +1,5 @@
 // ─── Native shell wiring (Capacitor) ────────────────────────────────────────
-// Magic Pen runs identically as a web page and as an iOS/Android app. On the
+// Drawlings runs identically as a web page and as an iOS/Android app. On the
 // web these calls are no-ops; only inside the native shell do they do anything.
 // Everything here is best-effort — a failed bridge call must never keep the
 // app from starting — so each promise swallows its own errors.

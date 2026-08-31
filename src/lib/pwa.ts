@@ -1,5 +1,5 @@
 // ─── Installing the app on the device ───────────────────────────────────────
-// Registers the service worker that makes Magic Pen work with no network at
+// Registers the service worker that makes Drawlings work with no network at
 // all. Everything the app needs — every world, every lesson, every doodle — is
 // already local; this is what stops the browser needing a server to hand it
 // over.

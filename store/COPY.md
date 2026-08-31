@@ -1,4 +1,4 @@
-# Magic Pen — store listing copy
+# Drawlings — store listing copy
 
 Draft copy for the App Store and Google Play. Character counts are noted for
 the length-limited fields; everything here is written to be accurate to the
@@ -9,7 +9,7 @@ app as it ships today — fully offline, no accounts, no ads, nothing collected.
 ## Apple App Store
 
 ### App Name  (≤ 30 chars)
-`Magic Pen` — 9
+`Drawlings` — 9
 
 ### Subtitle  (≤ 30 chars)
 `Draw it — watch it come alive` — 29
@@ -23,7 +23,7 @@ app as it ships today — fully offline, no accounts, no ads, nothing collected.
 
 ### Description  (≤ 4000 chars)
 
-Magic Pen turns a child's drawing into a friend.
+Drawlings turns a child's drawing into a friend.
 
 Draw a fish, and it swims off to live in a coral reef. Draw a rocket, and it
 blasts around a galaxy. Whatever your child scribbles comes alive in its own
@@ -63,25 +63,25 @@ MADE FOR PARENTS TO TRUST
 
 Built to comply with COPPA and made for children first.
 
-Magic Pen is a quiet, ad-free corner of the tablet where a four-year-old's
+Drawlings is a quiet, ad-free corner of the tablet where a four-year-old's
 imagination is the whole point — and where the crayon always wins.
 
 ### What's New  (first release)
-> Hello! This is Magic Pen's first version. Draw something, and watch it live.
+> Hello! This is Drawlings's first version. Draw something, and watch it live.
 
 ---
 
 ## Google Play
 
 ### Title  (≤ 30 chars)
-`Magic Pen: Draw It Alive` — 24
+`Drawlings: Draw It Alive` — 24
 
 ### Short description  (≤ 80 chars)
 `Draw anything and watch it come alive. Ad-free, offline, made for kids.` — 70
 
 ### Full description  (≤ 4000 chars)
 
-Magic Pen turns a child's drawing into a friend.
+Drawlings turns a child's drawing into a friend.
 
 Draw a fish, and it swims off to live in a coral reef. Draw a rocket, and it
 blasts around a galaxy. Whatever your child scribbles comes alive in its own
@@ -117,7 +117,7 @@ MADE FOR PARENTS TO TRUST
 Built to comply with COPPA and the Play Families policy, and made for children
 first.
 
-Magic Pen is a quiet, ad-free corner of the tablet where a four-year-old's
+Drawlings is a quiet, ad-free corner of the tablet where a four-year-old's
 imagination is the whole point — and where the crayon always wins.
 
 ---

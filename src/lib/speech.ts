@@ -1,5 +1,5 @@
 // ─── The app's voice ─────────────────────────────────────────────────────────
-// Magic Pen is for children who cannot read yet, and until now it said nothing
+// Drawlings is for children who cannot read yet, and until now it said nothing
 // out loud. "A is for Apple" was text on a card — invisible to the very child
 // it was written for. This module gives the app a voice: it names the letter a
 // child is about to trace, counts the number, blends the word, and reads the

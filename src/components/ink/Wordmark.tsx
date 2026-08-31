@@ -1,4 +1,4 @@
-// ─── The MAGIC PEN wordmark ─────────────────────────────────────────────────
+// ─── The DRAWLINGS wordmark ─────────────────────────────────────────────────
 // Not a webfont with coloured letters — the logo is *drawn*, stroke by stroke,
 // by the same crayon engine that renders the child's artwork. Each letter is a
 // skeleton of polylines laid down in wax, so the mark has real grain, real
@@ -47,17 +47,39 @@ const LETTERS: Record<string, Skeleton> = {
     [{ x: 15, y: 128 }, { x: 80, y: 126 }],
   ],
   N: [[{ x: 10, y: 130 }, { x: 13, y: 16 }, { x: 81, y: 128 }, { x: 84, y: 16 }]],
+  // D and R share P's stem and bowl construction, so the family stays one hand
+  D: [
+    [{ x: 16, y: 130 }, { x: 13, y: 17 }],
+    [{ x: 13, y: 19 }, { x: 56, y: 24 }, { x: 84, y: 70 }, { x: 58, y: 124 }, { x: 16, y: 129 }],
+  ],
+  R: [
+    [{ x: 16, y: 130 }, { x: 13, y: 17 }],
+    [{ x: 13, y: 19 }, { x: 58, y: 23 }, { x: 71, y: 47 }, { x: 56, y: 71 }, { x: 15, y: 75 }],
+    [{ x: 46, y: 73 }, { x: 84, y: 130 }],
+  ],
+  // W is M stood on its head, and written as one unbroken zig the way a child does
+  W: [[{ x: 8, y: 16 }, { x: 27, y: 130 }, { x: 50, y: 56 }, { x: 73, y: 130 }, { x: 92, y: 16 }]],
+  L: [[{ x: 18, y: 16 }, { x: 15, y: 128 }, { x: 78, y: 125 }]],
+  // one continuous stroke, so the wax runs the whole way round the two bends
+  S: [[
+    { x: 78, y: 36 }, { x: 62, y: 19 }, { x: 36, y: 18 }, { x: 22, y: 34 }, { x: 26, y: 54 },
+    { x: 52, y: 66 }, { x: 74, y: 80 }, { x: 78, y: 104 }, { x: 60, y: 126 }, { x: 30, y: 126 },
+    { x: 18, y: 112 },
+  ]],
 };
 
 /** Each letter carries its own advance — a fixed pitch collides M and gaps I. */
 const WIDTH: Record<string, number> = {
   M: 96, A: 96, G: 102, I: 46, C: 94, P: 82, E: 88, N: 96,
+  D: 96, R: 94, W: 104, L: 84, S: 92,
 };
 
-const WORD = "MAGIC PEN";
+const WORD = "DRAWLINGS";
+/** One crayon per letter, straight round the box and closing on the red it
+ *  opened with — nine letters, eight waxes. */
 const COLORS: Record<number, string> = {
-  0: "#e63b2e", 1: "#ff7a1a", 2: "#ffc72c", 3: "#3aae3a", 4: "#2f6fe4",
-  6: "#8b46c7", 7: "#fb66e5", 8: "#00c2b9",
+  0: "#e63b2e", 1: "#ff7a1a", 2: "#ffc72c", 3: "#3aae3a", 4: "#00c2b9",
+  5: "#2f6fe4", 6: "#8b46c7", 7: "#fb66e5", 8: "#e63b2e",
 };
 
 const TRACK = 14;    // letter spacing
@@ -161,7 +183,7 @@ export function Wordmark({ width = 280, drawIn = 0, className = "" }: WordmarkPr
     <canvas
       ref={ref}
       role="img"
-      aria-label="Magic Pen"
+      aria-label="Drawlings"
       className={className}
       style={{ display: "block", maxWidth: "100%", height: "auto", aspectRatio: `${LOGO_W} / ${LOGO_H}` }}
     />

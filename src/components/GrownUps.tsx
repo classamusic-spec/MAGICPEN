@@ -1,5 +1,5 @@
 // ─── For grown-ups: a quiet look at what a child has been practising ─────────
-// Everything a child does in Magic Pen is recorded on the device and, until
+// Everything a child does in Drawlings is recorded on the device and, until
 // now, only ever shown back to the child as stars. A parent had no window at
 // all — no way to answer "is she actually learning anything on that thing?"
 //
@@ -174,7 +174,7 @@ export default function GrownUps({ creatures, onBack, saveTrouble = null }: {
           <p className="ink-hand text-fs-xs opacity-80 leading-relaxed mt-1">
             No ads, no accounts, no data collected. Everything a child makes —
             every drawing, star and creature — is stored on this device only, and
-            nothing they do ever leaves it. Magic Pen works with no internet at
+            nothing they do ever leaves it. Drawlings works with no internet at
             all.
           </p>
         </InkCard>

@@ -1,5 +1,5 @@
 // ─── Onboarding: the first four pages of the pad ────────────────────────────
-// Magic Pen used to drop a grown-up straight from the title card into an empty
+// Drawlings used to drop a grown-up straight from the title card into an empty
 // canvas. That works for the child — they scribble, something hatches, they get
 // it — but it leaves the person holding the tablet with no answer to the two
 // questions they actually have: *what is this?* and *what is it doing with my
@@ -177,7 +177,7 @@ function WelcomePage() {
   return (
     <div className="flex flex-col items-center gap-4 text-center landshort:flex-row landshort:gap-5 landshort:text-left">
       <div className="min-w-0 landshort:order-1">
-        <p className="ink-hand text-fs-xs">welcome to Magic Pen</p>
+        <p className="ink-hand text-fs-xs">welcome to Drawlings</p>
         <h1 className="ink-title text-fs-3xl landshort:text-fs-2xl mt-0.5">
           Draw anything.<br />It comes alive.
         </h1>
@@ -252,7 +252,7 @@ function GrownUpsPage() {
           <span className="ink-title text-fs-md landshort:text-fs-sm">Nothing leaves this device</span>
           <p className="ink-hand text-fs-sm landshort:text-fs-xs leading-relaxed">
             Every letter traced and every creature made stays right here, on this
-            tablet. Magic Pen works with no internet at all — so there is nothing
+            tablet. Drawlings works with no internet at all — so there is nothing
             to send, and nothing does.
           </p>
         </InkCard>

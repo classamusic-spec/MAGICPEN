@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 // ─── Native wrapper configuration ───────────────────────────────────────────
-// Magic Pen is a self-contained web app; Capacitor packages the exact same
+// Drawlings is a self-contained web app; Capacitor packages the exact same
 // `dist/public` build into an iOS and an Android app store binary. There is no
 // server and no live-reload `server.url` here — the app runs entirely from the
 // bundled files, so it works with no internet at all, on a plane or in a
@@ -12,7 +12,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // first submission to App Store Connect / Google Play.
 const config: CapacitorConfig = {
   appId: "com.classamusic.magicpen",
-  appName: "Magic Pen",
+  appName: "Drawlings",
   webDir: "dist/public",
   // The warm paper colour the web app paints before React boots, so the native
   // window never flashes white or black between the splash and the first frame.

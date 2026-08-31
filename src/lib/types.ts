@@ -1,4 +1,4 @@
-// ─── MAGIC PEN core types ───────────────────────────────────────────────────
+// ─── DRAWLINGS core types ───────────────────────────────────────────────────
 
 export interface Pt {
   x: number;
