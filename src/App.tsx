@@ -208,6 +208,13 @@ export default function App() {
     );
   };
 
+  /* A creature pinched bigger or smaller. This writes the creature's *base*
+     size, which is a choice about how the child wants their world to look;
+     growing up still multiplies it and is still only earned by care. */
+  const resizeCreature = (id: string, scale: number) => {
+    setCreatures((prev) => prev.map((c) => (c.id === id ? { ...c, scale } : c)));
+  };
+
 
   /* ── warm the game while the child is busy in a world ─────────────────────
      "Play a game" is one tap away from here, and the game is the heaviest
@@ -526,6 +533,7 @@ export default function App() {
                 onLearnDraw={() => { setNewId(null); setSchoolWorld(worldId); go("school"); }}
                 onRepaint={() => go("paintworld")}
                 onCare={addCare}
+                onResize={resizeCreature}
                 visit={visit}
                 petId={petRef?.id ?? null}
                 onMakePet={makePet}

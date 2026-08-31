@@ -142,6 +142,19 @@ const TONE: Record<string, Tone> = {
 const MAX_NAME = 16;
 const BANNER_MS = 2800;
 const LONG_PRESS_MS = 520;
+
+/* ── how big a child may make a friend ────────────────────────────────────────
+   A creature is born between 0.75 and 1.2, and growing up multiplies whatever
+   it is by up to 1.5 (see `growthScale`). Pinching sets that *base* number, so
+   the two are independent: making a creature bigger is a choice about how you
+   want your world to look, and growing up is still something only care earns.
+
+   The ceiling is not arbitrary. A sprite is baked once into a fixed 150px box
+   and drawn by scaling that canvas, so past roughly this much the crayon edge
+   starts to look soft rather than drawn. The floor keeps a creature findable —
+   and the hit test grows and shrinks with it, so a small one is still tappable. */
+const MIN_PINCH = 0.6;
+const MAX_PINCH = 1.7;
 /** Finger slop, in px: past this a press stops being a tap or a hold and
  *  becomes a carry. One number separates all three gestures — see `onCanvasMove`. */
 const DRAG_SLOP = 14;
@@ -770,6 +783,7 @@ export default function WorldScene({
   onDeleteCreature,
   onRepaint,
   onCare,
+  onResize,
   visit,
   petId,
   onMakePet,
@@ -802,6 +816,8 @@ export default function WorldScene({
   /** Write down care earned in the scene, as `{ creatureId: delta }`. Called on
    *  a slow cadence — see `commitCare` — never per frame. */
   onCare?: (deltas: Record<string, number>) => void;
+  /** A grown creature's new base size, after a pinch. Persisted by App. */
+  onResize?: (id: string, scale: number) => void;
   /** How long the child has been away, so their creatures can say hello. */
   visit?: Visit;
   /** The one creature the child has crowned as their pet, if they have. */
@@ -903,6 +919,25 @@ export default function WorldScene({
   );
 
   const creaturesRef = useRef(view);
+
+  /* ── pinching a friend bigger or smaller ──────────────────────────────────
+     Declared up here because the render loop and the hit test both have to see
+     it, and both are written before the pointer handlers that drive it. */
+  /** Every finger currently on the world, so the second one can be noticed. */
+  const ptrRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  /** A pinch in flight. `scale` is live, so the creature resizes under the
+   *  fingers rather than jumping when they lift. */
+  const pinchRef = useRef<{ id: string; startDist: number; startScale: number; scale: number } | null>(null);
+  /** The last time we buzzed at a limit, so the edge ticks once, not every frame. */
+  const lastEdgeRef = useRef(0);
+
+  /** A creature's base scale — the live pinch value while it is being pinched.
+   *  Every place that draws or measures a creature goes through this, so the
+   *  body, its shadow, its label and its hit target all resize together. */
+  const scaleOf = useCallback(
+    (c: Creature) => (pinchRef.current?.id === c.id ? pinchRef.current.scale : c.scale),
+    [],
+  );
   creaturesRef.current = view;
   const worldRef = useRef(worldId);
   worldRef.current = worldId;
@@ -941,6 +976,8 @@ export default function WorldScene({
      other thing in this file put together. */
   const onCareRef = useRef(onCare);
   onCareRef.current = onCare;
+  const onResizeRef = useRef(onResize);
+  onResizeRef.current = onResize;
   const commitCare = useCallback(() => {
     let any = false;
     const deltas: Record<string, number> = {};
@@ -1469,7 +1506,7 @@ export default function WorldScene({
           nsoc[n] = SOCIAL.has(cb) ? 1 : 0;
           nroot[n] = ROOTED.has(cb) ? 1 : 0;
           // the same scale the sprite is drawn at further down, growth included
-          nwide[n] = drawnWidth(c.scale * growthScale(c.care), W, H);
+          nwide[n] = drawnWidth(scaleOf(c) * growthScale(c.care), W, H);
           sepX[n] = 0; sepY[n] = 0;
           cohX[n] = 0; cohY[n] = 0; cohN[n] = 0;
           aliX[n] = 0; aliN[n] = 0;
@@ -1868,8 +1905,8 @@ export default function WorldScene({
             rt.next = rt.t + per;
             rt.mode = rt.mode === 1 ? 0 : 1;              // alternating feet
             rt.sq = 0.17;
-            if (!reducedRef.current) shake = Math.max(shake, 2.4 + 1.6 * Math.min(1.3, c.scale));
-            const fy = rt.y * H + sp.h * c.scale * sizeF * 0.4;
+            if (!reducedRef.current) shake = Math.max(shake, 2.4 + 1.6 * Math.min(1.3, scaleOf(c)));
+            const fy = rt.y * H + sp.h * scaleOf(c) * sizeF * 0.4;
             for (let k = 0; k < 5; k++) {
               sparkles.push({
                 x: rt.x * W + (Math.random() - 0.5) * 34,
@@ -1969,7 +2006,7 @@ export default function WorldScene({
             rt.next = rt.t + (big ? 5 : 2.2) + Math.random() * 3;
             rt.sq = big ? -0.14 : -0.06;
             if (big && !reducedRef.current) shake = Math.max(shake, 1.6);
-            const top = rt.y * H - sp.h * c.scale * sizeF * 0.5;
+            const top = rt.y * H - sp.h * scaleOf(c) * sizeF * 0.5;
             const puff = big ? 16 : 5;
             for (let k = 0; k < puff; k++) {
               sparkles.push({
@@ -2067,7 +2104,7 @@ export default function WorldScene({
            meant to leave, and a finger may lift a creature anywhere, so both
            are left alone. */
         if (!GROUNDED.has(b) && b !== "streak" && !carried) {
-          const scl0 = c.scale * growthScale(c.care) * sizeF * (1 + rt.excite * 0.25);
+          const scl0 = scaleOf(c) * growthScale(c.care) * sizeF * (1 + rt.excite * 0.25);
           const ceilY = (sp.h * scl0 * 0.5 + 6) / Math.max(1, H);
           if (rt.y < ceilY) rt.y = ceilY;
         }
@@ -2121,7 +2158,7 @@ export default function WorldScene({
            is simply drawn half again as large — and its hit target, its name
            tag, its trailing anchor and every particle that comes off it follow
            for free, because all of them are already measured from `scl`. */
-        const scl = c.scale * growthScale(c.care) * sizeF * (1 + rt.excite * 0.25);
+        const scl = scaleOf(c) * growthScale(c.care) * sizeF * (1 + rt.excite * 0.25);
         const entrance = now - rt.born < 1600;
         const e = entrance ? Math.max(0, Math.min(1, (now - rt.born) / 1600)) : 1;
         const ease = 1 - Math.pow(1 - e, 3);
@@ -2139,7 +2176,7 @@ export default function WorldScene({
         // rocket exhaust: space flyers leave a stardust trail
         if (world === "space" && b === "fly" && !entrance && Math.random() < 0.18) {
           sparkles.push({
-            x: px - rt.dir * 40 * sizeF * c.scale,
+            x: px - rt.dir * 40 * sizeF * scaleOf(c),
             y: py + (Math.random() - 0.5) * 14,
             vx: -rt.dir * (30 + Math.random() * 30),
             vy: (Math.random() - 0.5) * 20,
@@ -2372,7 +2409,7 @@ export default function WorldScene({
     };
     raf = requestAnimationFrame(loop);
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
-  }, []);
+  }, [scaleOf]);
 
   /* ── three things a finger can do ─────────────────────────────────────────
      One press, three verbs, and no state machine to get out of step: the two
@@ -2405,13 +2442,13 @@ export default function WorldScene({
       const rt = rtRef.current.get(c.id);
       const sp = spritesRef.current.get(c.id);
       if (!rt || !sp) continue;
-      const scl = c.scale * growthScale(c.care) * sizeF * (1 + rt.excite * 0.25);
+      const scl = scaleOf(c) * growthScale(c.care) * sizeF * (1 + rt.excite * 0.25);
       const rPx = Math.min(maxR, Math.max(28, (Math.max(sp.w, sp.h) / 2) * scl * 1.05));
       const d = Math.hypot((rt.x - nx) * W, (rt.y - ny) * H) / rPx;
       if (d <= 1 && (!best || d < best.d)) best = { c, d };
     }
     return best?.c ?? null;
-  }, []);
+  }, [scaleOf]);
 
   /** Drop a crumb where the finger went. Never refuses: the oldest goes. */
   const dropCrumb = useCallback((nx: number, ny: number) => {
@@ -2436,6 +2473,39 @@ export default function WorldScene({
     if (!r.width || !r.height) return;
     const nx = (e.clientX - r.left) / r.width;
     const ny = (e.clientY - r.top) / r.height;
+    ptrRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    /* ── a second finger means "make this one bigger" ──────────────────────
+       Whatever the first finger had started — a hello, a hold on its way to
+       the card, a carry — is abandoned: two fingers is a different sentence,
+       and finishing the old one as well would open a card in the middle of a
+       pinch. The creature resized is the one already under a finger, so a
+       child who grabs a friend and spreads always gets *that* friend, and only
+       failing that the one nearest the middle of the two. */
+    if (ptrRef.current.size === 2) {
+      const [a, b] = [...ptrRef.current.values()];
+      const held = dragRef.current ?? pressRef.current?.id ?? null;
+      let target = held ? creaturesRef.current.find((c) => c.id === held) ?? null : null;
+      if (!target) {
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        target = hitAt((mx - r.left) / r.width, (my - r.top) / r.height, r.width, r.height);
+      }
+      cancelPress();
+      if (target) {
+        const rt = rtRef.current.get(target.id);
+        if (rt) { rt.held = 0; rt.excite = 1; }
+        dragRef.current = null;
+        pinchRef.current = {
+          id: target.id,
+          startDist: Math.max(12, Math.hypot(a.x - b.x, a.y - b.y)),
+          startScale: target.scale,
+          scale: target.scale,
+        };
+        sfxPop();
+      }
+      return;
+    }
+
     const hit = hitAt(nx, ny, r.width, r.height);
     // …and a finger that lands on nothing at all is drawing food
     if (!hit) { dropCrumb(nx, ny); return; }
@@ -2473,6 +2543,26 @@ export default function WorldScene({
     };
   };
   const onCanvasMove = (e: React.PointerEvent) => {
+    if (ptrRef.current.has(e.pointerId)) {
+      ptrRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    const pinch = pinchRef.current;
+    if (pinch && ptrRef.current.size >= 2) {
+      const [a, b] = [...ptrRef.current.values()];
+      const want = pinch.startScale * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.startDist);
+      const next = Math.max(MIN_PINCH, Math.min(MAX_PINCH, want));
+      /* One buzz on arrival at a limit, not one per frame: a child who keeps
+         spreading past the ceiling should feel the wall once. */
+      const atEdge = next !== want;
+      const now = performance.now();
+      if (atEdge && pinch.scale !== next && now - lastEdgeRef.current > 400) {
+        lastEdgeRef.current = now;
+        if ("vibrate" in navigator) navigator.vibrate(8);
+      }
+      pinch.scale = next;
+      return;
+    }
+
     const carrying = dragRef.current;
     // a mouse wandering across the world with nothing pressed asks nothing of
     // us, and must not pay for a layout read to find that out
@@ -2519,7 +2609,25 @@ export default function WorldScene({
   };
 
   /** A finger lifted: either a creature is put down, or a tap is finished. */
-  const onCanvasUp = useCallback(() => {
+  const onCanvasUp = useCallback((e?: React.PointerEvent) => {
+    if (e) ptrRef.current.delete(e.pointerId);
+    else ptrRef.current.clear();
+    const pinch = pinchRef.current;
+    if (pinch) {
+      /* Keep resizing while two fingers remain; the moment one leaves, the size
+         is settled and written to the creature, where it persists. */
+      if (ptrRef.current.size >= 2) return;
+      pinchRef.current = null;
+      cancelPress();
+      dragRef.current = null;
+      if (Math.abs(pinch.scale - pinch.startScale) > 0.01) {
+        const rt = rtRef.current.get(pinch.id);
+        if (rt) { rt.sq = pinch.scale > pinch.startScale ? 0.18 : -0.14; rt.excite = 1; }
+        onResizeRef.current?.(pinch.id, pinch.scale);
+        sfxHappy();
+      }
+      return;
+    }
     const id = dragRef.current;
     if (!id) {
       /* Still pending means the press never became a hold and never became a
