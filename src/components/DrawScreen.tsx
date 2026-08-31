@@ -10,6 +10,7 @@ import { usePrefersReducedMotion } from "@/components/ink/motion";
 import { Icon } from "@/components/ink/Icons";
 import { Doodle } from "@/components/ink/Doodles";
 import { stampsFor, type Stamp } from "@/lib/stamps";
+import { TopBinding } from "@/components/ink/Notepad";
 
 /* The crayon box. `short` is what's printed on the paper wrapper — kept to
    five or six letters so the whole word still reads once the crayon's blunt
@@ -409,7 +410,7 @@ const MEDIA: readonly MediumChoice[] = [
 
 const BOX_FONT = '"Baloo 2", "Nunito", ui-rounded, system-ui, sans-serif';
 
-function BoxFront({ w, h, axis }: { w: number; h: number; axis: "x" | "y" }) {
+function BoxFront({ w, h, axis, word }: { w: number; h: number; axis: "x" | "y"; word: string }) {
   const uid = useId().replace(/:/g, "");
   const tile = waxTile("#c07d35");
   const geo = useMemo(() => {
@@ -464,13 +465,15 @@ function BoxFront({ w, h, axis }: { w: number; h: number; axis: "x" | "y" }) {
         d={geo.edge} fill="none" stroke="var(--ink)" strokeOpacity="0.45" strokeWidth="1.3"
         strokeLinecap="round" transform={axis === "x" ? "translate(0.7 1.1)" : "translate(-1.1 0.7)"}
       />
-      {/* printed on the box, the way a crayon box is printed */}
+      {/* printed on the box, the way a crayon box is printed — and it says
+          what is actually standing in it, so the brushes are not in a box
+          labelled CRAYONS */}
       {axis === "x" && w > 210 && (
         <text
           x={16} y={h - 8} fill="#fff2dc" opacity="0.62"
           style={{ fontFamily: BOX_FONT, fontWeight: 800, fontSize: 11, letterSpacing: 2.6 }}
         >
-          CRAYONS
+          {word}
         </text>
       )}
       {axis === "y" && h > 210 && (
@@ -479,7 +482,7 @@ function BoxFront({ w, h, axis }: { w: number; h: number; axis: "x" | "y" }) {
           transform={`translate(${w - 7} ${h - 16}) rotate(-90)`}
           style={{ fontFamily: BOX_FONT, fontWeight: 800, fontSize: 11, letterSpacing: 2.6 }}
         >
-          CRAYONS
+          {word}
         </text>
       )}
     </svg>
@@ -761,6 +764,35 @@ export default function DrawScreen({ prompt, worldId, onDone, onStamp, onBack, t
   };
 
   const pickCrayon = (c: string) => { setColor(c); setErasing(false); sfxTap(); };
+
+  /* ── swapping what is in the box ──────────────────────────────────────────
+     Picking the brush does not cut to a rack of brushes: the crayons go down
+     into the box first, and the brushes come up out of it in the same colours.
+     The rail therefore lags `medium` — it keeps showing the outgoing tool until
+     it has finished leaving, which is what `railMedium` is.
+
+     A child who taps crayon → brush → crayon quickly must not be able to strand
+     the rail: `phase` only ever moves out → in → idle, and every timer is
+     cleared by the effect that set it. Reduced motion skips the journey and
+     swaps on the spot. */
+  const [railMedium, setRailMedium] = useState<Medium>(medium);
+  const [swap, setSwap] = useState<"idle" | "out" | "in">("idle");
+  const SINK_MS = 260;
+  const RISE_MS = 340;
+
+  useEffect(() => {
+    if (medium === railMedium) return;
+    if (reduced) { setRailMedium(medium); setSwap("idle"); return; }
+    setSwap("out");
+    const t = window.setTimeout(() => { setRailMedium(medium); setSwap("in"); }, SINK_MS);
+    return () => window.clearTimeout(t);
+  }, [medium, railMedium, reduced]);
+
+  useEffect(() => {
+    if (swap !== "in") return;
+    const t = window.setTimeout(() => setSwap("idle"), RISE_MS);
+    return () => window.clearTimeout(t);
+  }, [swap]);
   const pickSize = (px: number) => { setSize(px); setErasing(false); sfxTap(); };
   const pickMedium = (m: Medium) => { setMedium(m); setErasing(false); sfxTap(); };
 
@@ -785,15 +817,6 @@ export default function DrawScreen({ prompt, worldId, onDone, onStamp, onBack, t
     () => (sheet.w > 40 && sheet.h > 40 ? roughRect(sheet.w - 26, sheet.h - 26, { seed: 73, wobble: 4.2, radius: 14 }) : ""),
     [sheet.w, sheet.h],
   );
-  const rings = useMemo(() => {
-    const n = Math.max(4, Math.floor((sheet.w - 30) / 36));
-    const r = hand(19);
-    return Array.from({ length: n }, (_, i) => ({
-      x: 22 + ((sheet.w - 44) * i) / Math.max(1, n - 1),
-      w: (r() - 0.5) * 1.6,
-    }));
-  }, [sheet.w]);
-
   const current = CRAYONS.find((k) => k.c === color) ?? CRAYONS[5];
   const kit = MEDIA.find((m) => m.id === medium) ?? MEDIA[0];
   const TOOL = land ? 48 : 50;
@@ -1027,25 +1050,6 @@ export default function DrawScreen({ prompt, worldId, onDone, onStamp, onBack, t
                   <path d={deckle} fill="none" stroke="var(--ink)" strokeWidth="1.2" strokeLinejoin="round" opacity="0.45" transform="translate(1 1.2)" />
                 </g>
 
-                {/* spiral binding — the page is torn from a sketchbook */}
-                {rings.map((h, i) => (
-                  <g key={i}>
-                    <ellipse cx={h.x + h.w} cy="15" rx="5" ry="4.2" fill="#e3d2b6" />
-                    <path
-                      d={`M${h.x + h.w - 4.6} 15.6 Q${h.x + h.w} 11.6 ${h.x + h.w + 4.6} 14.6`}
-                      fill="none" stroke="#b9a382" strokeWidth="1.4" strokeLinecap="round"
-                    />
-                    <path
-                      d={`M${h.x + h.w - 7} 20 C${h.x + h.w - 9.5} -1 ${h.x + h.w + 9.5} -3 ${h.x + h.w + 6.6} 17`}
-                      fill="none" stroke="#8d949c" strokeWidth="3.6" strokeLinecap="round"
-                    />
-                    <path
-                      d={`M${h.x + h.w - 7.8} 19 C${h.x + h.w - 10} -1.6 ${h.x + h.w + 8.6} -3.6 ${h.x + h.w + 5.8} 16`}
-                      fill="none" stroke="#dfe3e7" strokeWidth="1.3" strokeLinecap="round"
-                    />
-                  </g>
-                ))}
-
                 {/* eraser mode is impossible to miss */}
                 {erasing && eraseFrame && (
                   <path
@@ -1060,6 +1064,11 @@ export default function DrawScreen({ prompt, worldId, onDone, onStamp, onBack, t
                 )}
               </svg>
             )}
+
+            {/* The binding, in the app's shared metal: real wire through real
+                punched holes, the far half clipped where the sheet's torn edge
+                crosses it. Same pad the onboarding pages are drawn on. */}
+            <TopBinding seed={48} />
 
             {/* the prompt, written on the page like a title on homework */}
             <div className={`dw-prompt ${empty ? "" : "is-drawn"}`}>
@@ -1098,13 +1107,19 @@ export default function DrawScreen({ prompt, worldId, onDone, onStamp, onBack, t
             <div
               className="dw-rail-scroll no-scrollbar"
               role="radiogroup"
-              aria-label="Pick a crayon colour"
+              aria-label={railMedium === "crayon" ? "Pick a crayon colour" : "Pick a paint colour"}
             >
               {CRAYONS.map((k, i) => {
                 const active = !erasing && color === k.c;
                 const seed = seedOf(k.name);
                 const g = crayonGeo(seed);
                 const lift = active ? (land ? "translateX(13px)" : "translateY(-15px)") : "none";
+                /* Sinking tools go in the order they sit; rising ones come back
+                   the same way, so the row fills left-to-right like a hand
+                   putting them in. The picked one is not lifted mid-journey —
+                   a tool cannot be both away in the box and chosen. */
+                const travelling = swap !== "idle";
+                const rest = travelling ? "none" : lift;
                 return (
                   <button
                     key={k.c}
@@ -1113,16 +1128,23 @@ export default function DrawScreen({ prompt, worldId, onDone, onStamp, onBack, t
                     aria-label={k.name}
                     title={k.name}
                     onClick={() => pickCrayon(k.c)}
-                    className={`dw-crayon ${active ? "is-picked" : ""}`}
+                    className={`dw-crayon ${active && !travelling ? "is-picked" : ""}`}
                     style={{
-                      transform: `${lift} rotate(${active ? g.tilt * 0.4 : g.tilt}deg)`,
+                      transform: `${rest} rotate(${active && !travelling ? g.tilt * 0.4 : g.tilt}deg)`,
                       zIndex: active ? 4 : 1,
                       animationDelay: `${i * 28}ms`,
                     }}
                   >
-                    <span className="dw-crayon-slot">
+                    <span
+                      className={`dw-crayon-slot ${swap === "out" ? "dw-sink" : swap === "in" ? "dw-rise" : ""}`}
+                      style={travelling ? { animationDelay: `${i * 22}ms` } : undefined}
+                    >
                       <span className="dw-crayon-art">
-                        <CrayonArt color={k.c} short={k.short} seed={seed} lifted={active} />
+                        {railMedium === "crayon" ? (
+                          <CrayonArt color={k.c} short={k.short} seed={seed} lifted={active && !travelling} />
+                        ) : (
+                          <BrushArt color={k.c} seed={seed} lifted={active && !travelling} />
+                        )}
                       </span>
                     </span>
                   </button>
@@ -1137,6 +1159,7 @@ export default function DrawScreen({ prompt, worldId, onDone, onStamp, onBack, t
                 w={Math.max(4, boxBox.w)}
                 h={Math.max(4, boxBox.h)}
                 axis={land ? "y" : "x"}
+                word={railMedium === "crayon" ? "CRAYONS" : "PAINTS"}
               />
             </div>
           </div>
@@ -1286,7 +1309,7 @@ const DW_CSS = `
 .dw-sep { width: 2px; }
 .dw-icon-btn { padding: 0 !important; flex: none; }
 
-.dw-canvasarea { grid-area: canvas; min-height: 0; min-width: 0; padding-top: 11px; }
+.dw-canvasarea { grid-area: canvas; min-height: 0; min-width: 0; padding-top: 17px; }
 .dw-sheet { position: relative; width: 100%; height: 100%; }
 .dw-sheet > canvas { width: 100%; height: 100%; }
 .dw-deco {
@@ -1362,6 +1385,27 @@ const DW_CSS = `
   width: calc(${CW}px * var(--cs)); height: calc(${CH}px * var(--cs));
 }
 .dw-crayon-art { position: absolute; left: 0; top: 0; transform: scale(var(--cs)); transform-origin: 0 0; }
+
+/* ── swapping the tools in the box ──
+   The slot travels, never the button: the button carries the pick-lift and the
+   crayon's own tilt, and an animation on it would throw both away mid-flight.
+   Sinking ends behind the cardboard front (z-index 4 over the rail's 1), so a
+   tool genuinely goes *into* the box rather than fading on top of it. */
+.dw-crayon-slot.dw-sink {
+  animation: dw-tool-sink 260ms cubic-bezier(.4, 0, 1, 1) both;   /* = SINK_MS */
+}
+.dw-crayon-slot.dw-rise {
+  animation: dw-tool-rise 340ms var(--ease-spring) both;           /* = RISE_MS */
+}
+@keyframes dw-tool-sink {
+  from { transform: translateY(0); opacity: 1; }
+  to   { transform: translateY(30px); opacity: 0; }
+}
+@keyframes dw-tool-rise {
+  from { transform: translateY(30px); opacity: 0; }
+  55%  { opacity: 1; }
+  to   { transform: translateY(0); opacity: 1; }
+}
 @media (hover: hover) {
   .dw-crayon:hover { filter: brightness(1.04); }
 }
@@ -1527,6 +1571,18 @@ const DW_CSS = `
   background: linear-gradient(to bottom, rgba(253,243,227,0), rgba(253,243,227,0.88));
 }
 .dw-land .dw-crayon { padding: 2px 0; }
+/* the box lies down the left edge in landscape, so "into the box" is sideways */
+@keyframes dw-tool-sink-x {
+  from { transform: translateX(0); opacity: 1; }
+  to   { transform: translateX(-30px); opacity: 0; }
+}
+@keyframes dw-tool-rise-x {
+  from { transform: translateX(-30px); opacity: 0; }
+  55%  { opacity: 1; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+.dw-land .dw-crayon-slot.dw-sink { animation-name: dw-tool-sink-x; }
+.dw-land .dw-crayon-slot.dw-rise { animation-name: dw-tool-rise-x; }
 .dw-land .dw-crayon-slot { width: calc(${CH}px * var(--cs)); height: calc(${CW}px * var(--cs)); }
 .dw-land .dw-crayon-art {
   left: 50%; top: 50%;
@@ -1553,7 +1609,7 @@ const DW_CSS = `
   margin-left: ${-TW / 2}px; margin-top: ${-TH / 2}px;
   transform-origin: 50% 50%;
 }
-.dw-land .dw-canvasarea { padding-top: 10px; }
+.dw-land .dw-canvasarea { padding-top: 16px; }
 .dw-land .dw-prompt { top: 22px; left: 16px; right: 16px; }
 .dw-land .dw-prompt-text { font-size: var(--fs-lg); }
 .dw-land .dw-hint { top: 34%; }
@@ -1577,7 +1633,7 @@ const DW_CSS = `
   .dw-media-group { flex: 0 1 auto; gap: 10px; }
   .dw-media-btn { flex: 0 0 auto; min-width: var(--tap-hero); }
   .dw-media .dw-current { max-width: 12rem; }
-  .dw-canvasarea { padding-top: 14px; }
+  .dw-canvasarea { padding-top: 19px; }
   .dw-icon-btn { width: 56px !important; height: 56px !important; }
   .dw-top { gap: 10px; }
 }
@@ -1597,6 +1653,7 @@ const DW_CSS = `
 
 @media (prefers-reduced-motion: reduce) {
   .dw-crayon, .dw-media-btn, .dw-prompt, .dw-prompt-in { transition: none; animation: none; }
+  .dw-crayon-slot.dw-sink, .dw-crayon-slot.dw-rise { animation: none; opacity: 1; transform: none; }
   .dw-breathe, .dw-twinkle { animation: none; }
   .dw-stamp-scrim-in, .dw-stamp-card-in, .dw-stamp-tile-in { animation: none; }
 }
