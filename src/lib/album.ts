@@ -1,8 +1,8 @@
 // ─── The sticker book ───────────────────────────────────────────────────────
-// The world holds thirty creatures because thirty is where an old tablet starts
-// dropping frames — a rendering limit that has always read to a child as a
-// loss. Everything a child has ever drawn is remembered here instead, so the
-// cap stops meaning "gone" and starts meaning "moved into the album".
+// The world holds only so many creatures at once (see MAX_CREATURES) — a
+// legibility limit that has always read to a child as a loss. Everything a
+// child has ever drawn is remembered here instead, so the cap stops meaning
+// "gone" and starts meaning "moved into the album".
 //
 // ── what is kept, and what is deliberately not ──
 // Strokes, not pictures. A drawing is a few hundred bytes of points that can be
@@ -15,13 +15,16 @@
 // forgetting it.
 
 import type { Creature, Stroke } from "./types";
+import { leanStrokes } from "./storage";
 
 /**
  * How many drawings the book remembers, newest kept.
  *
- * Sized against the storage budget rather than picked round: a drawing is
- * roughly 10-20KB of stroke points, so 150 sits near 2MB worst case — clear of
- * the ~5MB browser budget.
+ * Sized against the storage budget rather than picked round. Measured, not
+ * guessed: a busily-scribbled drawing is about 12KB of stroke points once
+ * coordinates are stored at the precision `leanStrokes` keeps, so a full book
+ * sits near 1.8MB — comfortably clear of the ~5MB browser budget even with a
+ * full world of creatures and a painted dream world alongside it.
  */
 export const MAX_ALBUM = 150;
 
@@ -57,7 +60,7 @@ export function entryOf(c: Creature): AlbumEntry {
     id: c.id,
     name: c.name,
     kindId: c.kindId,
-    strokes: c.strokes ?? [],
+    strokes: leanStrokes(c.strokes ?? []),
     createdAt: c.createdAt,
   };
   if (c.doodleId) e.doodleId = c.doodleId;

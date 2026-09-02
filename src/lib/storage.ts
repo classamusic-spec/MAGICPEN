@@ -2,6 +2,25 @@
 
 import type { Creature, DreamWorld, Stroke } from "./types";
 
+/* ── what a point costs on disk ───────────────────────────────────────────────
+   A pointer event hands us a float like 127.80000305175781: eighteen characters
+   of JSON carrying about fifteen digits of precision, when the finest thing the
+   app can draw is a pixel. A tenth of a CSS pixel is already far below the
+   crayon engine's own hand-wobble, so rounding there is invisible — and it
+   halves what every drawing costs.
+
+   That matters because it is measured, not theoretical: sixteen hand-drawn
+   creatures plus a full sticker book came to 78% of the browser's ~5MB budget,
+   and a child who draws a lot has nowhere to go from there. Quantising happens
+   at the moment of *writing* only, so the live drawing a child is making stays
+   exactly as smooth as their finger. */
+const q1 = (n: number) => Math.round(n * 10) / 10;
+
+/** The same strokes, at the precision they are stored in. Never mutates. */
+export function leanStrokes(strokes: Stroke[]): Stroke[] {
+  return strokes.map((s) => ({ ...s, pts: s.pts.map((p) => ({ x: q1(p.x), y: q1(p.y) })) }));
+}
+
 const KEY = "magicpen.creatures.v1";
 const SEEN_KEY = "magicpen.seenIntro.v1";
 
@@ -34,7 +53,7 @@ export interface SaveResult {
 export function saveCreatures(c: Creature[]): SaveResult {
   const out: SaveResult = { creatures: false };
   try {
-    localStorage.setItem(KEY, JSON.stringify(c));
+    localStorage.setItem(KEY, JSON.stringify(c.map((x) => ({ ...x, strokes: leanStrokes(x.strokes ?? []) }))));
     out.creatures = true;
   } catch {
     /* storage full / private mode — play session continues in memory */
@@ -125,7 +144,7 @@ export function loadFoods(): DrawnFood[] {
 
 /** Add one drawn food, keeping the newest `MAX_DRAWN_FOODS`. */
 export function saveFood(strokes: Stroke[]): DrawnFood[] {
-  const next = [...loadFoods(), { id: uuid(), strokes, createdAt: Date.now() }]
+  const next = [...loadFoods(), { id: uuid(), strokes: leanStrokes(strokes), createdAt: Date.now() }]
     .slice(-MAX_DRAWN_FOODS);
   try {
     localStorage.setItem(FOODS_KEY, JSON.stringify(next));
@@ -241,7 +260,9 @@ export function loadDream(): DreamWorld | null {
 }
 
 export function saveDream(d: DreamWorld) {
-  try { localStorage.setItem(DREAM_KEY, JSON.stringify(d)); } catch { /* full / private mode */ }
+  try {
+    localStorage.setItem(DREAM_KEY, JSON.stringify({ ...d, strokes: leanStrokes(d.strokes) }));
+  } catch { /* full / private mode */ }
 }
 
 export function hasDream(): boolean {
