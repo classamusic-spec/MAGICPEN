@@ -1,6 +1,7 @@
 // ─── The sticker book ───────────────────────────────────────────────────────
-// The world holds thirty creatures, and it always has — a framerate limit that
-// a child reads as losing things. This is where they all still are.
+// The world holds only so many creatures at once (see MAX_CREATURES) — a
+// legibility limit that a child reads as losing things. This is where they all
+// still are.
 //
 // It is a book, not a manager: nothing here is a count to improve, a set to
 // complete, or a gap to fill. It is the shoebox of drawings under the bed, and
@@ -33,14 +34,19 @@ function whenMade(ms: number): string {
 }
 
 /** One sticker on the page: the drawing, taped down at its own angle. */
-function Sticker({ e, index, onOpen }: { e: AlbumEntry; index: number; onOpen: () => void }) {
+function Sticker({ e, index, first, onOpen }: {
+  e: AlbumEntry; index: number;
+  /** The oldest drawing in the book — the one they made before they knew how. */
+  first: boolean;
+  onOpen: () => void;
+}) {
   const kind = kindById(e.kindId);
   const r = hand(index * 23 + 5);
   const tilt = (r() - 0.5) * 6;
   return (
     <button
       onClick={() => { sfxTap(); onOpen(); }}
-      aria-label={`${e.name} the ${kind.label}, ${whenMade(e.createdAt)}`}
+      aria-label={`${e.name} the ${kind.label}, ${whenMade(e.createdAt)}${first ? ", your very first drawing" : ""}`}
       className="ink-pinned relative block w-full"
     >
       <Tape
@@ -65,6 +71,22 @@ function Sticker({ e, index, onOpen }: { e: AlbumEntry; index: number; onOpen: (
           <span className="ink-title block text-fs-xs truncate mt-0.5">{e.name}</span>
         </span>
       </InkCard>
+      {/* No badge, no counter — just a note in the margin saying this is the
+          one they made first. It is a keepsake, not a score. */}
+      {first && (
+        <span
+          className="ink-hand absolute pointer-events-none"
+          style={{
+            left: "50%", bottom: -9, transform: "translateX(-50%) rotate(-2.5deg)",
+            background: "var(--sun)", color: "var(--ink)",
+            fontSize: "var(--fs-2xs)", lineHeight: 1.15,
+            padding: "2px 8px", borderRadius: 999,
+            border: "2px solid var(--ink)", whiteSpace: "nowrap",
+          }}
+        >
+          the first one
+        </span>
+      )}
     </button>
   );
 }
@@ -89,6 +111,13 @@ export default function StickerBook({
 
   // newest first: the drawing they just made is the one they want to see
   const shown = useMemo(() => [...album].reverse(), [album]);
+  /* The earliest thing in the book. Computed rather than stored, so it stays
+     right when the oldest drawing is let go of and something else becomes the
+     first one they still have. */
+  const firstId = useMemo(
+    () => album.reduce<AlbumEntry | null>((a, b) => (!a || b.createdAt < a.createdAt ? b : a), null)?.id ?? null,
+    [album],
+  );
   const open = openId ? album.find((e) => e.id === openId) ?? null : null;
 
   const close = () => { setOpenId(null); setSaying(false); };
@@ -153,7 +182,13 @@ export default function StickerBook({
             style={{ gridTemplateColumns: "repeat(auto-fill, minmax(88px, 1fr))" }}
           >
             {shown.map((e, i) => (
-              <Sticker key={e.id} e={e} index={i} onOpen={() => { setOpenId(e.id); setPlay((n) => n + 1); }} />
+              <Sticker
+                key={e.id}
+                e={e}
+                index={i}
+                first={album.length > 1 && e.id === firstId}
+                onOpen={() => { setOpenId(e.id); setPlay((n) => n + 1); }}
+              />
             ))}
           </div>
         )}
@@ -190,6 +225,11 @@ export default function StickerBook({
             <p className="ink-hand text-fs-xs">
               your {kindById(open.kindId).label} · {whenMade(open.createdAt)}
             </p>
+            {album.length > 1 && open.id === firstId && (
+              <p className="ink-hand text-fs-xs" style={{ color: "#c2600c" }}>
+                the very first thing you ever drew
+              </p>
+            )}
             <span className="block w-20 mt-1"><Scribble seed={19} height={8} /></span>
 
             {!saying ? (

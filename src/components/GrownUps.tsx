@@ -91,8 +91,8 @@ export default function GrownUps({ creatures, onBack, saveTrouble = null }: {
 
   const anyLearning = rows.some((r) => r.done > 0);
   /* The sticker book is the real record of what was made — the live world is
-     capped at 30 and evicts, so its length stops counting exactly when a
-     prolific child would be proudest of the number. */
+     capped (see MAX_CREATURES) and evicts, so its length stops counting
+     exactly when a prolific child would be proudest of the number. */
   const made = Math.max(creatures.length, loadAlbum().length);
 
   return (
@@ -196,8 +196,8 @@ export default function GrownUps({ creatures, onBack, saveTrouble = null }: {
             href="/privacy.html"
             target="_blank"
             rel="noreferrer"
-            className="ink-hand text-fs-sm underline decoration-2 underline-offset-2"
-            style={{ color: "var(--ink-soft)" }}
+            className="ink-hand text-fs-sm underline decoration-2 underline-offset-2 inline-flex items-center justify-center px-3"
+            style={{ color: "var(--ink-soft)", minHeight: "var(--tap)" }}
           >
             Read the full privacy policy
           </a>

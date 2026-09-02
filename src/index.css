@@ -660,6 +660,14 @@
   }
 }
 /* The page settling back down — used coming back out to home. */
+/* The calm stand-in every reduced-motion animation collapses onto. It has to
+   be opacity and nothing else: `screen-fade` below carries a 3D rotate and a
+   3% slide, so folding the page turns onto *it* still swung the screen for
+   exactly the person who asked it not to. */
+@keyframes calm-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
 @keyframes screen-fade {
   from { opacity: 0; transform: perspective(1400px) rotateY(5deg) translateX(-3%); }
   to { opacity: 1; transform: perspective(1400px) rotateY(0deg) translateX(0); }
@@ -926,7 +934,7 @@
   .screen-enter-dive,
   .page-flip-in,
   .page-flip-back-in {
-    animation-name: screen-fade !important;
+    animation-name: calm-fade !important;
     animation-duration: 220ms !important;
     animation-timing-function: ease !important;
     animation-delay: 0ms !important;
