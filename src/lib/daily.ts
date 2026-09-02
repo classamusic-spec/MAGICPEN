@@ -107,6 +107,44 @@ export function dailyIdea(now: Date = new Date()): string {
   return IDEAS[((dayIndex(now) % IDEAS.length) + IDEAS.length) % IDEAS.length];
 }
 
+/* ── naming what they set out to draw ────────────────────────────────────────
+   The recognizer knows fourteen shapes; today's idea is one of forty-five, and
+   most of them — a dragon, a unicorn, a tiny mouse — are not among the fourteen.
+   So a child who draws *exactly what was asked* lands on the mystery creature
+   and is handed "Squiggle". They drew a dragon. It should be called Dragon.
+
+   Only used when the creature really is a mystery. A fish that was recognised
+   as a fish keeps its own pool, because "Rainbow Fish the Fish" is worse than
+   "Bubbles the Fish". */
+
+/** Ideas that name nothing in particular: only the child knows what they drew,
+ *  so there is nothing here to name it after. */
+const OPEN_IDEA = /^something\b|\bfavourite\b|\bfavorite\b|\bbest friend\b/;
+
+/** Once one of these is said, the useful noun has already been said too —
+ *  "a cat with a hat" is a cat. */
+const TRAILING = / (?:with|in|on|and|next to|under) .*/;
+
+/**
+ * Today's idea as a creature name, or null if the idea names nothing.
+ *
+ * "a tiny mouse" → "Tiny Mouse", "a bowl of ice cream" → "Ice Cream",
+ * "your favourite animal" → null.
+ */
+export function nameFromIdea(idea: string): string | null {
+  const s = idea.trim().toLowerCase();
+  if (!s || OPEN_IDEA.test(s)) return null;
+  const core = s
+    .replace(TRAILING, "")                  // "a cat with a hat" → "a cat"
+    .replace(/^.* of /, "")                 // "a bowl of ice cream" → "ice cream"
+    .replace(/^(?:a|an|the|your|my) /, "")  // the article is not part of a name
+    .trim();
+  // three words is already "Hot Air Balloon"; past that it stops being a name
+  const words = core.split(/\s+/).filter(Boolean).slice(0, 3);
+  if (!words.length) return null;
+  return words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
 /* ── the visit ────────────────────────────────────────────────────────────── */
 
 interface VisitRecord {

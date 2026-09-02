@@ -29,6 +29,7 @@ import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon, type IconName } from "@/components/ink/Icons";
 import { Doodle } from "@/components/ink/Doodles";
 import { usePrefersReducedMotion } from "@/components/ink/motion";
+import { useBackClose } from "@/lib/native";
 import { roughEllipse } from "@/lib/ink";
 import { sfxTap } from "@/lib/audio";
 import { hush, sayLine } from "@/lib/speech";
@@ -367,6 +368,13 @@ export default function Onboarding({ onDone, onSkip }: {
     hush();
     onDone();
   }, [i, turn, onDone]);
+
+  /* Android hardware back turns the sheet back, exactly as the drawn arrow
+     does. Without this the pad is four pages deep but back is a single step
+     out of the app — a grown-up on the privacy page presses it expecting page
+     two and Drawlings closes. Inactive on the first sheet, so back still
+     leaves from the front of the pad the way it leaves from home. */
+  useBackClose(i > 0, goBack);
 
   const skip = useCallback(() => {
     sfxTap();

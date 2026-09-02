@@ -15,6 +15,14 @@ interface Props {
   result: RecognitionResult;
   name: string;
   worldId: string;         // the world being drawn for — it picks the choices
+  /* What the child set out to draw, as a name — "Dragon", "Tiny Mouse" — when
+     they followed today's idea and it names something in particular.
+
+     It is used only for the mystery creature, and that is the whole point: a
+     dragon is not one of the fourteen shapes the recognizer knows, so drawing
+     exactly what was asked is precisely the case that ends up as "Squiggle the
+     Mystery Creature". A recognised fish keeps the fish pool. */
+  ideaName?: string | null;
   onShuffleName: (kindId: string) => string;
   onConfirm: (kindId: string, name: string) => void;
   onRedraw: () => void;
@@ -424,14 +432,17 @@ function PaperMarks() {
 /* ════════════════════════════════════════════════════════════════════════ */
 
 export default function MagicReveal({
-  strokes, result, name, worldId, onShuffleName, onConfirm, onRedraw,
+  strokes, result, name, worldId, ideaName = null, onShuffleName, onConfirm, onRedraw,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [stageRef, stageBox] = useBox<HTMLDivElement>();
   const [phase, setPhase] = useState<Phase>("scan");
   const [kindId, setKindId] = useState(result.kindId);
-  const [creatureName, setCreatureName] = useState(name);
+  /** The name for a kind: what they drew if it is a mystery, otherwise a
+   *  name out of that kind's own pool. */
+  const nameFor = (id: string, fresh: string) => (id === "mystery" && ideaName ? ideaName : fresh);
+  const [creatureName, setCreatureName] = useState(() => nameFor(result.kindId, name));
   const [scanX, setScanX] = useState(0);
   const [rollTick, setRollTick] = useState(0);
   const reduced = usePrefersReducedMotion();
@@ -595,7 +606,7 @@ export default function MagicReveal({
 
   const choose = (id: string) => {
     setKindId(id);
-    setCreatureName(onShuffleName(id));
+    setCreatureName(nameFor(id, onShuffleName(id)));
     setPhase("guess");
     sfxTap();
   };

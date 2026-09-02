@@ -30,6 +30,23 @@ export function pushBackHandler(fn: BackHandler): () => void {
   };
 }
 
+/**
+ * Resolve one back press against whatever is open.
+ *
+ * The newest registered handler that claims the press wins; true means it was
+ * consumed and nothing else should act on it. Exported so the rule can be
+ * exercised without a device — the caller below is the only part that needs
+ * a native shell.
+ */
+export function handleBack(): boolean {
+  for (let i = backStack.length - 1; i >= 0; i--) {
+    if (backStack[i]()) return true;
+  }
+  // nothing open: screen navigation gets its say
+  const ev = new CustomEvent(BACK_EVENT, { cancelable: true });
+  return window.dispatchEvent(ev) === false; // false ⇒ preventDefault called
+}
+
 /** While `active`, the hardware back button closes this overlay instead of
  *  navigating. A no-op on the web, where overlays already handle Escape. */
 export function useBackClose(active: boolean, close: () => void): void {
@@ -48,12 +65,7 @@ export function initNative(): void {
   // screen navigation (it navigates by state, not browser history), and only
   // when neither claims it does the press leave the app.
   CapApp.addListener("backButton", () => {
-    for (let i = backStack.length - 1; i >= 0; i--) {
-      if (backStack[i]()) return;
-    }
-    const ev = new CustomEvent(BACK_EVENT, { cancelable: true });
-    const handled = window.dispatchEvent(ev) === false; // false ⇒ preventDefault called
-    if (!handled) CapApp.exitApp();
+    if (!handleBack()) CapApp.exitApp();
   });
 
   // Dark glyphs on the warm paper bar. The config sets this too; doing it here

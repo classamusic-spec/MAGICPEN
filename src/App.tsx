@@ -5,7 +5,7 @@ import { kindById, rosterFor, WORLD_PACKS } from "@/lib/creatures";
 import { loadCreatures, saveCreatures, hasSeenIntro, markSeenIntro, uuid, loadDream, saveDream, loadPet, savePet, clearPet, saveFood, type PetRef } from "@/lib/storage";
 import { resolvePet, makeRoom, petGreeting } from "@/lib/pet";
 import { remember as rememberInAlbum, forget as forgetFromAlbum, backfill as backfillAlbum } from "@/lib/album";
-import { markVisit, dailyIdea, welcomeBack, type Visit } from "@/lib/daily";
+import { markVisit, dailyIdea, nameFromIdea, welcomeBack, type Visit } from "@/lib/daily";
 import { CARE_PER_DAY } from "@/lib/social";
 import { BACK_EVENT } from "@/lib/native";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -235,6 +235,15 @@ export default function App() {
   }, [screen]);
 
   const takenNames = useMemo(() => new Set(creatures.map((c) => c.name)), [creatures]);
+
+  /* A child who took today's idea and drew it should get the thing they drew
+     back by name. Null when the idea names nothing in particular ("something
+     purple") or when a creature is already called that — two Dragons swimming
+     about is a puzzle, not a keepsake. */
+  const ideaName = useMemo(() => {
+    const n = ideaPrompt ? nameFromIdea(ideaPrompt) : null;
+    return n && !takenNames.has(n) ? n : null;
+  }, [ideaPrompt, takenNames]);
 
   const result: RecognitionResult = useMemo(() => {
     const raw: RecognitionResult = draft.length
@@ -514,6 +523,7 @@ export default function App() {
                 result={result}
                 worldId={drawWorld}
                 name={pickName(result.kindId, takenNames)}
+                ideaName={ideaName}
                 onShuffleName={(k) => pickName(k, takenNames)}
                 onConfirm={handleConfirm}
                 onRedraw={() => go("draw")}
