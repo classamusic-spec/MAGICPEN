@@ -17,7 +17,7 @@ import { usePrefersReducedMotion } from "@/components/ink/motion";
 import { sfxBubble, sfxPop, sfxSplash, sfxTap, setMuted, isMuted, sfxHappy } from "@/lib/audio";
 import { drawOcean, drawSpace, drawFarm, drawDino, drawDream, newFxState, floorRatio } from "./world/themes";
 import { sampleFrame, clearLayers } from "./world/shared";
-import { useBackClose } from "@/lib/native";
+import { useBackClose, canOfferPicture, canShareFiles, canSaveFile } from "@/lib/native";
 import { playCreatureVoice } from "@/lib/creatureVoice";
 import { playCreatureSound, prefetchSounds } from "@/lib/creatureSounds";
 import { bakeCrayonSprite, silhouette, stampRing, type Sprite } from "@/lib/sprites";
@@ -898,6 +898,11 @@ export default function WorldScene({
      social app on the device — and the card carries the name the child typed
      and their drawing. That is a door out of the app, so a grown-up opens it. */
   const [shareGate, setShareGate] = useState(false);
+  /* Android's WebView has no Web Share API, and an `<a download>` there needs
+     a native download listener this shell does not set — so the picture has
+     nowhere to go and the button is not drawn. It used to be, and it cheerfully
+     said "Saved your world as a picture!" over a save that never happened. */
+  const canPhoto = canOfferPicture();
   const [tip, setTip] = useState(true);
 
   /* Android hardware back closes whatever is open — the gate, then the sheet,
@@ -2901,7 +2906,7 @@ export default function WorldScene({
       const blob = await new Promise<Blob | null>((res) => card.toBlob(res, "image/png"));
       if (!blob) { pushBanner("Hmm — the photo didn't come out. Try again!", "camera"); return; }
       const file = new File([blob], "drawlings.png", { type: "image/png" });
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      if (canShareFiles([file])) {
         try {
           await navigator.share({ files: [file], title: "Drawlings", text: "My drawing came alive!" });
           return;
@@ -2909,6 +2914,12 @@ export default function WorldScene({
           // kid cancelled → done; anything else (desktop, permissions) → download
           if ((err as DOMException)?.name === "AbortError") return;
         }
+      }
+      if (!canSaveFile()) {
+        // the button is not drawn where this is true, so getting here means
+        // something changed under us — say so rather than claim a save
+        pushBanner("This one needs a grown-up's browser to save the picture.", "camera");
+        return;
       }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -3050,15 +3061,17 @@ export default function WorldScene({
             aria-pressed={!muted}
             onClick={toggleSound}
           />
-          <HudBtn
-            round
-            className="hud-roomy"
-            icon="camera"
-            seed={12}
-            disabled={sharing}
-            aria-label="Share a photo of your world"
-            onClick={() => setShareGate(true)}
-          />
+          {canPhoto && (
+            <HudBtn
+              round
+              className="hud-roomy"
+              icon="camera"
+              seed={12}
+              disabled={sharing}
+              aria-label="Share a photo of your world"
+              onClick={() => setShareGate(true)}
+            />
+          )}
           {view.length > 0 && (
             <HudBtn
               icon="gamepad"
@@ -3159,13 +3172,15 @@ export default function WorldScene({
                       onClick: toggleSound,
                       disabled: false,
                     },
-                    {
-                      key: "share",
-                      icon: "camera" as IconName,
-                      text: sharing ? "Making photo…" : "Share a photo",
-                      onClick: () => { setMenuOpen(false); setShareGate(true); },
-                      disabled: sharing,
-                    },
+                    ...(canPhoto
+                      ? [{
+                          key: "share",
+                          icon: "camera" as IconName,
+                          text: sharing ? "Making photo…" : "Share a photo",
+                          onClick: () => { setMenuOpen(false); setShareGate(true); },
+                          disabled: sharing,
+                        }]
+                      : []),
                     {
                       key: "friends",
                       icon: "heart" as IconName,

@@ -11,7 +11,8 @@ import { useEffect, useMemo, useState } from "react";
 import { loadAlbum, forget as forgetSticker, canReplay, hasArt, type AlbumEntry } from "@/lib/album";
 import { kindById } from "@/lib/creatures";
 import { sfxTap, sfxHappy, sfxSplash } from "@/lib/audio";
-import { useBackClose } from "@/lib/native";
+import { useBackClose, canPrintPage, canOfferPicture, canShareFiles, canSaveFile } from "@/lib/native";
+import { keepsakeFile } from "@/lib/keepsake";
 import { InkButton, InkCard, Scribble, Tape } from "@/components/ink/Ink";
 import { Icon } from "@/components/ink/Icons";
 import { Doodle } from "@/components/ink/Doodles";
@@ -105,9 +106,56 @@ export default function StickerBook({
   const [saying, setSaying] = useState(false);
   const [play, setPlay] = useState(0);
   /* Printing puts a drawing on paper, which is a door out of the device — so
-     it asks the same grown-up question the share sheet asks. */
+     it asks the same grown-up question the share sheet asks.
+
+     Which door there is depends on the shell. A browser prints. iOS has no
+     print at all, but its share sheet is where AirPrint lives, so the drawing
+     goes out as a picture and reaches the same fridge. Android's WebView can
+     do neither, and there the control is simply not drawn — an app that opens
+     a preview and then does nothing is worse than one that never offered. */
   const [printGate, setPrintGate] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [sending, setSending] = useState(false);
+  const canPrint = canPrintPage();
+  const canKeep = canPrint || canOfferPicture();
+
+  /* iOS and the desktop: hand the whole page over as a picture, lettering
+     painted in — a PNG carries no DOM, so the name has to be in the image. */
+  const sendPicture = async (e: AlbumEntry) => {
+    setSending(true);
+    try {
+      const file = await keepsakeFile(
+        {
+          strokes: e.strokes,
+          doodleId: e.doodleId,
+          caption: { name: e.name, subtitle: `your ${kindById(e.kindId).label} · ${whenMade(e.createdAt)}` },
+        },
+        `${e.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "drawing"}.png`,
+      );
+      if (!file) return;
+      if (canShareFiles([file])) {
+        try {
+          await navigator.share({ files: [file], title: e.name, text: `${e.name}, drawn with Drawlings` });
+          return;
+        } catch (err) {
+          // a grown-up who changed their mind is done; anything else falls back
+          if ((err as DOMException)?.name === "AbortError") return;
+        }
+      }
+      if (!canSaveFile()) return;
+      const url = URL.createObjectURL(file);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.name;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } finally {
+      setSending(false);
+    }
+  };
 
   // newest first: the drawing they just made is the one they want to see
   const shown = useMemo(() => [...album].reverse(), [album]);
@@ -247,16 +295,23 @@ export default function StickerBook({
                     <span className="ink-on-wax ink-title text-fs-md">Watch it again</span>
                   </InkButton>
                 )}
-                {hasArt(open) && (
+                {hasArt(open) && canKeep && (
                   <InkButton
                     seed={39}
                     radius={16}
+                    disabled={sending}
                     onClick={() => { sfxTap(); setPrintGate(true); }}
-                    aria-label={`Print ${open.name} for the fridge`}
+                    aria-label={
+                      canPrint
+                        ? `Print ${open.name} for the fridge`
+                        : `Send ${open.name} out as a picture`
+                    }
                     style={{ minHeight: "var(--tap)" }}
                   >
-                    <Icon name="print" size={19} />
-                    <span className="ink-title text-fs-md">Print it</span>
+                    <Icon name={canPrint ? "print" : "camera"} size={19} />
+                    <span className="ink-title text-fs-md">
+                      {canPrint ? "Print it" : sending ? "Getting it ready…" : "Send it"}
+                    </span>
                   </InkButton>
                 )}
                 <InkButton
@@ -294,8 +349,12 @@ export default function StickerBook({
 
       {printGate && open && (
         <ParentGate
-          title={`Print ${open.name}?`}
-          onPass={() => { setPrintGate(false); setPrinting(true); }}
+          title={canPrint ? `Print ${open.name}?` : `Send ${open.name}?`}
+          onPass={() => {
+            setPrintGate(false);
+            if (canPrint) setPrinting(true);
+            else void sendPicture(open);
+          }}
           onCancel={() => setPrintGate(false)}
         />
       )}

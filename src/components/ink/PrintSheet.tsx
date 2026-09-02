@@ -14,13 +14,7 @@
 
 import { useEffect, useRef } from "react";
 import type { Stroke } from "@/lib/types";
-import { normalizeStrokes } from "@/lib/crayon";
-import { drawStroke } from "@/lib/brushes";
-import { paperTile } from "@/lib/ink";
-import { paintDoodle } from "@/lib/doodleArt";
-
-/** Print at a size that stays crisp on paper rather than on a screen. */
-const PX = 1000;
+import { KEEPSAKE_PX as PX, paintKeepsake } from "@/lib/keepsake";
 
 export default function PrintSheet({
   name,
@@ -45,38 +39,9 @@ export default function PrintSheet({
     if (!ctx) return;
     cv.width = PX;
     cv.height = PX;
-
-    // warm stock, the same paper the rest of the app is drawn on
-    ctx.fillStyle = "#fdf6e8";
-    ctx.fillRect(0, 0, PX, PX);
-    const fibre = new Image();
-    fibre.onload = () => {
-      const pat = ctx.createPattern(fibre, "repeat");
-      if (pat) { ctx.fillStyle = pat; ctx.fillRect(0, 0, PX, PX); }
-      paint();
-    };
-    fibre.onerror = () => paint();
-    fibre.src = paperTile();
-
-    function paint() {
-      if (!ctx) return;
-      if (strokes.length) {
-        const norm = normalizeStrokes(strokes, PX * 0.78);
-        ctx.save();
-        // `normalizeStrokes` centres on the origin, so this lands it mid-page
-        ctx.translate(PX / 2, PX / 2);
-        norm.strokes.forEach((s, i) => drawStroke(ctx, s, i + 1, 1));
-        ctx.restore();
-      } else if (doodleId) {
-        // a doodle-bodied creature prints its doodle, as the header promises
-        const box = PX * 0.7;
-        ctx.save();
-        ctx.translate((PX - box) / 2, (PX - box) / 2);
-        paintDoodle(ctx, doodleId, box);
-        ctx.restore();
-      }
-      // neither: the page keeps the name, which is still worth keeping
-    }
+    // no caption here: the name below is real text on the sheet, which sets
+    // sharper on paper than any lettering painted into the picture
+    void paintKeepsake(ctx, PX, { strokes, doodleId });
   }, [strokes, doodleId]);
 
   /* Print once the sheet is on screen, and close when the dialog goes away —
